@@ -1,0 +1,97 @@
+{
+ "system_name": "icequeen",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "9d4be6c04229c9fa87eb3681abe8356e34608a6f406aba877ff67707377f6138",
+ "provenance": {
+  "model": "claude-opus-4-8",
+  "params": {},
+  "prompt": "units003 kit design S1 (REQ-0201); reviewer-amended (REQ-0201 adoption notes)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:10:50.933Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "icequeen",
+  "i18n": {
+   "ja": {
+    "name": "氷の女王"
+   }
+  },
+  "icon": "units003_icequeen",
+  "name": "Ice Queen",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       3,
+       4
+      ],
+      "t": "add_on_hit_status",
+      "status": "Chill"
+     },
+     "target": "units_connected"
+    },
+    {
+     "verb": {
+      "t": "status_immune",
+      "status": "Chill"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "s": [
+     3,
+     4
+    ],
+    "t": "every_secs"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Winter obeys only her.",
+  "rarity": "Rare",
+  "flavor_ja": "冬は彼女にのみ従う。",
+  "connection_shape": "rook"
+ }
+}

@@ -1,0 +1,86 @@
+{
+ "system_name": "mana_crystal",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "585227d59ee7c04bd5018634ea3fa5e1a673601018048a8b3d72c69609db06c0",
+ "provenance": {
+  "model": "claude-fable-5",
+  "params": {},
+  "prompt": "art-first unit design from adopted items005 artwork (user directive 2026-07-17)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": "2026-07",
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-17T04:34:26.585Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "mana_crystal",
+  "i18n": {
+   "ja": {
+    "name": "マナ水晶"
+   }
+  },
+  "icon": "items005_mana_crystal",
+  "name": "Mana Crystal",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       1,
+       2
+      ],
+      "t": "grant_charge"
+     },
+     "target": "units_connected_distributed"
+    }
+   ],
+   "trigger": {
+    "t": "on_connected_unit_spend"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Spent power rings the lattice and comes home.",
+  "rarity": "Uncommon",
+  "name_ja": "マナ水晶",
+  "flavor_ja": "放たれた力は結晶に響き、還ってくる。",
+  "connection_shape": "adjacency"
+ }
+}

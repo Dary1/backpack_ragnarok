@@ -143,3 +143,12 @@ autobalance --emit. Direct REQ-0122 check (all 8 files, worktree): 19/0. goldens
 RE-BASELINED (batch-002 pilot now carries frost flavor -> 8 replays legitimately drift).
 Branch green except run.cjs REQ-0122 (reads main checkout -> resolves on merge). Region
 tests (0203/0207/0219) still green with the augmented batches.
+
+## DEPLOYED (2026-07-24)
+Merged to master (merge 73fd3cc; integrated on top of the concurrently-landed REQ-0301
+goldens decouple -- restored the frozen-fixture replay baseline since REQ-0301 makes
+goldens content-independent, commit 3c32636). Master gates GREEN from the main checkout:
+run.cjs 184/0 (incl REQ-0122 lossless), goldens OK, self_test_vocab ALL GREEN,
+autobalance --check CLEAN, region tests 0203/0207/0219 + 0298 green. backpack-api
+restarted (PID rolled); /api/health 200; /api/schedule/forecast?dungeonId=niflheim_depths
+200 (sim serving live content). backpack-web active (no client change). Live.

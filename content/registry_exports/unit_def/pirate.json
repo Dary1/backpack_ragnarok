@@ -1,0 +1,85 @@
+{
+ "system_name": "pirate",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "a5e889f13d88848e6fbc0ca7ac998c15cb876258cc1b349505be4e8d692230dc",
+ "provenance": {
+  "model": "claude-opus-4-8",
+  "params": {},
+  "prompt": "units003 kit design S1 (REQ-0201); reviewer-amended (REQ-0201 adoption notes)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:10:51.439Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "pirate",
+  "i18n": {
+   "ja": {
+    "name": "海賊"
+   }
+  },
+  "icon": "units003_pirate",
+  "name": "Pirate",
+  "charge": {
+   "gain": "damage",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       6,
+       10
+      ],
+      "t": "heal_bp"
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "on_damage_dealt"
+   },
+   "capacity": [
+    30,
+    50
+   ]
+  },
+  "flavor": "Every hit fills the coffers... and the wounds.",
+  "rarity": "Common",
+  "flavor_ja": "一撃ごとに財宝と傷が満ちる。",
+  "connection_shape": "queen"
+ }
+}

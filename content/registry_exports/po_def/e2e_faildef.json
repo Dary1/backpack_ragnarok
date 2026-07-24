@@ -1,0 +1,109 @@
+{
+ "system_name": "e2e_faildef",
+ "kind": "po_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "497f9b81a711d07794baf0e9ce8726db56efc0e824bae5d9c65322db6f1df534",
+ "provenance": {
+  "model": "claude-opus-4.8",
+  "params": {
+   "variation": 1,
+   "temperature": 1
+  },
+  "prompt": "generate a blade variant #1",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": "2026-01",
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": false,
+    "name": "schema_vocab",
+    "detail": "effects[0].verb.t not in vocab.verbs: NOT_A_REAL_VERB",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation path (tool_gen_data) accepted the def",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "extra": {
+     "content_live_unchanged": true
+    },
+    "detail": "integrate dry-run passed (0 errors)",
+    "applicable": true
+   }
+  ],
+  "ran_at": "2026-07-14T00:35:51.245Z",
+  "dialect": "default",
+  "overall": "FAIL",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "e2e_blade_v1",
+  "icon": "icon-blade",
+  "name": "E2E Blade v1",
+  "part": {
+   "role": "blade",
+   "assembles": "longsword"
+  },
+  "tags": [
+   "WeaponPart",
+   "Metal"
+  ],
+  "shape": [
+   [
+    0,
+    0
+   ],
+   [
+    1,
+    0
+   ]
+  ],
+  "flavor": "Variant 1.",
+  "rarity": "Common",
+  "effects": [
+   {
+    "cond": "assembled",
+    "verb": {
+     "n": [
+      21,
+      41
+     ],
+     "t": "NOT_A_REAL_VERB"
+    },
+    "trigger": {
+     "s": [
+      1.8,
+      2.2
+     ],
+     "t": "every_secs"
+    }
+   }
+  ],
+  "sockets": [
+   {
+    "t": "edge",
+    "ax": 0.5,
+    "ay": 0.38,
+    "tags": [
+     "Metal"
+    ]
+   }
+  ],
+  "stretch": true
+ }
+}

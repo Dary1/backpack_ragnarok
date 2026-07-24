@@ -1,0 +1,90 @@
+{
+ "system_name": "giant_shuriken",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "0fa434bcaaca3e73e138ea767d7a64e7630e200e6d3632f99887ff4edc36e119",
+ "provenance": {
+  "model": "claude-fable-5",
+  "params": {},
+  "prompt": "art-first unit design from adopted items005 artwork (user directive 2026-07-17)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": "2026-07",
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-17T04:34:26.627Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "giant_shuriken",
+  "i18n": {
+   "ja": {
+    "name": "大手裏剣"
+   }
+  },
+  "icon": "items005_giant_shuriken",
+  "name": "Giant Shuriken",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       8,
+       12
+      ],
+      "t": "multi_strike",
+      "hits": [
+       3,
+       4
+      ]
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "on_connected_unit_attack"
+   },
+   "capacity": [
+    3,
+    4
+   ]
+  },
+  "flavor": "It leaves the hand only to multiply.",
+  "rarity": "Rare",
+  "name_ja": "大手裏剣",
+  "flavor_ja": "手を離れた刃は、増えて還る。",
+  "connection_shape": "chess_knight_move"
+ }
+}

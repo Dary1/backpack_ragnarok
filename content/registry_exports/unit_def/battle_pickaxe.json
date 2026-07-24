@@ -1,0 +1,86 @@
+{
+ "system_name": "battle_pickaxe",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "0f3476ed540cc08d4a629a466c07eca37fbac52d1ca41768f908fc040e14ab2b",
+ "provenance": {
+  "model": "claude-opus-4-8",
+  "params": {},
+  "prompt": "REQ-0212 carrier units for the charge_strike/transfer_status/shield_break verbs (art-first, user directive 2026-07-17)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": "2026-07",
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-17T10:42:18.727Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "battle_pickaxe",
+  "i18n": {
+   "ja": {
+    "name": "戦つるはし"
+   }
+  },
+  "icon": "items005_battle_pickaxe",
+  "name": "Battle Pickaxe",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       10,
+       15
+      ],
+      "t": "shield_break"
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "on_connected_unit_attack"
+   },
+   "capacity": [
+    3,
+    4
+   ]
+  },
+  "flavor": "Walls are just slow doors.",
+  "rarity": "Uncommon",
+  "name_ja": "戦つるはし",
+  "flavor_ja": "壁とは、開くのが遅い扉のことだ。",
+  "connection_shape": "lance"
+ }
+}

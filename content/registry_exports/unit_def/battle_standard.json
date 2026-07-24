@@ -1,0 +1,96 @@
+{
+ "system_name": "battle_standard",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "04e634d8eaee3e490bd997e304883e72e88f7e7c29a23ac246a7fc0b50ef2c2e",
+ "provenance": {
+  "model": "claude-fable-5",
+  "params": {},
+  "prompt": "art-first unit design from adopted items005 artwork (user directive 2026-07-17)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": "2026-07",
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-17T04:34:26.499Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "battle_standard",
+  "i18n": {
+   "ja": {
+    "name": "戦旗"
+   }
+  },
+  "icon": "items005_battle_standard",
+  "name": "Battle Standard",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "t": "buff_linked",
+      "pct": [
+       8,
+       12
+      ]
+     },
+     "target": "units_connected"
+    },
+    {
+     "verb": {
+      "n": [
+       1,
+       1
+      ],
+      "t": "grant_charge"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "t": "on_kill"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Colors high, hearts higher.",
+  "rarity": "Rare",
+  "name_ja": "戦旗",
+  "flavor_ja": "旗は高く、士気はなお高く。",
+  "connection_shape": "queen_2"
+ }
+}

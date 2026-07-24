@@ -1,0 +1,85 @@
+{
+ "system_name": "bard",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "73bc9a83ea1da60ec628972373b8793ae70bc8a96f20d391d5e9a6a55e7fa975",
+ "provenance": {
+  "model": "claude-opus-4-8",
+  "params": {},
+  "prompt": "units003 kit design S1 (REQ-0201); reviewer-amended (REQ-0201 adoption notes)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:10:50.412Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "bard",
+  "i18n": {
+   "ja": {
+    "name": "吟遊詩人"
+   }
+  },
+  "icon": "units003_bard",
+  "name": "Bard",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       2,
+       3
+      ],
+      "t": "haste"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "t": "on_connected_unit_attack"
+   },
+   "capacity": [
+    3,
+    4
+   ]
+  },
+  "flavor": "Every swing keeps the beat.",
+  "rarity": "Common",
+  "flavor_ja": "その一振り、リズムを刻む。",
+  "connection_shape": "rook_3"
+ }
+}

@@ -1,0 +1,85 @@
+{
+ "system_name": "darkknight",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "517ffdd5ac84ef110d5833146f2a9a9c5c84516ad19ee611738e7dbcb21b85f7",
+ "provenance": {
+  "model": "claude-opus-4-8",
+  "params": {},
+  "prompt": "units003 kit design S1 (REQ-0201); reviewer-amended (REQ-0201 adoption notes)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:10:50.589Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "darkknight",
+  "i18n": {
+   "ja": {
+    "name": "ダークナイト"
+   }
+  },
+  "icon": "units003_darkknight",
+  "name": "Dark Knight",
+  "charge": {
+   "gain": "count",
+   "spend": "passive_per_stack",
+   "effects": [
+    {
+     "verb": {
+      "t": "buff_self",
+      "pct": [
+       0.5,
+       0.8
+      ]
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "OnBPBeenHit"
+   },
+   "capacity": [
+    12,
+    18
+   ]
+  },
+  "flavor": "Pain is fuel.",
+  "rarity": "Common",
+  "flavor_ja": "痛みこそ我が糧。",
+  "connection_shape": "none"
+ }
+}

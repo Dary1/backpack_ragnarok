@@ -1,0 +1,96 @@
+{
+ "system_name": "war_horn",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "58fe7a1973fda3d79e34419481bbc874036dbefbbcb5e1beb4da28e5c144c790",
+ "provenance": {
+  "model": "claude-fable-5",
+  "params": {},
+  "prompt": "art-first unit design from adopted items005 artwork (user directive 2026-07-17)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": "2026-07",
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-17T04:34:26.195Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "war_horn",
+  "i18n": {
+   "ja": {
+    "name": "軍角笛"
+   }
+  },
+  "icon": "items005_war_horn",
+  "name": "War Horn",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       2,
+       3
+      ],
+      "t": "haste"
+     },
+     "target": "units_connected"
+    },
+    {
+     "verb": {
+      "t": "buff_linked",
+      "pct": [
+       6,
+       10
+      ]
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "t": "on_kill"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "One long note, and the line surges forward.",
+  "rarity": "Rare",
+  "name_ja": "軍角笛",
+  "flavor_ja": "一声の長鳴、戦列は前へ雪崩れる。",
+  "connection_shape": "adjacency"
+ }
+}

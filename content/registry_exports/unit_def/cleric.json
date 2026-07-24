@@ -1,0 +1,81 @@
+{
+ "system_name": "cleric",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "b204856b7c74832c68c3a16bc92c4ef5c4753e99e992428ebaebbfd940ecaaf4",
+ "provenance": {
+  "model": "claude-opus-4-8",
+  "params": {},
+  "prompt": "units003 kit design S1 (REQ-0201); reviewer-amended (REQ-0201 adoption notes)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:10:50.471Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "cleric",
+  "i18n": {
+   "ja": {
+    "name": "聖職者"
+   }
+  },
+  "icon": "units003_cleric",
+  "name": "Cleric",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "t": "cleanse"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "t": "on_heal_done"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Mercy answers mercy.",
+  "rarity": "Common",
+  "flavor_ja": "慈悲は慈悲を呼ぶ。",
+  "connection_shape": "queen_2"
+ }
+}

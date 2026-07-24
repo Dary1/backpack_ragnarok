@@ -1,0 +1,85 @@
+{
+ "system_name": "knight",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "cd159b767407709cd72ac315d64faa4a2811093591dcb6e0c1f9de5f82939bda",
+ "provenance": {
+  "model": "claude-opus-4-8",
+  "params": {},
+  "prompt": "units003 kit design S1 (REQ-0201); reviewer-amended (REQ-0201 adoption notes)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:10:51.104Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "knight",
+  "i18n": {
+   "ja": {
+    "name": "騎士"
+   }
+  },
+  "icon": "units003_knight",
+  "name": "Knight",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       8,
+       12
+      ],
+      "t": "block"
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "OnBPBeenHit"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "None pass the line.",
+  "rarity": "Common",
+  "flavor_ja": "この線は誰も越えさせぬ。",
+  "connection_shape": "rook"
+ }
+}

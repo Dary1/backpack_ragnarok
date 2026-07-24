@@ -1,0 +1,102 @@
+{
+ "system_name": "royal_court",
+ "kind": "gacha_pack",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "f88972e22bf211582135a20eb67b5e4f3c18348cbff73069940ff7ff48cba5f4",
+ "provenance": {
+  "model": "claude-fable-5 orchestrator (design ratified from Opus S1 round)",
+  "params": {},
+  "prompt": "units003 themed packs (REQ-0202)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "runtime field types conform to what gacha.cjs rollPackBp() consumes",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for gacha_pack (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:14:46.310Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "royal_court",
+  "cost": 20,
+  "i18n": {
+   "ja": {
+    "name": "宮廷のパック"
+   }
+  },
+  "name": "Royal Court Pack",
+  "pool": [
+   {
+    "unit": "bard",
+    "weight": 6
+   },
+   {
+    "unit": "jester",
+    "weight": 3
+   },
+   {
+    "unit": "wizard",
+    "weight": 2
+   },
+   {
+    "unit": "sorceress",
+    "weight": 2
+   },
+   {
+    "unit": "king",
+    "weight": 1
+   },
+   {
+    "unit": "vampire",
+    "weight": 1
+   },
+   {
+    "unit": "dragonknight",
+    "weight": 1
+   },
+   {
+    "unit": "hero",
+    "weight": 6
+   },
+   {
+    "unit": "pirate",
+    "weight": 6
+   }
+  ],
+  "cells": [
+   7,
+   9
+  ],
+  "cost_tm": "lrdst",
+  "hp_per_cell": 15
+ }
+}

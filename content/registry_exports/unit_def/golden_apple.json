@@ -1,0 +1,90 @@
+{
+ "system_name": "golden_apple",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "8d94dde3c81a7835780398ed6462136a0c65bcfa0245a829c180b1ea0ccde9f0",
+ "provenance": {
+  "model": "claude-fable-5",
+  "params": {},
+  "prompt": "art-first unit design from adopted items005 artwork (user directive 2026-07-17)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": "2026-07",
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-17T04:34:26.351Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "golden_apple",
+  "i18n": {
+   "ja": {
+    "name": "黄金の林檎"
+   }
+  },
+  "icon": "items005_golden_apple",
+  "name": "Golden Apple",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       6,
+       9
+      ],
+      "t": "heal_bp"
+     },
+     "target": "bp_connected"
+    }
+   ],
+   "trigger": {
+    "s": [
+     5,
+     7
+    ],
+    "t": "every_secs"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "One bite is a second morning.",
+  "rarity": "Uncommon",
+  "name_ja": "黄金の林檎",
+  "flavor_ja": "ひと齧りで、二度目の朝が来る。",
+  "connection_shape": "adjacency"
+ }
+}

@@ -1,0 +1,102 @@
+{
+ "system_name": "warband",
+ "kind": "gacha_pack",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "02cb69cf1d6c931ac3e2345187f1d7359c8b7e6ddffd4af5f13a5f00ccc2db6b",
+ "provenance": {
+  "model": "claude-fable-5 orchestrator (design ratified from Opus S1 round)",
+  "params": {},
+  "prompt": "units003 themed packs (REQ-0202)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "runtime field types conform to what gacha.cjs rollPackBp() consumes",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for gacha_pack (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:14:46.267Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "warband",
+  "cost": 12,
+  "i18n": {
+   "ja": {
+    "name": "戦団のパック"
+   }
+  },
+  "name": "Warband Pack",
+  "pool": [
+   {
+    "unit": "knight",
+    "weight": 6
+   },
+   {
+    "unit": "gladiator",
+    "weight": 6
+   },
+   {
+    "unit": "orc",
+    "weight": 3
+   },
+   {
+    "unit": "monk",
+    "weight": 6
+   },
+   {
+    "unit": "ninja",
+    "weight": 3
+   },
+   {
+    "unit": "samurai",
+    "weight": 2
+   },
+   {
+    "unit": "werewolf",
+    "weight": 3
+   },
+   {
+    "unit": "darkknight",
+    "weight": 6
+   },
+   {
+    "unit": "hero",
+    "weight": 6
+   }
+  ],
+  "cells": [
+   6,
+   8
+  ],
+  "cost_tm": "lrdst",
+  "hp_per_cell": 15
+ }
+}

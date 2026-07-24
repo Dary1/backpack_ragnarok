@@ -1,0 +1,94 @@
+{
+ "system_name": "sanctuary",
+ "kind": "gacha_pack",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "4560cf604b74152072eba0c4b3fe3a080f249a0058a3d95d33f7b3f843fb700d",
+ "provenance": {
+  "model": "claude-fable-5 orchestrator (design ratified from Opus S1 round)",
+  "params": {},
+  "prompt": "units003 themed packs (REQ-0202)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "runtime field types conform to what gacha.cjs rollPackBp() consumes",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for gacha_pack (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:14:46.225Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "sanctuary",
+  "cost": 15,
+  "i18n": {
+   "ja": {
+    "name": "聖域のパック"
+   }
+  },
+  "name": "Sanctuary Pack",
+  "pool": [
+   {
+    "unit": "fairy",
+    "weight": 6
+   },
+   {
+    "unit": "cleric",
+    "weight": 6
+   },
+   {
+    "unit": "druid",
+    "weight": 6
+   },
+   {
+    "unit": "miko",
+    "weight": 3
+   },
+   {
+    "unit": "shaman",
+    "weight": 3
+   },
+   {
+    "unit": "paladin",
+    "weight": 2
+   },
+   {
+    "unit": "valkyrie",
+    "weight": 2
+   }
+  ],
+  "cells": [
+   6,
+   8
+  ],
+  "cost_tm": "lrdst",
+  "hp_per_cell": 15
+ }
+}
