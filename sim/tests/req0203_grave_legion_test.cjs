@@ -111,8 +111,8 @@ T('G4: non-square pins -- lich {w:4,h:5}->[5,4] and a 3x4->[4,3], NOT the transp
 // ---- packs: the shared validator + derived cells ----
 T('packs: each authored layout PASSes shared/content_validate + derives the spec cells', () => {
   const expected = {
-    pack_grave_shamble: ['B2:D5', 'B7:D10', 'B12:D15', 'F4:H7'],
-    pack_grave_legion: ['B3:D6', 'B9:D12', 'B13:D16', 'G6:I9', 'G11:I14'],
+    pack_grave_shamble: ['B2:E6', 'F2:H5', 'I2:K5', 'L2:N5', 'O2:Q5', 'R2:T5', 'U2:W5', 'F6:H9', 'I6:K9', 'L6:N9'],
+    pack_grave_legion: ['B2:E6', 'F2:H5', 'I2:K5', 'L2:N5', 'O2:Q5', 'R2:T5', 'U2:W5', 'F6:H9', 'I6:K9', 'L6:N9'],
     pack_bone_court: ['B4:K13', 'N6:Q10', 'N12:P15', 'S8:U11'],
   };
   for (const p of packs.entries) {
@@ -215,7 +215,12 @@ T('G2 integration: heal_ally routes as SUPPORT -- fires no ray, targets a pack a
   ok(!r.events.some(e => e.ev === 'ray_fire' && e.src === 'test_healer'), 'the healer fires NO ray at the player field');
 });
 T('G2 real content: a batch-005 pack encounter exercises all three new verbs (deterministic seed)', () => {
-  const r = runLegion('req0203-legion-fixed');
+  // REQ-0303 (pack-underfill-fix) re-picked this deterministic seed: growing
+  // grave_legion to >=30% formation fill shifted the RNG timeline, so the old
+  // 'req0203-legion-fixed' seed no longer lands heal_ally in-window. This seed
+  // exercises all three verbs on the new composition (verified; heal_ally is
+  // the scarce verb -- it only fires when a pack ally is wounded).
+  const r = runLegion('req0203-legion-fixed-6');
   ok(r.events.some(e => e.ev === 'heal_ally'), 'dark_mending heal_ally fired');
   ok(r.events.some(e => e.ev === 'lifesteal_heal'), 'lifesteal (spectral_touch/life_drain) fired');
   ok(r.events.some(e => e.ev === 'telegraph' && e.skill === 'bonus_vs_status'), 'bone_cleaver/grave_blade bonus_vs_status fired');

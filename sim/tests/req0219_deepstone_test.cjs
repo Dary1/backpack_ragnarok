@@ -173,8 +173,8 @@ T('G3: non-square pins -- cyclops 5x6->[6,5], troll 4x5->[5,4], giant_crab 4x3->
 T('G2: each authored layout PASSes shared/content_validate + derives the spec cells', () => {
   const expected = {
     pack_deep_tide: ['B4:K13', 'N3:S8', 'N11:P14', 'R11:U13'],
-    pack_petrifying_court: ['B5:E9', 'H4:K7', 'H10:J13', 'M7:P10'],
-    pack_greenskin_warband: ['B6:E9', 'G3:I6', 'G9:I12', 'G14:I17', 'L7:N10'],
+    pack_petrifying_court: ['B2:E6', 'F2:I6', 'J2:M5', 'N2:Q5', 'R2:U5', 'V2:X5', 'J6:L9', 'M6:O9'],
+    pack_greenskin_warband: ['B2:E6', 'F2:I5', 'J2:M5', 'N2:P5', 'Q2:S5', 'T2:V5', 'W2:Y5', 'F6:H9', 'I6:K9'],
     pack_titan_ridge: ['B5:I12', 'L3:P8', 'L10:P15', 'S6:V10'],
   };
   for (const p of packs.entries) {
