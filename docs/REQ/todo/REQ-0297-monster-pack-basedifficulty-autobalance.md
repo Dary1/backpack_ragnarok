@@ -21,7 +21,7 @@ NOT yet merged to master.
   dungeons/packs content deploy is SURGICAL (edit batch-002 source + byte-identical live copy +
   registry sha256, then copy into the main checkout ~/backpack_ragnarok + commit to master) so the
   REQ-0122 lossless test stays green; api reload is mtime-cached (no restart for content).
-- **PHASE STATUS:** Phase 1 = BUILT+audited. Phase 2 = BUILT+AUDITED (goldens byte-identical, sim 171/0, coverage green; live powerLevel deploy DEFERRED to Phase 3). Phase 3 = NOT STARTED (next).
+- **PHASE STATUS:** Phase 1 = BUILT+audited. Phase 2 = BUILT+AUDITED (goldens byte-identical, sim 171/0, coverage green; live powerLevel deploy DEFERRED to Phase 3). Phase 3 = BUILT (tool + 6 tests green: goldens byte-identical, sim 177/0; live-content EMIT DEFERRED to integrated deploy -- see Phase 3 BUILD RECORD).
 - **DEPLOY WARNING:** do NOT deploy Phase 2 alone -- retiring dungeon-level scaling leaves live enemies UNSCALED until Phase 3 generates pack.powerLevel. Phase 2 + Phase 3 deploy TOGETHER.
 - Orchestration: implement via Opus subagent, orchestrator audits (independent goldens re-run + diff).
 =============================================================================
@@ -110,7 +110,7 @@ every_secs) so this is inert on today's content -- correctness + future-proofing
 - **Gates:** goldens 12/12 byte-identical; run.cjs 171/0 (158 + 13 new);
   check_scaling_coverage --gate OK.
 
-## Phase 3 - All-pairs round-robin auto-adjuster + content-edit trigger  [NOT STARTED]
+## Phase 3 - All-pairs round-robin auto-adjuster + content-edit trigger  [BUILT -- tool + tests green; live-content EMIT DEFERRED to integrated deploy]
 - Tool (evolve REQ-0295's calibrator; arena-based, troop-FREE): **iterative all-pairs round-robin.**
   Each loop: present every pack at effLevel = T - powerLevel (T = field mean, effectively 0), fight
   ALL pairs N seeds via sim/balance/monster_arena.cjs; compute each pack's aggregate win-rate vs the
@@ -129,6 +129,56 @@ every_secs) so this is inert on today's content -- correctness + future-proofing
   every pack.powerLevel, records the new hash, ships regenerated packs.json via the surgical path. A
   clean deploy skips it. Do NOT run per single edit.
 
+### Phase 3 BUILD RECORD (2026-07-24) -- commit 45d443b (tool + tests); live-content EMIT DEFERRED
+- **Tool:** `tools/autobalance_pack_powerlevel.cjs` -- troop-FREE all-pairs round-robin over
+  sim/balance/monster_arena.cjs. Every pack fights EVERY other in BOTH orientations (A-vs-B and
+  B-vs-A) x SEEDS seeds (seeds keyed on the id-sorted pair => entry-order invariant). Both
+  orientations are REQUIRED: the arena has a fire-order/field-band positional bias (slot B won
+  ~65:26 of 91 duels at eff 0); playing each pair both ways cancels it exactly. Each pack presents
+  at effLevel = -powerLevel (T=0); the arena scales its hp+damage by g^effLevel (shipped profile
+  g=1.1). Aggregate win-rate vs the field (win=1, loss=0, draw/timeout broken by remaining
+  hp-fraction so scoreA+scoreB=1 => mean exactly 50%). Update ALL packs simultaneously (Jacobi):
+  dPowerLevel = alpha*(winRate%-50)/10, FRACTIONAL (never rounded); a WINNER gets powerLevel RAISED.
+- **NO anchor -- verified empirically:** mean(powerLevel) stays 0 to ~1e-16 EVERY loop (round-robin
+  mean win-rate is exactly 50% by construction), so the set self-centres with no reference pack.
+- **Convergence (chosen defaults alpha=0.7 / loops=8 / seeds=6):** on the 14 live packs the residual
+  mean|winRate-50| settles 24.6 -> 11.3(L4) -> 6.8(L5) -> 1.9(L6) -> 1.6(L8); max|res| -> 3.2%;
+  per-loop max dPowerLevel -> ~0.27; timeouts -> 0; every pack ends within 47.4..53.2%. Runtime ~7s.
+  Sweep evidence: alpha 0.5 needs ~10 loops; 0.6/0.7/0.8 all settle cleanly by L5-8; alpha>=1.0
+  mildly OSCILLATES (max-residual wanders 3.9->7.0, mean creeps up). 0.7 chosen: in the user's
+  suggested {0.3,0.5,0.7}, safely below the oscillation edge, fully settled with 2 flat loops margin.
+- **DERIVED powerLevel (live packs; deterministic, STRONG pack = HIGH powerLevel):** titan_ridge
+  +12.8333, deep_tide +11.1282, demon_gate +9.4231, bone_court +6.4167, hrimgrimnir +4.9359,
+  petrifying_court +2.3782, venom_nest +1.3910, greenskin_warband -0.1346, grave_legion -0.4038,
+  wild_hunt -1.7949, grave_shamble -5.8333, bear_and_stalker -5.8782, rime_choir -17.1410,
+  frost_scouts -17.3205. The ~30-wide spread is the TRUE content imbalance (2-monster frost_scouts
+  vs behemoth-led titan_ridge); it is normalised at runtime by effLevel=attackLv-powerLevel.
+- **Tests:** `sim/tests/req0297_phase3_test.cjs` (6 cases, wired into run.cjs): determinism, convergence
+  (synthetic strong/mid/weak field -> exactly 50% by L4), SIGN (winner raised, strong>mid>weak, +/-),
+  no-anchor (mean win-rate exactly 50%; mean(powerLevel) conserved =0 every loop), win-score tiebreak.
+  Fast (~0.3s tiny synthetic set; the full round-robin is ~7s). run.cjs 177/0.
+- **Trigger (--check):** compares live enemies/skills/packs sha256 to a stored `powerlevel_calibrated_from`
+  marker in registry.json; exits 1 (DIRTY) when they differ / no marker. Deploy hook (documented in the
+  tool header, not wired to a live script): a pre-deploy step runs --check and, when dirty, runs --emit
+  ONCE, BATCHED at merge/deploy; a clean deploy skips it. Do NOT run per single edit.
+- **--emit DEFERRED (functional but NOT committed) -- exact integrated-deploy sync:** --emit writes
+  powerLevel into live packs.json (all 14, byte-preserving line insert after each id), batch-002 base
+  packs.json (its 4 base packs byte-identically), re-stamps registry's LAST additive-layer packs.json
+  sha256, and sets the marker. VERIFIED after --emit: goldens BYTE-IDENTICAL (goldens compile with no
+  scaling profile => powerLevel inert) and the diff is clean. BUT the REQ-0122 lossless test reads live
+  content via dungen.liveDungeonDir() = os.homedir() -> ~/backpack_ragnarok (the MAIN CHECKOUT) while
+  the emit updates the WORKTREE registry -- so an in-worktree-only emit makes the worktree registry (new
+  sha) disagree with the UNTOUCHED main-checkout live (old sha) and REDDENS the lossless test. PROJECT.md
+  forbids touching the main checkout, so the emit is REVERTED + DEFERRED. EXACT SYNC (orchestrator, atomic,
+  BOTH checkouts): (1) run `node tools/autobalance_pack_powerlevel.cjs --emit`; (2) apply the SAME
+  powerLevel edits to the MAIN checkout ~/backpack_ragnarok (live packs.json all-14 + batch-002 base + registry
+  sha/marker); (3) ALSO add the same per-pack powerLevel to the ADDITIVE SOURCE batches' packs.json
+  (batch-005-grave-legion, batch-006-wildlands, batch-007-deepstone-legions -- the 10 non-base packs) for
+  a byte-lossless future re-promotion (--emit does NOT touch these; the lossless test does not read them,
+  but re-promotion would); (4) re-run goldens (byte-identical) + run.cjs (REQ-0122 green once registry +
+  both checkouts' live agree) + commit to master. Deploy TOGETHER with Phase 2 (DEPLOY WARNING): Phase 2
+  retired dungeon-level scaling, so live enemies stay UNSCALED until these powerLevels ship.
+
 ## Acceptance (whole feature)
 - Phase 1: goldens byte-identical; verb-firing auto-test green. [DONE]
 - Phase 2: per-pack effLevel live; effLevel-0 byte-identical; ±25 guard test green; goldens/sim/api green.
@@ -140,4 +190,10 @@ every_secs) so this is inert on today's content -- correctness + future-proofing
 - Phase 1: 8d8b175, 04a233b (audited; goldens byte-identical, sim 158/0).
 - Phase 2: 5007e16 (per-pack runtime + scaling round-to-0 care), c3ca8be (13 tests + wire). goldens 12/12 byte-identical, run.cjs 171/0, coverage --gate OK. Live powerLevel DEFERRED (Phase-3 surgical path); main checkout untouched.
   ORCHESTRATOR-AUDITED (independent): goldens re-run byte-identical + fixtures untouched; diffs reviewed (effLevelForPack absent->0, factor-1 hp-floor gated on scaledHp!==def.hp, warn-not-cap); sanity g^BOSS_LV_BONUS=1.1500, effLevelForPack(5,2,boss)=4.4664, hp[30,45]@eff-25=[2.77,4.15] (>0).
-- Phase 3: _(on build)_
+- Phase 3: 45d443b (tool `tools/autobalance_pack_powerlevel.cjs` + 6 phase-3 tests wired into run.cjs).
+  goldens 12/12 BYTE-IDENTICAL, run.cjs 177/0 (171 + 6). Convergence alpha0.7/loops8/seeds6: mean|winRate-50|
+  24.6->1.6, max->3.2%, mean(powerLevel)=0 conserved (~1e-16); every live pack settles within 47.4..53.2%.
+  Derived powerLevel (STRONG=HIGH): titan_ridge +12.83 ... frost_scouts -17.32 (full list in Phase 3 BUILD
+  RECORD). --check dirty-trigger built. --emit functional + goldens-safe but DEFERRED/reverted (NOT committed):
+  a worktree-only emit reddens the REQ-0122 lossless test because it reads MAIN-checkout live via os.homedir();
+  exact integrated-deploy sync (both checkouts + additive source batches) flagged in the BUILD RECORD.
