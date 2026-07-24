@@ -39,7 +39,58 @@ implemented, and the UI still selects a dungeon.
 - The UI sets attackLv (no dungeon pick) and shows the drawn dungeon post-entry.
 
 ## Gate results
-_(on build)_
+**Implemented on branch `req-0304-dungeon-random-draw-attacklv-entry` (worktree), off `master` @079f2c5. Commits:**
+- `7cb80a5` server-side levelMin-gated random dungeon draw on attackLv-only entry (rooms.cjs `drawDungeonId`
+  + optional/override `dungeonId` + persisted `drawSeed`; route drawSeed gate; api harness 2nd dungeon + tests)
+- `8edb415` sortie UI sets attackLv only (dungeon picker removed); drawn dungeon revealed post-entry (+ theme chip)
+- `19af54d` schedule e2e updated to the attackLv-entry shape
+
+**What was done:** `createRoom` (server/services/rooms.cjs) now DRAWS a dungeon uniformly among
+`{ d in dungeonDefsById : d.levelMin <= attackLv }` (attackLv = the existing `room.level`) via the new
+exported `drawDungeonId()`, deterministic in a persisted `drawSeed` (djb2->mulberry32 through `combat.makeRng`).
+`dungeonId` is now OPTIONAL: absent -> the draw; present -> a validated override (back-compat for legacy rooms,
+sealed runs, tools) -- so ALL existing dungeonId-passing tests/specs keep working unchanged. `drawSeed` is
+route-gated privileged EXACTLY like `genSeed`. No-eligible-dungeon -> a clear BAD_REQUEST. `startRun` is
+UNCHANGED (still reads `room.dungeonId`). The sortie page no longer picks a dungeon (picker removed; the
+`setLevel(levelMin)` coupling is gone); the player sets attackLv (+ ENTER) and the drawn dungeon is revealed
+post-entry on the schedule monitor (name + Lv + themed banner + a new theme chip).
+
+**REQ-0304 own coverage is GREEN (verified on the server):**
+- `[4] api_test (files)` **199 passed / 0 failed** incl. 6 new REQ-0304 tests (attackLv-only draw + levelMin
+  gating reaching both eligible dungeons; pinned-drawSeed determinism; drawSeed 403/allow gate; dungeonId
+  override; no-eligible BAD_REQUEST). `[5] api_test (pg)` **199/0** (same 6 pass; `drawSeed` round-trips the
+  jsonb blob). `[5.37] schedule_serving_test (pg)` 13/0.
+- `[2] sim replay goldens` **byte-identical** (12 cases) -- the serving-layer draw does NOT move the frozen
+  determinism fixture (REQ-0301), as required. `[2.65] dungeon_roll` 6/0, `[2.6] forecast_parity` 18/0,
+  `[1] sim run.cjs` 184/0.
+- `[6] client tsc -b + vite build` GREEN. `[7] scoped hermetic e2e` -- ALL REQ-0304 specs PASS
+  (schedule.spec.ts:1453 "attackLv-only DRAW sortie", :1507 seed-field gate, :1488 squad board) AND every
+  out-of-scope dungeonId-honored spec (schedule-mjolnir/market/workshop/seal) passes unchanged.
+
+**Full literal `CI GREEN` is BLOCKED by PRE-EXISTING failures that are UNRELATED to REQ-0304 (all reproduced
+on clean `master` @079f2c5, so they predate this branch; all in the shipped REQ-0293/0297 enemy-scaling /
+REQ-0306 calibration domain, which REQ-0304 does not touch):**
+- `[2.5] sim/tests/s4_test.cjs` "threshold classes" -- deterministic red on master (a live-content tiny matrix
+  now trips a HARD balance band). `set -euo pipefail` aborts ci here.
+- `[2.95] sim/tests/balance_sim_test.cjs` "(d) OP skill raises wipe vs baseline" -- deterministic red on master
+  (baseline starter squad already wipes 100% at L3 -> can't be raised). Both read LIVE content (`B.loadDefs()`
+  / `content/live/live_items.json`), so they reflect the shipped scaling, not REQ-0304.
+- `[7] e2e` (scoped): 4 deterministic reds CONFIRMED failing on master too -- `forecast.spec.ts:206` (STALE:
+  `slot-pressure` moved to the sortie page in REQ-0239, the test still checks `#/schedule`); `schedule.spec.ts`
+  settled-run-replay + monitor-six-zones and `workshop.spec.ts:361` reward-LRDST (run-lifecycle: L1 niflheim
+  runs now wipe / don't clear + deploy-gate 409 from accumulated deployed-squad state) -- master's own full
+  serial `schedule.spec.ts` run reproduces the same 2 failures (2 failed / 28 passed). Plus canvas drag-drop
+  specs (`bp-rotate`, `bp-transfer`) are parallel-load FLAKY (pass on a serial re-run).
+
+**Recommendation:** REQ-0304 introduces ZERO new reds. The blockers are a pre-existing live-balance/calibration
+regression (REQ-0293/0297 shipped scaling without re-baselining the balance/forecast/monitor/reward gates) +
+one stale forecast test. Restoring literal `CI GREEN` needs those gates re-baselined in the REQ-0306 (powerLevel
+auto-adjuster / calibration) domain, NOT here. This REQ is code-complete + self-green; promotion to `built/`
+is held pending that re-baseline (kept in `todo/`).
+
+_Verification harness: `bash tools/ci.sh` aborts at `[2.5]`. A diagnostic run of a /tmp COPY of ci.sh (worktree
+gate untouched, /tmp copy discarded) with ONLY the two pre-existing sim reds bypassed drove every other stage
+green through `[6.6]` and the full `[7]` e2e with no REQ-0304-related failure._
 
 ## Audit remediation (2026-07-25, orchestrated audit)
 Grounded audit (see docs/llm_managed/2026-07-25-req-0304-0306-orchestrator-audit.md). Verdict:
