@@ -37,6 +37,35 @@ function validateCancelPolicy(cancelPolicy) {
   return { immediate: cancelPolicy.immediate !== false };
 }
 
+// REQ-0304: the dungeon DRAW. Given an attackLv, select UNIFORMLY at random from
+// the eligible set { d in dungeonDefsById : d.levelMin <= attackLv }. levelMin is the
+// ONLY appearance gate (levelMax is an authoring/recommendation band, NOT an
+// eligibility bound). The pick is deterministic in `drawSeed` (djb2 -> mulberry32 via
+// combat.makeRng -- the SAME seeded RNG the sim's determinism contract uses), and the
+// eligible ids are sorted so the draw depends only on (seed, eligible-set), never on
+// content authoring order. If NO dungeon is eligible (attackLv below every levelMin)
+// this throws a clear 400 -- the ratified "no eligible dungeon" error. Weighting is
+// uniform for v1 (a per-dungeon `drawWeight` field is a documented follow-up).
+function drawDungeonId(dungeonDefsById, attackLv, drawSeed) {
+  const lvl = Number.isFinite(attackLv) ? Math.floor(attackLv) : DEFAULT_LEVEL_MIN;
+  const eligible = Object.keys(dungeonDefsById || {}).filter((id) => {
+    const d = dungeonDefsById[id];
+    const min = (d && Number.isFinite(d.levelMin)) ? d.levelMin : DEFAULT_LEVEL_MIN;
+    return min <= lvl;
+  }).sort();
+  if (eligible.length === 0) {
+    const known = Object.keys(dungeonDefsById || {})
+      .map((id) => id + '(levelMin ' + ((dungeonDefsById[id] && dungeonDefsById[id].levelMin) ?? '?') + ')')
+      .join(', ');
+    const err = new Error('no eligible dungeon for attackLv ' + lvl + ' -- every dungeon.levelMin exceeds it (known: ' + known + ')');
+    err.code = 'BAD_REQUEST';
+    throw err;
+  }
+  const roll = combat.makeRng(String(drawSeed)).stream('dungeon_draw').next();
+  const idx = Math.min(eligible.length - 1, Math.floor(roll * eligible.length));
+  return eligible[idx];
+}
+
 // createRoom: `opts.genSeed` (REQ-0043) is ONLY threaded through here --
 // the ACTUAL privilege gate (dev fallback / item_admin token, same
 // pattern as dev/backdate) lives in server/api.cjs's route handler,
@@ -46,10 +75,23 @@ function validateCancelPolicy(cancelPolicy) {
 // division of responsibility devBackdateActiveRun() already documents
 // ("Caller gating... NOT here").
 function createRoom(ownerId, opts) {
-  const { dungeonId, level, genSeed, formationId, cancelPolicy } = opts || {};
-  // REQ-0185: validates dungeonId names a live dungeon def (400 if not).
-  const resolvedDungeonId = resolveDungeonDefId(dungeonId);
+  const { dungeonId, level, genSeed, drawSeed, formationId, cancelPolicy } = opts || {};
   const lvl = Number.isFinite(level) ? Math.max(DEFAULT_LEVEL_MIN, Math.floor(level)) : DEFAULT_LEVEL_MIN;
+  // REQ-0304: drawSeed is stored verbatim (reproducible, EXACTLY like genSeed);
+  // crypto-random by default. It seeds the dungeon DRAW below and is persisted so a
+  // draw is replayable. A privileged caller may pin it (gated in the route, same
+  // class as genSeed); an ungated room just gets an unpredictable one.
+  const dSeed = (drawSeed !== undefined && drawSeed !== null && drawSeed !== '')
+    ? String(drawSeed)
+    : crypto.randomBytes(16).toString('hex');
+  // REQ-0304: dungeonId is OPTIONAL on create. Present -> a validated,
+  // privileged/test OVERRIDE of the draw (resolveDungeonDefId; 400 on unknown), so
+  // legacy rooms + sealed runs that carry one start unchanged. Absent -> the server
+  // RANDOM-DRAWS a dungeon uniformly among those whose levelMin <= attackLv (= lvl),
+  // keyed off the stored drawSeed (the ratified REQ-0304 attackLv-only entry).
+  const resolvedDungeonId = (typeof dungeonId === 'string' && dungeonId)
+    ? resolveDungeonDefId(dungeonId)
+    : drawDungeonId(getScheduleContent().dungeonDefsById, lvl, dSeed);
   const fId = (typeof formationId === 'string' && combat.FORMATIONS[formationId]) ? formationId : DEFAULT_FORMATION_ID;
   // genSeed: string or number accepted, coerced to a string (dungen.generate
   // stringifies internally anyway); random by default (crypto, same
@@ -65,6 +107,7 @@ function createRoom(ownerId, opts) {
     dungeonId: resolvedDungeonId,
     level: lvl,
     genSeed: seed,
+    drawSeed: dSeed, // REQ-0304: the seed the dungeon was drawn with (reproducible, like genSeed)
     visibility: 'self', // golden c: P1-B rooms are always self-only (multi-visibility is P2)
     formationId: fId,
     cancelPolicy: validateCancelPolicy(cancelPolicy),
@@ -153,6 +196,7 @@ function devClearRooms(callerId) {
 
 module.exports = {
   resolveDungeonDefId,
+  drawDungeonId,
   validateCancelPolicy,
   createRoom,
   getRoomOr404,

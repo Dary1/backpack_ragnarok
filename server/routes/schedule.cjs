@@ -120,6 +120,15 @@ function tryScheduleRoutes(req, res, url, p) {
             sendJSON(res, 403, { ok: false, error: 'forbidden: genSeed may only be specified by a dev/item_admin caller (test-control seam, not a real player action)' });
             return;
           }
+          // REQ-0304: drawSeed (the dungeon-DRAW seed) is privileged-only, gated
+          // EXACTLY like genSeed above. A present drawSeed pins WHICH dungeon the
+          // random draw selects (test/dev reproducibility), so an ungated player can
+          // never force or replay the draw. Absent drawSeed is fine for anyone -- the
+          // room gets a crypto-random one (schedule.createRoom's own default).
+          if (body && body.drawSeed !== undefined && body.drawSeed !== null && !callerCanSetGenSeed) {
+            sendJSON(res, 403, { ok: false, error: 'forbidden: drawSeed may only be specified by a dev/item_admin caller (test-control seam, not a real player action)' });
+            return;
+          }
           try {
             // REQ-0058: a body carrying a sealId joins a sealed run --
             // the room copies the frozen tuple (dungeonType/level/genSeed/
@@ -149,6 +158,12 @@ function tryScheduleRoutes(req, res, url, p) {
         // created (same check the POST /rooms path applies).
         if (body && body.genSeed !== undefined && body.genSeed !== null && !callerCanSetGenSeed) {
           sendJSON(res, 403, { ok: false, error: 'forbidden: genSeed may only be specified by a dev/item_admin caller (test-control seam, not a real player action)' });
+          return;
+        }
+        // REQ-0304 parity: drawSeed is privileged-only, gated BEFORE any room is
+        // created (same check the POST /rooms path applies).
+        if (body && body.drawSeed !== undefined && body.drawSeed !== null && !callerCanSetGenSeed) {
+          sendJSON(res, 403, { ok: false, error: 'forbidden: drawSeed may only be specified by a dev/item_admin caller (test-control seam, not a real player action)' });
           return;
         }
         try {
