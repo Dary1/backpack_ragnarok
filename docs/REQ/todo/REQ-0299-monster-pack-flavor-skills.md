@@ -94,4 +94,37 @@ re-run REQ-0297 autobalance_pack_powerlevel.cjs --emit to recalibrate powerLevel
 re-stamp registry sha markers.
 
 ## Status
-reserved -> todo (ratified 2026-07-24). Phased implementation on this branch.
+todo -> built (2026-07-24). Implemented; all sim gates green + live-content procs verified. Awaiting deploy (autobalance powerLevel --emit) + user acceptance.
+
+## Outcome / verification (2026-07-24)
+Implemented in two phases on this branch.
+- Phase 1 (vocab v17 + validator + engine + coverage) is GOLDEN-NEUTRAL and committed
+  first: sim/tests/goldens.cjs byte-identical, sim/tests/run.cjs 177/0, self_test_vocab
+  ALL GREEN (33 verbs, 21/21 triggers). req0297_verb_firing_test verb/trigger maps
+  classify grant_self_status + on_death.
+- Phase 2 (44 flavor skill defs in live/dungeon/skills.json + enemies.json wiring).
+
+CORRECTION to the pre-implementation gate plan: goldens.cjs and the region tests
+(req0203/0207/0219) load the frozen content/batches/* fixtures, NOT content/live/dungeon/,
+so the live content edits are golden-neutral there too -- NO golden re-baseline was needed
+and none was done. All green WITH content: run.cjs 177/0, goldens OK, req0203 15/0,
+req0207 13/0, req0219 13/0, candidate_gate 10/0, balance_sim 6/0, forecast_parity 18/0,
+s4 14/0, unit_charge 13/0 + 24/0, self_test_vocab ALL GREEN.
+
+Live-content verification (two ad-hoc harnesses, not committed):
+- compile probe: battle_start folds land on live enemies -- troll Regen(3 stacks),
+  ogre damageReduction~3, scorpion Spikes(2), zombie immune Poison, skeleton immune
+  {Burn,Poison} (kind:dot), frost_giant immune Chill; behemoth carries on_hp_below
+  buff_self; imp carries on_death death_throes.
+- integration (combat.runDungeon, sparse_glass squad vs single-monster packs): ALL FIVE
+  new runtime procs fire -- reactive_proc on_death (imp death_throes), reactive_proc
+  OnSquadBeenHit (necromancer apply_status Weakness), status_tick Regen (troll self-heal),
+  reflect_damage (scorpion self-Spikes), passive_proc on_hp_below buff_self (stalker enrage).
+
+DEPLOY-TIME follow-up (NOT a per-REQ gate; autobalance is not in ci.sh): REQ-0297
+tools/autobalance_pack_powerlevel.cjs --check is DIRTY by design (enemies.json + skills.json
+changed). Per that tool's own doc it is BATCHED at merge/deploy; run --emit at deploy to
+recalibrate per-pack powerLevel and re-stamp the registry sha markers. Note the arena that
+autobalance measures does not fire OnSquadBeenHit/on_death/on_hp_below (documented m-v-m
+limit), so the recalibration captures the battle_start-folded passives + self-status, not
+the reactive/death/enrage deltas.
