@@ -2095,6 +2095,22 @@ T("REQ-0294 activation: shipped profile scales hp + damage magnitude by 1.1^effL
   eq(skills[0].verb.n, [10, 10], "input not mutated");
 });
 
+// REQ-0297 Phase 1: faction-neutral verb-firing matrix (monster as attacker &
+// defender). A sibling module so it also runs standalone; register() defines its
+// T() cases against THIS harness so they roll into run.cjs's pass/fail totals.
+require('./req0297_verb_firing_test.cjs').register({ T, eq, ok, approx });
+
+// REQ-0297 Phase 2: per-pack powerLevel runtime + scaling round-to-0 care + the
+// +/-25 guard. Sibling module (also runs standalone); register() rolls its T()
+// cases into run.cjs's pass/fail totals.
+require('./req0297_phase2_test.cjs').register({ T, eq, ok, approx });
+
+// REQ-0297 Phase 3: the all-pairs round-robin powerLevel autobalancer --
+// determinism + convergence + NO-anchor self-centring + the update SIGN, on a
+// tiny synthetic pack field (the full 14-live-pack round-robin is ~7s, too slow
+// for the unit suite). Sibling module; register() rolls into run.cjs totals.
+require('./req0297_phase3_test.cjs').register({ T, eq, ok, approx });
+
 console.log('----------------------------------');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

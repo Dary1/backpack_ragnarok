@@ -72,8 +72,18 @@ function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyField
     const eid = mem.eid, def = mem.def, fieldCells = mem.fieldCells;
     // REQ-0293: roll HP over the SCALED range. At neutral scaleEnemyHpRange
     // returns def.hp itself (same values), so the stream draw is identical.
-    const [hpLo, hpHi] = scaling ? scaleEnemyHpRange(def.hp, scaling, effLevel) : def.hp;
-    const hpMax = Math.round(hpStream.range(hpLo, hpHi));
+    const scaledHp = scaling ? scaleEnemyHpRange(def.hp, scaling, effLevel) : def.hp;
+    const [hpLo, hpHi] = scaledHp;
+    let hpMax = Math.round(hpStream.range(hpLo, hpHi));
+    // REQ-0297 scaling-care (a): the correction is EXPONENTIAL (g^effLevel), so a
+    // scaled hp is mathematically always > 0 -- integer ROUNDING is the only way
+    // it reaches literal 0. When scaling actually moved the range DOWN far enough
+    // that a positive hp rounds to 0, floor it at 1 (a tiny positive minimum) as a
+    // LAST RESORT so a scaled enemy never spawns dead. Gated on scaleEnemyHpRange
+    // having returned a NEW array (factor !== 1): the factor-1 / no-scaling path
+    // keeps scaledHp === def.hp, so this branch never runs there and the roll is
+    // BYTE-IDENTICAL to today.
+    if (scaledHp !== def.hp && hpMax < 1 && (hpLo > 0 || hpHi > 0)) hpMax = 1;
     const fp = def.footprint || [1, 1];
     const fh = fp[0], fw = fp[1];
     let skills = (def.skills || []).map(sid => {
