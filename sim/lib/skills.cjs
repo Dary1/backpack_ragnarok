@@ -103,7 +103,7 @@ function dealHitOnField(actor, verbEff, bounceMult, rng, mode, events, attackerB
   }
   const verb = verbEff.verb;
   let amount = 0;
-  if (verb.t === 'strike') {
+  if (verb.t === 'strike' || verb.t === 'death_throes') { // REQ-0299: death_throes = one strike (dying blast)
     let hitAmt = rng.range(verb.n[0], verb.n[1]) * bounceMult;
     if (attackerOutgoingBuffPct) hitAmt *= (1 + attackerOutgoingBuffPct / 100); // REQ-0200: buff_self/buff_linked
     hitAmt *= weaknessMultiplier(actor.statusBag);

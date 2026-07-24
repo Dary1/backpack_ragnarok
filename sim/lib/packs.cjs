@@ -2,7 +2,7 @@
 // sim/lib/packs.cjs -- REQ-0047 (d): enemy pack compilation (enemy def schema v2).
 // Moved VERBATIM from sim/combat.cjs. Determinism contract: goldens must
 // stay byte-identical (sim/tests/goldens.cjs).
-const { freshStatusBag, foldBattleStartStatusVerbs } = require('./status.cjs');
+const { freshStatusBag, foldBattleStartStatusVerbs, applyStatus } = require('./status.cjs'); // REQ-0299: applyStatus for grant_self_status
 const { deepCopy } = require('./core.cjs'); // REQ-0121
 const { foldFlatBonusInPlace } = require('./hpbelow.cjs'); // REQ-0121
 const { scaleEnemyHpRange, scaleSkillsForLevel } = require('./level_scale.cjs'); // REQ-0293
@@ -111,7 +111,7 @@ function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyField
     // this enemy's own skills list (an EnemySkill's own innate passive,
     // e.g. bone-and-sinew undead immune to Poison).
     const statusBag = freshStatusBag();
-    const { immuneSet, bonusVsStatus, damageReductionRanges, buffSelfRanges } = foldBattleStartStatusVerbs(skills);
+    const { immuneSet, bonusVsStatus, damageReductionRanges, buffSelfRanges, selfStatuses } = foldBattleStartStatusVerbs(skills);
     statusBag._immune = immuneSet;
     // REQ-0121: resolve battle_start-folded scalars via a per-instance
     // named stream (named streams are independent -- adding these pulls
@@ -126,6 +126,13 @@ function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyField
       buffSelfFlat += rng.stream('pack/fold/' + eid + '#' + idx).range(n[0], n[1]);
     }
     if (buffSelfFlat) foldFlatBonusInPlace(skills, buffSelfFlat);
+    // REQ-0299: grant_self_status -- fold battle_start self-buff statuses
+    // (Spikes/Regen) onto THIS instance's own statusBag. A named stream keeps
+    // content WITHOUT the verb byte-identical; stacks are integers.
+    for (const ss of (selfStatuses || [])) {
+      const rolled = Math.round(rng.stream('pack/selfstatus/' + eid + '#' + idx).range(ss.n[0], ss.n[1]));
+      if (rolled > 0) applyStatus(statusBag, ss.status, rolled);
+    }
     return {
       id: eid + '#' + idx, defId: eid, name: def.name, hp: hpMax, hpMax,
       footprint: [fh, fw], fieldCells, skills, skillIds, statusBag, // REQ-0280: skillIds parallels skills

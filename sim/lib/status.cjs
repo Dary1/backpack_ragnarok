@@ -61,6 +61,7 @@ function foldBattleStartStatusVerbs(effects) {
   const bonusVsStatus = [];
   const damageReductionRanges = [];
   const buffSelfRanges = [];
+  const selfStatuses = []; // REQ-0299: grant_self_status (Spikes/Regen/Haste on self)
   for (const eff of (effects || [])) {
     if (!eff || !eff.trigger || eff.trigger.t !== 'battle_start' || !eff.verb) continue;
     if (eff.verb.t === 'status_immune') {
@@ -71,9 +72,11 @@ function foldBattleStartStatusVerbs(effects) {
       damageReductionRanges.push(eff.verb.n);
     } else if (eff.verb.t === 'buff_self' && eff.verb.stat === 'damage') { // REQ-0121
       buffSelfRanges.push(eff.verb.n);
+    } else if (eff.verb.t === 'grant_self_status') { // REQ-0299
+      selfStatuses.push({ status: eff.verb.status, n: eff.verb.n });
     }
   }
-  return { immuneSet, bonusVsStatus, damageReductionRanges, buffSelfRanges };
+  return { immuneSet, bonusVsStatus, damageReductionRanges, buffSelfRanges, selfStatuses };
 }
 
 function applyStatus(bag, name, n, ampMult) {

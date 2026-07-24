@@ -1,5 +1,5 @@
 {
-  "version": 16,
+  "version": 17,
   "modes": [
     "battle",
     "detection",
@@ -49,7 +49,8 @@
     "on_own_passive_fire",
     "on_heal_done",
     "on_status_applied",
-    "on_kill"
+    "on_kill",
+    "on_death"
   ],
   "verbs": [
     "strike",
@@ -82,7 +83,9 @@
     "heal_ally",
     "charge_strike",
     "transfer_status",
-    "shield_break"
+    "shield_break",
+    "grant_self_status",
+    "death_throes"
   ],
   "status_kinds": [
     "buff",
@@ -195,6 +198,9 @@
     ],
     "on_kill": [
       "Unit"
+    ],
+    "on_death": [
+      "EnemySkill"
     ]
   },
   "ranged_verb_params": {
@@ -266,6 +272,12 @@
     ],
     "shield_break": [
       "n"
+    ],
+    "grant_self_status": [
+      "n"
+    ],
+    "death_throes": [
+      "n"
     ]
   },
   "excluded_attested": {
@@ -280,6 +292,9 @@
     "charm_status": "Charm status (flips enemy to your side, BH sec6) -- PvE-encounter-flipping status with no defined ally-side semantics in our engine; excluded pending a combat-side redesign."
   },
   "provenance": {
+    "grant_self_status": "AGENT-DEFINED 2026-07-24 (REQ-0299) under the verb delegation (user 2026-07-14). The owner applies a BUFF status (Spikes/Regen/Haste) to ITS OWN statusBag -- distinct from apply_status (targets the enemy) and buff_self (stat:damage only). battle_start-folded per enemy at pack compile (packs.cjs), reusing status.cjs applyStatus; the enemy tick (encounter.cjs tickAndEmit) and consumeSpikes already run on enemy actors, so Regen heals and Spikes reflect with no extra machinery. n is a [lo,hi] range rounded to integer stacks via the independent per-instance stream pack/selfstatus. Validator restricts status to the three BUFF_STATUSES. THIS IS NOT A USER RULING.",
+    "on_death": "AGENT-DEFINED 2026-07-24 (REQ-0299) under the trigger delegation (user 2026-07-14). Fires ONCE when the owning enemy dies (hp reaches 0). Domain [EnemySkill]. Engine: a deterministic post-battle.tick() death drain (encounter.cjs fireDeathThroes) fires each newly-dead enemy on_death skill once, as a one-shot ray at the player field, before the termination check; isolated stream death_throes/<ownerId>/<t>, deduped via raw._deathFired. LIMITATION: standard enemy-death path only (monster-vs-monster arena death out of scope, mirroring the OnSquadBeenHit phase-limit). THIS IS NOT A USER RULING.",
+    "death_throes": "AGENT-DEFINED 2026-07-24 (REQ-0299) under the verb delegation. The on_death payload: one strike of n into the player field (a dying blast). n is a [lo,hi] range. Carriers: imp / bone_dragon / mummy. THIS IS NOT A USER RULING.",
     "OnHit": "research sec6 Backpack Battles 'On hit:' item event hook (Vampirism gain on melee hit)",
     "OnBPBeenHit": "research sec6 BH 'When attacked' verb template (Cactus: 'When attacked, Adds 1 Spikes to self')",
     "multi_strike": "research sec5 BH 'Uses per turn... some multi-use (can be used 2 times)'",
