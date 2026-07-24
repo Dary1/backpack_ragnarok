@@ -25,6 +25,7 @@ different kind and is naturally exempt.
   REQ-0206 (REQ-0206 remains a separate art-link concern; this REQ only adds members).
 - **Execute end-to-end**, user reviews at built ("任せて実装、builtで確認").
 - **Existing enemies only** (no new art — art is queue-only/user-owned).
+- **No frost-theme uniformity** required (user, 2026-07-24) — frost packs may use large cross-batch bodies.
 - **Stops at built/** — merge/deploy is hands-off (PROJECT.md); coordinate separately.
 
 ## What was done — final compositions (re-laid-out via first-fit; all validated by
@@ -32,10 +33,10 @@ different kind and is naturally exempt.
 
 | pack | final composition (enemy x count) | cells | fill | members |
 |---|---|---|---|---|
-| pack_frost_scouts | frostback_bear x28, frost_gnoll x3, ice_archer x3 | 118 | 30.7% | 34 |
-| pack_rime_choir | frostback_bear x28, rime_shaman x3, glacier_wisp x3 | 118 | 30.7% | 34 |
-| pack_bear_and_stalker | frostback_bear x28, niflheim_stalker x6 | 118 | 30.7% | 34 |
-| pack_hrimgrimnir | hrimgrimnir x1 (boss), frostback_bear x26, niflheim_stalker x5 | 118 | 30.7% | 32 |
+| pack_frost_scouts | frost_giant x3 (boss), frostback_bear x6, frost_gnoll x2, ice_archer x2, rime_shaman x1, glacier_wisp x1, niflheim_stalker x1 | 121 | 31.5% | 16 |
+| pack_rime_choir | frost_giant x3 (boss), frostback_bear x5, rime_shaman x3, glacier_wisp x3, ice_archer x2 | 118 | 30.7% | 16 |
+| pack_bear_and_stalker | frost_giant x3 (boss), frostback_bear x7, niflheim_stalker x5 | 123 | 32.0% | 15 |
+| pack_hrimgrimnir | hrimgrimnir x1 (boss), frost_giant x3, frostback_bear x5, niflheim_stalker x3, ice_archer x3 | 125 | 32.6% | 15 |
 | pack_grave_shamble | zombie x5, mummy x2, ghost x2, lich x1 (boss) | 128 | 33.3% | 10 |
 | pack_grave_legion | skeleton_warrior x3, wight x2, zombie x2, necromancer x1, ghost x1, lich x1 | 128 | 33.3% | 10 |
 | pack_wild_hunt | alpha_werewolf x2, dire_wolf x2, boar x2, giant_bat x2 | 120 | 31.3% | 8 |
@@ -43,25 +44,28 @@ different kind and is naturally exempt.
 | pack_petrifying_court | stone_golem x2, medusa x2, cockatrice x3, lamia x1 | 124 | 32.3% | 8 |
 | pack_greenskin_warband | ogre x2, orc_warrior x3, goblin x1, kobold x1, goblin_shaman x1, troll x1 | 124 | 32.3% | 9 |
 
-Each pack keeps its id, name, i18n, powerLevel and note; only `members` changed.
+Each pack keeps its id, name, i18n, powerLevel and note; only `members` changed. The 6 non-frost packs use
+their own batch's roster (a clean boss + entourage). The 4 frost packs use `frost_giant[6,5]=30` (batch-007)
+as the boss body — see the frost note below.
 
 ## Pipeline (how the edit stays lossless)
 `content/live/dungeon/packs.json` is an additive-promoted file (REQ-0122): batch-002 base packs byte-verbatim
 at the head, then batch-005/006/007 layers. So each pack was edited in BOTH its batch source AND live,
 identically. The REQ-0122 invariant checks: live packs.json sha == the LAST additive-layer sha (re-stamped in
-`registry.json` — line 260, the batch-007 layer, `764c77..` -> `6e19356b..`), live entry-ids == base ++ layer
+`registry.json` line 260, the batch-007 layer, `764c77..` -> `97c9403..`), live entry-ids == base ++ layer
 ids (unchanged — members added, no packs added/removed), and live starts with the batch-002 source bytes
 verbatim (the 4 frost packs are edited identically in source + live, so the head still matches).
 
 ## Key discoveries / decisions
-- **Frost packs are footprint-limited (flag for review).** batch-002's largest body is
-  `frostback_bear[2,2]=4`; there is NO large frost boss in batch-002. A batch-002 Niflheim smoke test
-  (`sim/tests/run.cjs`) builds its roster from batch-002 enemies ONLY, so a frost pack may use ONLY batch-002
-  enemies (an early attempt with `frost_giant` crashed `compileEnemyPack: missing enemy def`). Reaching >=30%
-  with 2- and 1-cell bodies therefore needs ~32-34 members (mostly `frostback_bear`). This is mechanically
-  valid but flavor-heavy. **Options for the user at review:** (a) accept as-is; (b) defer the 4 frost packs
-  until REQ-0206 gives them art-authoritative (larger) footprints, after which >=30% needs far fewer members;
-  (c) a different hand-picked mix. The other 6 packs use their own batch's roster with a clean boss+entourage.
+- **Frost packs use frost_giant (user waived frost-theme uniformity, 2026-07-24).** batch-002's own largest
+  body is `frostback_bear[2,2]=4` (there is NO large frost boss in batch-002), so an all-batch-002 fill to
+  >=30% needs ~34 members (mostly bears). The user waived theme uniformity, so the 4 frost packs now use
+  `frost_giant[6,5]=30` (batch-007) as the boss + a frostback_bear/scout entourage (~15-16 members each).
+  Because a batch-002 pack now references a cross-batch body, the `sim/tests/run.cjs` tests that RUN the
+  batch-002 Niflheim dungeon (full-run smoke, REQ-0042 x2, REQ-0292) were pointed at the LIVE roster
+  (`liveEnemyDefsById`/`liveSkillDefsById`) — the roster the file's own header note already prescribes for
+  dungeon-running tests — instead of batch-002-only. Their assertions are loose (legal terminal state, reward
+  ranges, cadence structure, valid JSONL) and stay green.
 - **Gate flipped to HARD.** `tools/ci.sh` step [3.996/7]: `inspect_pack_formation --advisory` ->
   `--gate` (exit 1 if any monster_pack < 30%). Now green (14/14).
 - **Geometry tests reconciled.** req0203/0207/0219 pin each authored layout's derived cell-ranges; the
@@ -70,7 +74,7 @@ verbatim (the 4 frost packs are edited identically in source + live, so the head
 - **Seed re-pick (req0203).** The G2 "real content" test runs `pack_grave_legion` under a fixed seed and
   asserts heal_ally/lifesteal/bonus_vs_status all fire. Growing the pack shifted the deterministic RNG, so the
   seed was re-picked (`req0203-legion-fixed` -> `-6`, verified) — same intent, new composition.
-- **powerLevel marker left DIRTY (correct).** `registry.powerlevel_calibrated_from.packs.json` (line 273) was
+- **powerLevel marker left DIRTY (correct).** `registry.powerlevel_calibrated_from.packs.json` was
   deliberately NOT re-stamped, so `autobalance_pack_powerlevel.cjs --check` correctly reports DIRTY — the
   deploy pre-hook re-emits powerLevel for the changed content (REQ-0297). Not a ci.sh gate; out of scope here.
 - **CONTENT_ROOT for worktree gates.** `dungen.liveDungeonDir()` resolves via `os.homedir()` to the MAIN
@@ -98,11 +102,13 @@ Run content gates with `CONTENT_ROOT=$PWD/content`; goldens without.
 - `f2a1396` docs: reserve REQ-0303
 - `505b1ba` feat(REQ-0303): fill 10 sub-30% monster_packs to >=30% formation (live + batch sources + registry sha)
 - `8da7308` feat(REQ-0303): flip formation-fill gate to HARD + reconcile geometry maps + req0203 seed
-- (this) docs(REQ-0303): spec + gate results; reserved -> todo -> built
+- `460c7de` docs(REQ-0303): full spec + gate results
+- `3a58ec0` / `13d53d4` REQ-0303: reserved -> todo -> built
+- `ee0bad3` feat(REQ-0303): frost packs -> frost_giant boss+entourage; live roster for batch-002 dungeon tests
+- (this) docs(REQ-0303): update spec for the frost redesign
 
 ## Out of scope / follow-ups
 - **Merge + deploy** (hands-off): on deploy, the powerLevel `--check` is DIRTY by design; the pre-deploy hook
   re-emits powerLevel (REQ-0297) for the grown packs, then ships. Coordinate with the user.
-- **REQ-0206** (batch-002 pack re-composition under art-authoritative footprints) remains separate; if it
-  lands, the 4 frost packs can be re-composed with far fewer, larger members.
-- **Flavor review** of the frost packs (see "footprint-limited" above).
+- **REQ-0206** (batch-002 pack re-composition under art-authoritative footprints) remains separate and
+  independent; frost packs here only gained members (no art-link changes).
