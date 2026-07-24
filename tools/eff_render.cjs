@@ -122,6 +122,10 @@ function verbPhraseEN(verb) {
       return 'transfer up to ' + fmtNum(verb.n, 'en') + ' negative statuses to the enemy';
     case 'shield_break': // REQ-0212 (AGENT-DEFINED)
       return 'break ' + fmtNum(verb.n, 'en') + ' enemy block';
+    case 'grant_self_status': // REQ-0299
+      return 'gain ' + fmtNum(verb.n, 'en') + ' ' + verb.status + ' (self)';
+    case 'death_throes': // REQ-0299
+      return 'on death, strike ' + fmtNum(verb.n, 'en');
     default: return verb.t;
   }
 }
@@ -141,6 +145,7 @@ function triggerPrefixEN(trig) {
     case 'adjacent': return 'Adjacent ' + trig.tag + ': ';
     case 'on_hp_below': // REQ-0121: hp_frac 0.5 -> "Below 50% HP (once): "
       return 'Below ' + Math.round((trig.hp_frac || 0) * 100) + '% HP (once): ';
+    case 'on_death': return 'On death: '; // REQ-0299
     default: return trig.t + ': ';
   }
 }
@@ -254,6 +259,10 @@ function verbPhraseJA(verb) {
       return '負の状態異常を最大 ' + fmtNum(verb.n, 'ja') + ' 個 敵に移送';
     case 'shield_break': // REQ-0212 (AGENT-DEFINED)
       return '敵のブロックを ' + fmtNum(verb.n, 'ja') + ' 破壊';
+    case 'grant_self_status': // REQ-0299
+      return '自身に ' + statusJA(verb.status) + ' ' + fmtNum(verb.n, 'ja') + ' 付与';
+    case 'death_throes': // REQ-0299
+      return '撃破時に ' + fmtNum(verb.n, 'ja') + ' ダメージ';
     default: return verb.t;
   }
 }
@@ -273,6 +282,7 @@ function triggerPrefixJA(trig) {
     case 'adjacent': return '隣接する' + trig.tag + ': ';
     case 'on_hp_below': // REQ-0121
       return 'HPが' + Math.round((trig.hp_frac || 0) * 100) + '%を下回った時（一度だけ）: ';
+    case 'on_death': return '撃破された時: '; // REQ-0299
     default: return trig.t + ': ';
   }
 }

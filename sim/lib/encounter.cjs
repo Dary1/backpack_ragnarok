@@ -811,6 +811,36 @@ function runEncounter(opts) {
     return playerActors.every(a => !a.alive);
   }
 
+  // REQ-0299: on_death dying-blast drain. After a tick chain resolves, any enemy
+  // that is now dead and carries an on_death skill fires it ONCE as a one-shot ray
+  // at the player field, before the termination check so a boss last hurrah still
+  // lands. Path-independent (catches deaths from any source). Deterministic:
+  // enemyActors order + isolated stream; deduped via raw._deathFired. No content
+  // uses on_death today, so this emits nothing and goldens stay byte-identical.
+  function fireDeathThroes(t) {
+    const out = [];
+    for (const e of enemyActors) {
+      const raw = e.raw;
+      if (e.actor.alive || raw._deathFired) continue;
+      const deaths = (raw.skills || []).map((sk, i) => [sk, i]).filter((p) => p[0].trigger && p[0].trigger.t === "on_death");
+      if (!deaths.length) continue;
+      raw._deathFired = true;
+      for (const p of deaths) {
+        const sk = p[0], ski = p[1];
+        const ap = sk.attack_profile || { edge: ["top"], penetration: 0, aoe: 0 };
+        out.push({ ev: "reactive_proc", trigger: "on_death", verb: sk.verb.t, src: raw.ownerId });
+        fireSkillRay({
+          attacker: { fieldCells: raw.fieldCells, ownerId: raw.ownerId + "#death", bonusVsStatus: raw.bonusVsStatus || [] },
+          attackProfile: ap, verbEff: sk, mode: "battle", skill: raw.skillIds && raw.skillIds[ski],
+          targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: "player" },
+          rng, streamPrefix: "death_throes/" + raw.ownerId + "/" + t,
+          events: out, aoeStatuses: !!ap.aoe_statuses,
+        });
+      }
+    }
+    for (const re of out) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+  }
+
   // ---- THE TICK LOOP (s7.1) -- replaces the event-heap driver. Per tick:
   // attachment timeouts -> status cadence (every STATUS_TICK_TICKS boundary,
   // passing P verbatim, NOT dt=TICK -- s7.2's two silent breakages) -> THE
@@ -835,6 +865,8 @@ function runEncounter(opts) {
     battle.tick(); // spec c: THE CHAIN -- the whole of the fire step (s7.1a)
 
     drainPulseArrivals(battle.tickIndex, t); // REQ-0048 pulse arrivals scheduled for THIS tick
+
+    fireDeathThroes(t); // REQ-0299: on_death dying-blast drain (before termination check)
 
     if (encounterDef.type === 'pack' || encounterDef.type === 'boss') {
       if (allEnemiesDead()) { if (hasAtt) settleAttachmentsAtEnd(t); result = 'clear'; break; }

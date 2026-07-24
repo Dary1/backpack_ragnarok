@@ -116,6 +116,193 @@
       "attack_profile": { "edge": ["top"], "direction": "front", "penetration": 0, "aoe": 0, "aoe_statuses": false },
       "modes": ["unlock"],
       "note": "Door's stage2 (unlock-stage) entity skill; only fires-back-relevant if the door entity itself is given an offensive skill. Included for completeness/symmetry (S4.7 OQ10: statuses/damage symmetric)."
+    },
+    {
+      "id": "gnoll_snap",
+      "name_en": "Scavenger's Snap",
+      "name_ja": "あさりの噛みつき",
+      "trigger": {
+        "t": "OnSquadBeenHit"
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          2,
+          4
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "archer_steady_aim",
+      "name_en": "Steady Aim",
+      "name_ja": "狙い澄まし",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "buff_self",
+        "stat": "damage",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "rime_mantle",
+      "name_en": "Hoarfrost Mantle",
+      "name_ja": "霧氷の外套",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "status_immune",
+        "status": "Chill"
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "bear_frost_hide",
+      "name_en": "Frostmatted Hide",
+      "name_ja": "霜降りの毛皮",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "damage_reduction",
+        "n": [
+          1,
+          3
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "wisp_freezing_touch",
+      "name_en": "Freezing Touch",
+      "name_ja": "凍える揺らめき",
+      "trigger": {
+        "t": "OnSquadBeenHit"
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Chill",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "stalker_cornered_fury",
+      "name_en": "Cornered Fury",
+      "name_ja": "窮鼠の牙",
+      "trigger": {
+        "t": "on_hp_below",
+        "hp_frac": 0.4
+      },
+      "verb": {
+        "t": "buff_self",
+        "stat": "damage",
+        "n": [
+          2,
+          4
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "hrim_frost_masked",
+      "name_en": "The Frost-Masked",
+      "name_ja": "霜面の不凍",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "status_immune",
+        "status": "Chill"
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
     }
   ]
 }

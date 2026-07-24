@@ -69,6 +69,8 @@ const UNSUPPORTED = {
   charge_strike: 'unit-charge only (REQ-0200)',
   transfer_status: 'player-PO status transfer; not a monster ray verb',
   shield_break: 'unit-charge/player shield interaction; not a monster ray verb',
+  grant_self_status: 'battle_start-folded self-status buff (Spikes/Regen) in compileEnemyPack; not a monster ray verb (REQ-0299)',
+  death_throes: 'on_death dying-blast fired via the runEncounter death drain (fireDeathThroes), not the m-v-m fire path (REQ-0299)',
 };
 
 // EnemySkill-domain triggers that define a reactive/timed FIRING and ARE driven
@@ -78,6 +80,7 @@ const FIRE_TRIGGERS = ['every_secs', 'OnHit', 'OnSquadHit', 'OnSquadBeenHit'];
 const NONFIRE_ENEMY_TRIGGERS = {
   battle_start: 'compile-time fold (compileEnemyPack foldBattleStartStatusVerbs)',
   on_hp_below: 'runEncounter hp-below watcher, not the m-v-m fire path',
+  on_death: 'runEncounter death drain (fireDeathThroes), not the m-v-m fire path (REQ-0299)',
 };
 
 function mkVerb(v) {

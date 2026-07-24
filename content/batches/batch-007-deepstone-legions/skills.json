@@ -158,6 +158,468 @@
       "trigger": { "t": "every_secs", "s": [2.8, 3.6] },
       "verb": { "t": "strike", "n": [9, 14] },
       "attack_profile": { "edge": ["top"], "direction": "front", "penetration": 0, "aoe": 0, "aoe_statuses": false },
-      "modes": ["battle"] }
+      "modes": ["battle"] },
+    {
+      "id": "kraken_regrowing_tendrils",
+      "name_en": "Regrowing Tendrils",
+      "name_ja": "再生する触腕",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "grant_self_status",
+        "status": "Regen",
+        "n": [
+          2,
+          3
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "seaserpent_cold_native",
+      "name_en": "Cold-Water Native",
+      "name_ja": "冷水の住人",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "status_immune",
+        "status": "Chill"
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "sahuagin_blood_frenzy",
+      "name_en": "Blood Frenzy",
+      "name_ja": "血の狂乱",
+      "trigger": {
+        "t": "on_hp_below",
+        "hp_frac": 0.4
+      },
+      "verb": {
+        "t": "buff_self",
+        "stat": "damage",
+        "n": [
+          2,
+          4
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "crab_hard_shell",
+      "name_en": "Hard Shell",
+      "name_ja": "硬い甲羅",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "damage_reduction",
+        "n": [
+          1,
+          3
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "medusa_stone_gaze",
+      "name_en": "Stone Gaze",
+      "name_ja": "石化の眼差し",
+      "trigger": {
+        "t": "OnSquadBeenHit"
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Stun",
+        "n": [
+          0.5,
+          1.0
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "cockatrice_bristling_plumage",
+      "name_en": "Bristling Plumage",
+      "name_ja": "逆立つ羽根",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "grant_self_status",
+        "status": "Spikes",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "lamia_shedding_skin",
+      "name_en": "Shedding Skin",
+      "name_ja": "脱皮の治癒",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "grant_self_status",
+        "status": "Regen",
+        "n": [
+          1,
+          3
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "golem_immovable",
+      "name_en": "Immovable",
+      "name_ja": "不動",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "status_immune",
+        "status": "Stun"
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "goblin_cornered_stab",
+      "name_en": "Cornered Stab",
+      "name_ja": "窮地の一刺し",
+      "trigger": {
+        "t": "OnSquadBeenHit"
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          1,
+          3
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "shaman_totemic_mending",
+      "name_en": "Totemic Mending",
+      "name_ja": "トーテムの治癒",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "grant_self_status",
+        "status": "Regen",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "kobold_caltrops",
+      "name_en": "Caltrops",
+      "name_ja": "まきびし",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "grant_self_status",
+        "status": "Spikes",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "orc_cleaving_riposte",
+      "name_en": "Cleaving Riposte",
+      "name_ja": "反撃の一刀",
+      "trigger": {
+        "t": "OnSquadBeenHit"
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          2,
+          4
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "ogre_thick_hide",
+      "name_en": "Thick Hide",
+      "name_ja": "厚い皮",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "damage_reduction",
+        "n": [
+          2,
+          4
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "behemoth_last_stand",
+      "name_en": "Last Stand",
+      "name_ja": "最後の抵抗",
+      "trigger": {
+        "t": "on_hp_below",
+        "hp_frac": 0.4
+      },
+      "verb": {
+        "t": "buff_self",
+        "stat": "damage",
+        "n": [
+          3,
+          5
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "giant_ice_born",
+      "name_en": "Ice-Born",
+      "name_ja": "氷の申し子",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "status_immune",
+        "status": "Chill"
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "cyclops_mighty_thews",
+      "name_en": "Mighty Thews",
+      "name_ja": "剛力",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "buff_self",
+        "stat": "damage",
+        "n": [
+          1,
+          3
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "troll_regeneration",
+      "name_en": "Troll Regeneration",
+      "name_ja": "トロールの再生",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "grant_self_status",
+        "status": "Regen",
+        "n": [
+          2,
+          4
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    }
   ]
 }

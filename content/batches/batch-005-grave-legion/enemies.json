@@ -16,7 +16,8 @@
       ],
       "skills": [
         "rotting_claw",
-        "festering_grasp"
+        "festering_grasp",
+        "zombie_already_rotten"
       ],
       "i18n": {
         "en": {
@@ -42,7 +43,8 @@
       ],
       "skills": [
         "spectral_touch",
-        "haunting_chill"
+        "haunting_chill",
+        "ghost_incorporeal"
       ],
       "i18n": {
         "en": {
@@ -68,7 +70,8 @@
       ],
       "skills": [
         "bandage_lash",
-        "mummys_curse"
+        "mummys_curse",
+        "mummy_death_curse"
       ],
       "i18n": {
         "en": {
@@ -94,7 +97,8 @@
       ],
       "skills": [
         "bone_cleaver",
-        "shield_jab"
+        "shield_jab",
+        "skel_no_flesh"
       ],
       "i18n": {
         "en": {
@@ -120,7 +124,8 @@
       ],
       "skills": [
         "grave_blade",
-        "life_drain"
+        "life_drain",
+        "wight_undying"
       ],
       "i18n": {
         "en": {
@@ -146,7 +151,8 @@
       ],
       "skills": [
         "dark_mending",
-        "enfeebling_bolt"
+        "enfeebling_bolt",
+        "necro_deathly_ward"
       ],
       "i18n": {
         "en": {
@@ -172,7 +178,8 @@
       ],
       "skills": [
         "soul_blast",
-        "paralyzing_dread"
+        "paralyzing_dread",
+        "lich_undying_will"
       ],
       "i18n": {
         "en": {
@@ -198,7 +205,8 @@
       ],
       "skills": [
         "bone_breath",
-        "necrotic_roar"
+        "necrotic_roar",
+        "bonedrag_death_collapse"
       ],
       "i18n": {
         "en": {
