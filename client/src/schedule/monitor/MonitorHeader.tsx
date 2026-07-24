@@ -9,6 +9,8 @@ interface Props {
   locale: Locale;
   dungeonId: string;
   dungeonName: string;
+  /** REQ-0304: the DRAWN dungeon's theme (種類) -- revealed post-entry beside the name. */
+  theme?: string;
   level: number;
   live: boolean;
   returnAt: string | null; // absolute HH:mm the run frees the room
@@ -18,7 +20,7 @@ interface Props {
   copyStatus: 'idle' | 'copied' | 'failed';
 }
 
-export function MonitorHeader({ locale, dungeonId, dungeonName, level, live, returnAt, seed, isAdmin, onCopyJsonl, copyStatus }: Props) {
+export function MonitorHeader({ locale, dungeonId, dungeonName, theme, level, live, returnAt, seed, isAdmin, onCopyJsonl, copyStatus }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const art = getItemArtUrl(dungeonId);
   return (
@@ -28,6 +30,7 @@ export function MonitorHeader({ locale, dungeonId, dungeonName, level, live, ret
         <div className="mon-header-scrim" />
         <div className="mon-header-row">
           <span className="mon-header-title dj">{dungeonName} · Lv{level}</span>
+          {theme ? <span className="chip den mon-header-theme-chip" data-testid="monitor-dungeon-theme">{theme}</span> : null}
           {live ? (
             <span className="chip is-live schedule-monitor-live-chip den" data-testid="schedule-monitor-live-chip">
               <span className="dot" aria-hidden="true" />{t(locale, 'schedule.monitor.live')}

@@ -483,6 +483,10 @@ export interface ApiRoom {
   createdAt: string;
   updatedAt: string;
   lastRunId: string | null;
+  /** REQ-0304: the seed the dungeon was DRAWN with (uniform among
+   * levelMin <= attackLv). Always present on a post-REQ-0304 room; only a
+   * dev/item_admin caller may have CHOSEN it (see ApiCreateRoomBody.drawSeed). */
+  drawSeed?: string;
   /** REQ-0239 (B1): the active/last run's compact window, present on rooms LIST
    * and single-room GET responses when lastRunId is set; null/absent otherwise. */
   lastRun?: ApiRoomLastRun | null;
@@ -503,10 +507,18 @@ export interface ApiRoom {
  * as the dev/backdate route), so the client only ever renders the seed
  * input when `/api/me`'s roles include item_admin (see CreateRoomForm.tsx). */
 export interface ApiCreateRoomBody {
-  dungeonId: string;
+  /** REQ-0304: OPTIONAL now. Absent -> the server RANDOM-DRAWS a dungeon among
+   * those whose levelMin <= level (attackLv). Present -> a validated,
+   * privileged/test OVERRIDE of the draw (back-compat: legacy rooms, seals,
+   * tools); a normal player UI no longer sends it. */
+  dungeonId?: string;
   dungeonType?: 'default' | 'test_fixed';
   level?: number;
   genSeed?: string;
+  /** REQ-0304: pin WHICH dungeon the random draw selects (reproducible).
+   * Server-side GATED to a dev/item_admin caller, EXACTLY like genSeed (403 for
+   * anyone else who sends a non-empty drawSeed). */
+  drawSeed?: string;
   formationId?: string;
   cancelPolicy?: ApiCancelPolicy;
   /** REQ-0058: join a sealed run. When present, dungeonId/dungeonType/
@@ -519,11 +531,15 @@ export interface ApiCreateRoomBody {
  * creates a room, fills all four squad slots, and launches. cancelPolicy
  * defaults to the deferred {immediate:false} (golden g) when omitted. */
 export interface ApiSortieBody {
-  dungeonId: string;
+  /** REQ-0304: OPTIONAL -- absent triggers the server's levelMin-gated random
+   * draw (the player sets only attackLv = level). Present is a privileged override. */
+  dungeonId?: string;
   level?: number;
   formationId?: string;
   cancelPolicy?: ApiCancelPolicy;
   genSeed?: string;
+  /** REQ-0304: privileged draw-seed override (gated like genSeed). */
+  drawSeed?: string;
   /** the four squad indices, one per troop slot (order = slot 0..3). */
   squadIndices: number[];
 }
