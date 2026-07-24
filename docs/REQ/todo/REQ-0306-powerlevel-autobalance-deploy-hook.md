@@ -38,3 +38,31 @@ had to do by hand.
 
 ## Gate results
 _(on build)_
+
+## Audit remediation (2026-07-25, orchestrated audit)
+Grounded audit (see docs/llm_managed/2026-07-25-req-0304-0306-orchestrator-audit.md). Verdict:
+READY-WITH-FIXES. The mechanism (`--check`/`--emit` + `powerlevel_calibrated_from` marker) was code-verified
+present and correct. Wiring clarifications added:
+- Deliverable 1 MUST be a SCRIPT `tools/predeploy_recalibrate_powerlevel.cjs` (check -> emit; emit uses the marker
+  defaults alpha 0.7 / loops 8 / seeds 6 -- no custom tuning at deploy; CLEAN -> no-op, zero writes). A runbook
+  line documents the script; it does NOT substitute for it (a remembered manual step is the very failure this REQ
+  removes).
+- Deliverable 2 (ci advisory): insert as `node tools/autobalance_pack_powerlevel.cjs --check || echo "[advisory]
+  powerLevel drift"` so `set -euo pipefail` does not abort ci; ship a `--self-test`. "Flip to hard gate" = remove
+  the guard. Keep ci ADVISORY only; put the HARD enforcement in the predeploy step (a hard ci gate would block WIP
+  branches that edited content before recalibrating).
+- `--check` is CHECKOUT-relative (ROOT = tool dir), = "live" ONLY on the main checkout @ master. Reword "live"
+  accordingly.
+- Deliverable 3 hook point: there is NO separate live checkout -- the main checkout @ master IS live (backpack-api
+  user unit, mtime hot-reload); `deploy/` is ComfyUI units only and `tools/release.sh` deploys the client dist, not
+  content. Define the hook as the MANDATORY final step of the content-deploy runbook, run on the main checkout
+  after any `promote_dungeon_batch.cjs`/surgical edit and before `systemctl --user restart backpack-api`.
+- Known gaps / out of scope: `content/scaling_profile.json` and sim-code changes are level-affecting but outside
+  the sha dirty-set (still need a manual `--emit`); additive source batches 005/006/007 carry no powerLevel (a
+  future wholesale re-promotion would drift -- same trap REQ-0305 touched). Determinism applies to
+  powerLevel/packs.json (goldens + REQ-0122 lossless), NOT the wall-clock marker `date`.
+- Acceptance: add a DB-free self-test for the predeploy script (dirty fixture -> emit + marker updated + --check
+  clean after; run twice -> second is a no-op).
+- Ordering: REQ-0305 is now SUPERSEDED, so 0306 is the sole owner of deploy-time recalibration; no ordering
+  conflict remains.
+Status unchanged (`todo`): still ready to implement, now with the above wiring pinned.
