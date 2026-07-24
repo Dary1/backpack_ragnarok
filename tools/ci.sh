@@ -154,6 +154,9 @@ python3 tools/tests/enemy_bands_test.py
 echo "==== [3.995/7] REQ-0293 enemy level-scaling coverage gate (self-test + live total-coverage) ===="
 node tools/check_scaling_coverage.cjs --self-test
 node tools/check_scaling_coverage.cjs --gate
+echo "==== [3.996/7] REQ-0298 monster-pack formation-fill inspection (self-test + ADVISORY report-only; hard --gate flips on with the pack-fix follow-up) ===="
+node tools/inspect_pack_formation.cjs --self-test
+node tools/inspect_pack_formation.cjs --advisory
 echo "==== [4/7] server api tests (files backend) ===="
 node server/tests/api_test.cjs
 echo "==== [4.05/7] REQ-0240 presentation-pacing unit gates (paceEvents floors/coalesce/clamp/legacy passthrough/roster) ===="
