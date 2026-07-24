@@ -21,7 +21,7 @@ NOT yet merged to master.
   dungeons/packs content deploy is SURGICAL (edit batch-002 source + byte-identical live copy +
   registry sha256, then copy into the main checkout ~/backpack_ragnarok + commit to master) so the
   REQ-0122 lossless test stays green; api reload is mtime-cached (no restart for content).
-- **PHASE STATUS:** Phase 1 = BUILT+audited. Phase 2 = BUILT+AUDITED (goldens byte-identical, sim 171/0, coverage green; live powerLevel deploy DEFERRED to Phase 3). Phase 3 = BUILT (tool + 6 tests green: goldens byte-identical, sim 177/0; live-content EMIT DEFERRED to integrated deploy -- see Phase 3 BUILD RECORD).
+- **PHASE STATUS:** Phase 1/2/3 all BUILT+ORCHESTRATOR-AUDITED. NEXT = INTEGRATED DEPLOY (Phase 2+3 together; see runbook at end). NOT merged/deployed.
 - **DEPLOY WARNING:** do NOT deploy Phase 2 alone -- retiring dungeon-level scaling leaves live enemies UNSCALED until Phase 3 generates pack.powerLevel. Phase 2 + Phase 3 deploy TOGETHER.
 - Orchestration: implement via Opus subagent, orchestrator audits (independent goldens re-run + diff).
 =============================================================================
@@ -197,3 +197,36 @@ every_secs) so this is inert on today's content -- correctness + future-proofing
   RECORD). --check dirty-trigger built. --emit functional + goldens-safe but DEFERRED/reverted (NOT committed):
   a worktree-only emit reddens the REQ-0122 lossless test because it reads MAIN-checkout live via os.homedir();
   exact integrated-deploy sync (both checkouts + additive source batches) flagged in the BUILD RECORD.
+
+
+## Phase 3 - ORCHESTRATOR-AUDITED (2026-07-23)
+Tool tools/autobalance_pack_powerlevel.cjs (all-pairs round-robin, both-orientation to cancel the
+arena's ~65:26 slot bias, Jacobi ΔpowerLevel=α(winRate-50)/10, α0.7/loops8/seeds6). Commits 45d443b (+docs).
+Independent audit: goldens 12/12 BYTE-IDENTICAL (fixtures untouched), sim/tests/run.cjs 177/0 (+6 Phase-3
+cases). Convergence reproduced: meanResid 24.63->1.56, maxResid->3.21, every live pack 47.4-53.2% by loop 8;
+mean(powerLevel) conserved ~1e-16/loop (no-anchor theory empirically confirmed). powerLevel DETERMINISTIC
+(two runs identical; only the diagnostic `runtimeMs` json field varies -- benign, not emitted). --emit
+DEFERRED (works + goldens-safe, but REQ-0122 lossless reads the MAIN checkout via os.homedir so a worktree-
+only emit reddens it; reverted). Derived powerLevel (STRONG=HIGH): titan_ridge +12.83, deep_tide +11.13,
+demon_gate +9.42, bone_court +6.42, hrimgrimnir +4.94, petrifying_court +2.38, venom_nest +1.39,
+greenskin_warband -0.13, grave_legion -0.40, wild_hunt -1.79, grave_shamble -5.83, bear_and_stalker -5.88,
+rime_choir -17.14, frost_scouts -17.32. The ~30-wide spread = true content power gap (surfaced, not a bug).
+
+## INTEGRATED DEPLOY RUNBOOK (Phase 2 + Phase 3 together -- consequential LIVE balance change)
+Retires dungeon-level scaling (REQ-0294/0295 1/15/16) and switches to per-pack: runtime effLevel =
+attackLv - pack.powerLevel (+ boss g^1.4664=x1.15). Steps (do NOT half-do; keep REQ-0122 lossless green):
+1. In the worktree: `node tools/autobalance_pack_powerlevel.cjs --emit` (writes powerLevel into live
+   packs.json[14] + batch-002 base[4] byte-preserving + registry packs.json sha + powerlevel_calibrated_from).
+2. Surgically mirror to the MAIN checkout ~/backpack_ragnarok: same powerLevel edits to live packs.json +
+   batch-002 base + registry sha/marker (like the REQ-0295 dungeons.json deploy). Confirm live==worktree bytes.
+3. Add the same per-pack powerLevel to the ADDITIVE source batches for future re-promotion: batch-005-grave-
+   legion(3), batch-006-wildlands(3), batch-007-deepstone-legions(4). (lossless test does not read these but
+   re-promotion would.)
+4. Merge the branch chain (REQ-0296 + REQ-0297) into master (--no-ff).
+5. Restart backpack-api (Phase 2 runtime changed runs.cjs/encounter/level_scale -- CODE, needs restart, unlike
+   pure content). Verify /api/health, per-pack scaling live (getScheduleContent packs carry powerLevel; a dive
+   scales per pack), goldens + REQ-0122 lossless green from the worktree.
+6. git mv REQ-0296 + REQ-0297 built/todo -> done with deploy records.
+BALANCE NOTE: at a fixed attackLv the ~30-wide spread means some packs hit near-±25 effLevel if drawn far
+from their level; dungeon pack-assignment should keep drawn packs near attackLv (or re-author the extreme
+packs closer). The ±25 guard keeps values >0; warnings surface extremes.
