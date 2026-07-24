@@ -1,0 +1,732 @@
+{
+ "schema": "po/2",
+ "entries": [
+  {
+   "id": "blade",
+   "name": "Longsword Blade",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-blade",
+   "stretch": true,
+   "sockets": [
+    {
+     "t": "edge",
+     "tags": [
+      "Metal"
+     ],
+     "ax": 0.5,
+     "ay": 0.38
+    }
+   ],
+   "part": {
+    "assembles": "longsword",
+    "role": "blade"
+   },
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       1.8,
+       2.2
+      ]
+     },
+     "verb": {
+      "t": "strike",
+      "n": [
+       22,
+       38
+      ]
+     },
+     "cond": "assembled"
+    }
+   ],
+   "flavor": "Inert alone; sings when it finds its hilt.",
+   "tags": [
+    "WeaponPart",
+    "Metal"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "ロングソードの刀身",
+     "flavor": "それ単体では沈黙している。柄を見つけたときだけ歌う。"
+    }
+   },
+   "align": {
+    "v": "bottom"
+   },
+   "gen_prompt": "a bare longsword blade with no hilt, a single straight double-edged steel blade, forged and weathered iron grey metal with a subtle fuller groove and worn patina, tapering to a sharp point, tang exposed at the base with no grip, strong vertical composition, the object standing upright and filling the tall frame from top to bottom with a small even margin,\nstylized painterly dark-fantasy game item icon, hand-painted illustration, digital painting, concept art, soft cel-shading, matte finish, weathered forged materials, muted desaturated palette of aged iron grey worn leather and tarnished gold, Norse mythology aesthetic, grim and ancient, gentle top-left key light, subtle cool rim light, crisp readable silhouette, single centered object, plain uniform near-white background, clean flat backdrop, no shadow, no gradient, high detail, sharp focus",
+   "gen_negative": "photograph, photorealistic, realistic, 3d render, cgi, octane render, ray tracing, product photography, studio lighting, glossy, plastic, hyperreal, text, letters, numbers, words, watermark, signature, logo, label, frame, border, panel, card, ui, inset, rounded corners, cast shadow, drop shadow, background gradient, vignette, scenery, background objects, multiple objects, duplicate, collage, cropped, out of frame, cut off, blurry, low quality, jpeg artifacts, deformed, extra parts, cartoon, chibi, anime, neon, oversaturated",
+   "gen_render": {
+    "cell_px": 256,
+    "cells": [
+     [
+      0,
+      0
+     ],
+     [
+      1,
+      0
+     ]
+    ],
+    "bbox_cells": [
+     1,
+     2
+    ],
+    "target_px": [
+     256,
+     512
+    ],
+    "gen_px": [
+     704,
+     1408
+    ]
+   }
+  },
+  {
+   "id": "hilt",
+   "name": "Sword Hilt",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ]
+   ],
+   "icon": "icon-hilt",
+   "stretch": true,
+   "sockets": [
+    {
+     "t": "gem",
+     "tags": [
+      "Metal"
+     ],
+     "ax": 0.5,
+     "ay": 0.81
+    }
+   ],
+   "part": {
+    "assembles": "longsword",
+    "role": "hilt"
+   },
+   "effects": [],
+   "flavor": "A pommel waiting for a stone.",
+   "tags": [
+    "WeaponPart",
+    "Metal",
+    "Wood"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "剣の柄",
+     "flavor": "石を待つ、柄頭。"
+    }
+   },
+   "align": {
+    "v": "top"
+   },
+   "gen_prompt": "a sword hilt alone with no blade, a wrapped leather grip with a forged iron crossguard and a rounded pommel, aged wood and tarnished gold accents, an empty gem socket set in the pommel, compact single object centered, filling the square frame with a small even margin,\nstylized painterly dark-fantasy game item icon, hand-painted illustration, digital painting, concept art, soft cel-shading, matte finish, weathered forged materials, muted desaturated palette of aged iron grey worn leather and tarnished gold, Norse mythology aesthetic, grim and ancient, gentle top-left key light, subtle cool rim light, crisp readable silhouette, single centered object, plain uniform near-white background, clean flat backdrop, no shadow, no gradient, high detail, sharp focus",
+   "gen_negative": "photograph, photorealistic, realistic, 3d render, cgi, octane render, ray tracing, product photography, studio lighting, glossy, plastic, hyperreal, text, letters, numbers, words, watermark, signature, logo, label, frame, border, panel, card, ui, inset, rounded corners, cast shadow, drop shadow, background gradient, vignette, scenery, background objects, multiple objects, duplicate, collage, cropped, out of frame, cut off, blurry, low quality, jpeg artifacts, deformed, extra parts, cartoon, chibi, anime, neon, oversaturated",
+   "gen_render": {
+    "cell_px": 256,
+    "cells": [
+     [
+      0,
+      0
+     ]
+    ],
+    "bbox_cells": [
+     1,
+     1
+    ],
+    "target_px": [
+     256,
+     256
+    ],
+    "gen_px": [
+     1024,
+     1024
+    ]
+   }
+  },
+  {
+   "id": "flame_tablet",
+   "name": "Flame Rune Tablet",
+   "rarity": "Uncommon",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-flame_tablet",
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "adjacent",
+      "tagKind": "type",
+      "tag": "Weapon"
+     },
+     "verb": {
+      "t": "add_on_hit_status",
+      "status": "Burn",
+      "n": [
+       4,
+       8
+      ]
+     }
+    },
+    {
+     "trigger": {
+      "t": "adjacent",
+      "tagKind": "element",
+      "tag": "Oil"
+     },
+     "verb": {
+      "t": "amp_status",
+      "status": "Burn",
+      "mult": 2
+     }
+    }
+   ],
+   "flavor": "A shard of Muspelheim litany.",
+   "tags": [
+    "Rune",
+    "Flame"
+   ],
+   "ports": [
+    {
+     "tiles": [
+      [
+       0,
+       -1
+      ],
+      [
+       1,
+       -1
+      ]
+     ],
+     "tag": "Weapon"
+    },
+    {
+     "tiles": [
+      [
+       0,
+       -1
+      ],
+      [
+       1,
+       -1
+      ]
+     ],
+     "tag": "Oil"
+    }
+   ],
+   "i18n": {
+    "ja": {
+     "name": "炎のルーンタブレット",
+     "flavor": "ムスペルヘイムの経文が刻まれた欠片。"
+    }
+   },
+   "gen_prompt": "an ancient upright stone rune tablet, a weathered carved slab of grey stone incised with a single glowing ember-orange flame rune, faint runic knotwork around the edges, cracked and forge-scorched, strong vertical composition, the object standing upright and filling the tall frame from top to bottom with a small even margin,\nstylized painterly dark-fantasy game item icon, hand-painted illustration, digital painting, concept art, soft cel-shading, matte finish, weathered forged materials, muted desaturated palette of aged iron grey worn leather and tarnished gold, Norse mythology aesthetic, grim and ancient, gentle top-left key light, subtle cool rim light, crisp readable silhouette, single centered object, plain uniform near-white background, clean flat backdrop, no shadow, no gradient, high detail, sharp focus",
+   "gen_negative": "photograph, photorealistic, realistic, 3d render, cgi, octane render, ray tracing, product photography, studio lighting, glossy, plastic, hyperreal, text, letters, numbers, words, watermark, signature, logo, label, frame, border, panel, card, ui, inset, rounded corners, cast shadow, drop shadow, background gradient, vignette, scenery, background objects, multiple objects, duplicate, collage, cropped, out of frame, cut off, blurry, low quality, jpeg artifacts, deformed, extra parts, cartoon, chibi, anime, neon, oversaturated",
+   "gen_render": {
+    "cell_px": 256,
+    "cells": [
+     [
+      0,
+      0
+     ],
+     [
+      1,
+      0
+     ]
+    ],
+    "bbox_cells": [
+     1,
+     2
+    ],
+    "target_px": [
+     256,
+     512
+    ],
+    "gen_px": [
+     704,
+     1408
+    ]
+   }
+  },
+  {
+   "id": "oil_flask",
+   "name": "Oil Flask",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-oil_flask2",
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "adjacent",
+      "tagKind": "element",
+      "tag": "Flame"
+     },
+     "verb": {
+      "t": "amp_status",
+      "status": "Burn",
+      "mult": 2
+     }
+    }
+   ],
+   "flavor": "Slow gold that loves a spark.",
+   "tags": [
+    "Reagent",
+    "Oil"
+   ],
+   "ports": [
+    {
+     "tiles": [
+      [
+       0,
+       1
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "tag": "Flame"
+    }
+   ],
+   "i18n": {
+    "ja": {
+     "name": "油の小瓶",
+     "flavor": "火花を愛する、粘る黄金。"
+    }
+   },
+   "gen_prompt": "a small corked glass flask filled with slow golden oil, a rounded bottle with a wooden stopper and a worn leather cord tie, the amber liquid catching a soft inner glow, aged and grimy glass, strong vertical composition, the object standing upright and filling the tall frame from top to bottom with a small even margin,\nstylized painterly dark-fantasy game item icon, hand-painted illustration, digital painting, concept art, soft cel-shading, matte finish, weathered forged materials, muted desaturated palette of aged iron grey worn leather and tarnished gold, Norse mythology aesthetic, grim and ancient, gentle top-left key light, subtle cool rim light, crisp readable silhouette, single centered object, plain uniform near-white background, clean flat backdrop, no shadow, no gradient, high detail, sharp focus",
+   "gen_negative": "photograph, photorealistic, realistic, 3d render, cgi, octane render, ray tracing, product photography, studio lighting, glossy, plastic, hyperreal, text, letters, numbers, words, watermark, signature, logo, label, frame, border, panel, card, ui, inset, rounded corners, cast shadow, drop shadow, background gradient, vignette, scenery, background objects, multiple objects, duplicate, collage, cropped, out of frame, cut off, blurry, low quality, jpeg artifacts, deformed, extra parts, cartoon, chibi, anime, neon, oversaturated",
+   "gen_render": {
+    "cell_px": 256,
+    "cells": [
+     [
+      0,
+      0
+     ],
+     [
+      1,
+      0
+     ]
+    ],
+    "bbox_cells": [
+     1,
+     2
+    ],
+    "target_px": [
+     256,
+     512
+    ],
+    "gen_px": [
+     704,
+     1408
+    ]
+   }
+  },
+  {
+   "id": "dagger",
+   "name": "Dagger",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-dagger2",
+   "sockets": [
+    {
+     "t": "edge",
+     "tags": [
+      "Metal"
+     ],
+     "ax": 0.62,
+     "ay": 0.24
+    },
+    {
+     "t": "coat",
+     "tags": [
+      "Metal"
+     ],
+     "ax": 0.38,
+     "ay": 0.52
+    }
+   ],
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       0.9,
+       1.2
+      ]
+     },
+     "verb": {
+      "t": "strike",
+      "n": [
+       7,
+       11
+      ]
+     }
+    }
+   ],
+   "flavor": "Quick, honest work.",
+   "tags": [
+    "Weapon",
+    "Metal"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "ダガー",
+     "flavor": "速く、そして正直な仕事。"
+    }
+   },
+   "gen_prompt": "a single dagger, a short straight double-edged steel blade with a wrapped leather grip and a small forged crossguard, weathered iron grey metal with a worn edge, one clean readable weapon, strong vertical composition, the object standing upright and filling the tall frame from top to bottom with a small even margin,\nstylized painterly dark-fantasy game item icon, hand-painted illustration, digital painting, concept art, soft cel-shading, matte finish, weathered forged materials, muted desaturated palette of aged iron grey worn leather and tarnished gold, Norse mythology aesthetic, grim and ancient, gentle top-left key light, subtle cool rim light, crisp readable silhouette, single centered object, plain uniform near-white background, clean flat backdrop, no shadow, no gradient, high detail, sharp focus",
+   "gen_negative": "photograph, photorealistic, realistic, 3d render, cgi, octane render, ray tracing, product photography, studio lighting, glossy, plastic, hyperreal, text, letters, numbers, words, watermark, signature, logo, label, frame, border, panel, card, ui, inset, rounded corners, cast shadow, drop shadow, background gradient, vignette, scenery, background objects, multiple objects, duplicate, collage, cropped, out of frame, cut off, blurry, low quality, jpeg artifacts, deformed, extra parts, cartoon, chibi, anime, neon, oversaturated",
+   "gen_render": {
+    "cell_px": 256,
+    "cells": [
+     [
+      0,
+      0
+     ],
+     [
+      1,
+      0
+     ]
+    ],
+    "bbox_cells": [
+     1,
+     2
+    ],
+    "target_px": [
+     256,
+     512
+    ],
+    "gen_px": [
+     704,
+     1408
+    ]
+   }
+  },
+  {
+   "id": "herb_pouch",
+   "name": "Herb Satchel",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-herb_satchel",
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       1.8,
+       2.2
+      ]
+     },
+     "verb": {
+      "t": "heal_bp",
+      "n": [
+       4,
+       8
+      ]
+     }
+    }
+   ],
+   "flavor": "Smells like a meadow that survived.",
+   "tags": [
+    "Relic"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "薬草の巾着",
+     "flavor": "生き残った草原の匂いがする。"
+    }
+   },
+   "gen_prompt": "a small leather herb satchel, a worn drawstring pouch of aged brown leather bound with cord, sprigs of dried green herbs and leaves poking out of the open top, humble and crafted, strong vertical composition, the object standing upright and filling the tall frame from top to bottom with a small even margin,\nstylized painterly dark-fantasy game item icon, hand-painted illustration, digital painting, concept art, soft cel-shading, matte finish, weathered forged materials, muted desaturated palette of aged iron grey worn leather and tarnished gold, Norse mythology aesthetic, grim and ancient, gentle top-left key light, subtle cool rim light, crisp readable silhouette, single centered object, plain uniform near-white background, clean flat backdrop, no shadow, no gradient, high detail, sharp focus",
+   "gen_negative": "photograph, photorealistic, realistic, 3d render, cgi, octane render, ray tracing, product photography, studio lighting, glossy, plastic, hyperreal, text, letters, numbers, words, watermark, signature, logo, label, frame, border, panel, card, ui, inset, rounded corners, cast shadow, drop shadow, background gradient, vignette, scenery, background objects, multiple objects, duplicate, collage, cropped, out of frame, cut off, blurry, low quality, jpeg artifacts, deformed, extra parts, cartoon, chibi, anime, neon, oversaturated",
+   "gen_render": {
+    "cell_px": 256,
+    "cells": [
+     [
+      0,
+      0
+     ],
+     [
+      1,
+      0
+     ]
+    ],
+    "bbox_cells": [
+     1,
+     2
+    ],
+    "target_px": [
+     256,
+     512
+    ],
+    "gen_px": [
+     704,
+     1408
+    ]
+   }
+  },
+  {
+   "id": "tower_shield",
+   "name": "Tower Shield",
+   "rarity": "Uncommon",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     1,
+     1
+    ]
+   ],
+   "icon": "icon-tower_shield",
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "battle_start"
+     },
+     "verb": {
+      "t": "block",
+      "n": [
+       26,
+       46
+      ]
+     }
+    }
+   ],
+   "flavor": "A wall that agreed to travel.",
+   "tags": [
+    "Shield",
+    "Metal"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "タワーシールド",
+     "flavor": "旅に出ることを了承した、壁。"
+    }
+   },
+   "gen_prompt": "a large Norse tower shield, a tall broad rectangular iron-banded shield with a heavy central boss and riveted weathered steel face, muted heraldic gold trim and faint knotwork, forged and battle-worn, broad object filling the square frame edge to edge with a small even margin,\nstylized painterly dark-fantasy game item icon, hand-painted illustration, digital painting, concept art, soft cel-shading, matte finish, weathered forged materials, muted desaturated palette of aged iron grey worn leather and tarnished gold, Norse mythology aesthetic, grim and ancient, gentle top-left key light, subtle cool rim light, crisp readable silhouette, single centered object, plain uniform near-white background, clean flat backdrop, no shadow, no gradient, high detail, sharp focus",
+   "gen_negative": "photograph, photorealistic, realistic, 3d render, cgi, octane render, ray tracing, product photography, studio lighting, glossy, plastic, hyperreal, text, letters, numbers, words, watermark, signature, logo, label, frame, border, panel, card, ui, inset, rounded corners, cast shadow, drop shadow, background gradient, vignette, scenery, background objects, multiple objects, duplicate, collage, cropped, out of frame, cut off, blurry, low quality, jpeg artifacts, deformed, extra parts, cartoon, chibi, anime, neon, oversaturated",
+   "gen_render": {
+    "cell_px": 256,
+    "cells": [
+     [
+      0,
+      0
+     ],
+     [
+      0,
+      1
+     ],
+     [
+      1,
+      0
+     ],
+     [
+      1,
+      1
+     ]
+    ],
+    "bbox_cells": [
+     2,
+     2
+    ],
+    "target_px": [
+     512,
+     512
+    ],
+    "gen_px": [
+     1024,
+     1024
+    ]
+   }
+  },
+  {
+   "id": "beast_jaw",
+   "name": "Beast Jaw",
+   "rarity": "Uncommon",
+   "shape": [
+    [
+     0,
+     1
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     1,
+     1
+    ]
+   ],
+   "icon": "icon-beast_jaw",
+   "sockets": [
+    {
+     "t": "edge",
+     "tags": [
+      "Bone"
+     ],
+     "ax": 0.72,
+     "ay": 0.3
+    },
+    {
+     "t": "coat",
+     "tags": [
+      "Bone"
+     ],
+     "ax": 0.3,
+     "ay": 0.72
+    }
+   ],
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       1.4,
+       1.7
+      ]
+     },
+     "verb": {
+      "t": "strike",
+      "n": [
+       13,
+       23
+      ]
+     }
+    },
+    {
+     "trigger": {
+      "t": "passive"
+     },
+     "verb": {
+      "t": "buff_self_per_tag",
+      "tagKind": "element",
+      "tag": "Beast",
+      "stat": "damage",
+      "n": [
+       4,
+       8
+      ]
+     }
+    }
+   ],
+   "flavor": "It still remembers how to bite.",
+   "tags": [
+    "Weapon",
+    "Beast"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "獣の顎",
+     "flavor": "噛み方を、まだ覚えている。"
+    }
+   },
+   "gen_prompt": "a monstrous beast jawbone trophy, a heavy curved ivory-cream lower jaw of a great beast lined with jagged fangs, aged bone with cracks and patina, primal and grim, the object's main mass biased toward the lower-left and right cells (an L-shaped footprint), filling the square frame with a small even margin,\nstylized painterly dark-fantasy game item icon, hand-painted illustration, digital painting, concept art, soft cel-shading, matte finish, weathered forged materials, muted desaturated palette of aged iron grey worn leather and tarnished gold, Norse mythology aesthetic, grim and ancient, gentle top-left key light, subtle cool rim light, crisp readable silhouette, single centered object, plain uniform near-white background, clean flat backdrop, no shadow, no gradient, high detail, sharp focus",
+   "gen_negative": "photograph, photorealistic, realistic, 3d render, cgi, octane render, ray tracing, product photography, studio lighting, glossy, plastic, hyperreal, text, letters, numbers, words, watermark, signature, logo, label, frame, border, panel, card, ui, inset, rounded corners, cast shadow, drop shadow, background gradient, vignette, scenery, background objects, multiple objects, duplicate, collage, cropped, out of frame, cut off, blurry, low quality, jpeg artifacts, deformed, extra parts, cartoon, chibi, anime, neon, oversaturated",
+   "gen_render": {
+    "cell_px": 256,
+    "cells": [
+     [
+      0,
+      1
+     ],
+     [
+      1,
+      0
+     ],
+     [
+      1,
+      1
+     ]
+    ],
+    "bbox_cells": [
+     2,
+     2
+    ],
+    "target_px": [
+     512,
+     512
+    ],
+    "gen_px": [
+     1024,
+     1024
+    ],
+    "mask_cells": [
+     [
+      0,
+      1
+     ],
+     [
+      1,
+      0
+     ],
+     [
+      1,
+      1
+     ]
+    ]
+   }
+  }
+ ]
+}
