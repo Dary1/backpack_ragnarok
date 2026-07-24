@@ -300,3 +300,66 @@ ray_hit hp_after=60, hpMax stays 100).
 - `monitorSkillArt.resolveSkillTexture` — no logic change expected; P3 just supplies the art the
   cache serves. `composeSquad`'s `onSeatAnnotation` z-slot is the sanctioned place for any richer
   seat-background treatment.
+
+## P3 evidence (art batch + registry, 2026-07-24)
+
+### A. Generation — 81/81, 0 failures
+All 81 live-fielded skills generated as skill_icon emblems via the P3
+SKILL_ICON_STYLE grammar (flux2 klein Q8_0, 256x256, seed 42, 30 steps),
+one centered concrete object per skill, hue keyed to the skills
+
+## P3 evidence (art batch + registry, 2026-07-24)
+
+### A. Generation - 81/81, 0 failures
+All 81 live-fielded skills generated as skill_icon emblems via the P3
+SKILL_ICON_STYLE grammar (flux2 klein Q8_0, 256x256, seed 42, 30 steps),
+one centered concrete object per skill, hue keyed to the skill's element
+(Chill->frost blue, Burn->ember orange, Poison->venom green, lifesteal/
+bleed->blood red, Stun/petrify->stone grey, Weakness/curse->dull violet-
+gold, neutral->steel/bone). Subject clauses authored from name_en + verb/
+status. Batch wall time 60.8 min (~40s/render: the 8 GB box swaps the FLUX
+unet and the 8 GB Qwen3 encoder each render; the 450-540s art_route note is
+the ~1MP case, not 256x256). Commit 4248f26 tracks the 81 PNGs under
+content/art/skill_icon/ (the reference exports, vfx precedent).
+
+### B. Outer-glow ruling (user, 2026-07-24)
+The emblems carry a tight rim glow despite SKILL_ICON_STYLE ruling #5
+(no baked outer glow). User art-direction ruling: KEEP as-is (glow is tight,
+reads well inside the badge circle). A deliberate relaxation of ruling #5.
+
+### C. Registry registration + serving (the display data path)
+CORRECTION to a naive file-drop: public GET /api/art/<name>.png is
+hServeAdopted -> storage.getAdoptedRender -> the render IMAGE BYTES from the
+DB, NOT a disk scan. So the tracked PNGs alone do not serve. Registered all
+81 into the live registry (namespace = hash(~/backpack_ragnarok)): per skill
+createArtwork(kind=skill_icon,256x256) or reuse, createRender(seed 42),
+updateRenderResult(image bytes + sha256 + final_prompt + params), adoptRender.
+Result: created 75, reused 6 (the interrupted-Fable unadopted stubs:
+door_keeper_strike, hrim_cleave, trap_deadfall_volley, rotting_claw,
+festering_grasp, spectral_touch), adopted 81, 0 fail. No GPU re-render (the
+already-rendered bytes were injected). Serving VERIFIED on the live
+backpack-api: /api/art/{hrim_cleave,fire_dart,venom_bite,doom_toll,
+trollish_vigor,petrifying_glare}.png -> 200 image/png, valid PNG signature,
+sizes match; a nonexistent id -> 404 (class-glyph fallback path intact).
+
+### D. Aesthetic pass (P2 s.J) - no speculative change
+All 81 skills now have real art, so the glyph-fallback tuning is moot; P2's
+sweep/badge defaults (MJ.void a0.55 sweep, MJ.gold a0.32 charge wedge) stand.
+22px badge-scale legibility verified via a contact sheet. Further sweep/badge
+tuning deferred to user review from live screenshots.
+
+## P4 evidence (gates, 2026-07-24)
+Node v22.23.1, worktree branch. ART_ROUTE_MOCK=1 for the pg logic suites
+(isolated test namespace; live rows untouched):
+- [0/8] check_e2e_ports: OK (4 harnesses, all derived, no collisions).
+- sim goldens: 12/12 (determinism intact - icons are additive, no sim change).
+- forecast parity: 18/18. unit_charge_test 13/13; unit_charge_encounter 24/24.
+- artwork_test.cjs: 19 passed / 0 failed, incl "REQ-0292 skill_icon: 256x256
+  still, NOT force-tiled; adopt + direct serve + content/art/skill_icon/
+  export". (inspection-kit numpy warnings are the ad-hoc-shell venv, non-fatal.)
+- inspection_test.cjs: 7 passed / 0 failed.
+- Live serving proof: see P3.C. P2's scoped schedule e2e (2 REQ-0292 HUD
+  tests) stands - the icons don't change its structural (webdriver=off) asserts.
+
+Remaining: deploy (merge to master, client/web rebuild, api restart since
+server/ changed) then live monitor screenshot.
