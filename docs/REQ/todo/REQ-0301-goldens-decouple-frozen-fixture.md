@@ -84,3 +84,13 @@ Commit `bc71419` (fixture + goldens.cjs redirect); this gate-results note is a f
   longer read batch-002 (nor live content).
 
 Status stays **todo** (folder not moved). Unblocks the pack-fix: adding monsters to the `<30%` packs is now golden-safe.
+
+## ORCHESTRATOR AUDIT (2026-07-24)
+Byte-identical + correct: `node sim/tests/goldens.cjs` -> goldens OK, `replay_hashes.json` UNCHANGED (git-clean
+diff), fixture `sim/tests/goldens/fixture/` created (README + scenario/live_items + 8 dungeon-domain json),
+decoupling PROVEN (subagent: edit batch-002 packs.json -> goldens stay green -> revert). Commits bc71419, 6d6f0fc.
+The lone `run.cjs` REQ-0122 lossless failure is NOT this REQ: it is worktree-STALENESS -- this branch is off an
+OLD master (e62f7b8); a PARALLEL session merged REQ-0299 (44 monster-pack flavor skills + a powerLevel recalibrate
+via the REQ-0297 autobalance tool) to master (now c239eb6), advancing the main-checkout live enemies.json
+(895df7 -> d80e9e6) that the non-hermetic lossless test cross-reads. It clears on rebase onto current master.
+STATUS: BUILT; MERGE PENDING a rebase onto current master c239eb6 (then the lossless artifact clears).
