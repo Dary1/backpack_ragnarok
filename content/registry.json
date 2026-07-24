@@ -45,22 +45,22 @@
  ],
  "live_dungeon": {
   "promoted_from": "batch-002-dungeon-pilot",
-  "date": "2026-07-15",
+  "date": "2026-07-24",
   "files": {
    "dungeon.json": "b78b1c5c03640278dad6b1956aa41d25cf821d29e0a5bda2879553733a3f9f00",
    "dungeons.json": "df1da3f52fbab09d7136b30f55e54fdb727a4d020898f3ef5e3279c18064f1f5",
-   "enemies.json": "7384eee5b1f21edadc170634ee91012770aa082b9b8001f988bea6555f722c6b",
-   "packs.json": "c1a4e2f8ae51dcd349f639f06bf605a96e3ea9daae366770cef0a9e7c0c002e3",
-   "skills.json": "622ae17e12ed43f2819ffc3d41818e5e3530f356bfdd7ad0f51a895d1d8f1bb3",
+   "enemies.json": "b28c013899e45c49162ba87a99d7fed48cbcc8af57a41d7589a6e6f053aa4067",
+   "packs.json": "96b44fec34c4e0fe58839ad94a48ba99d9ea6d08ecdcfb44238c0bd7afb53f8c",
+   "skills.json": "92ee20c42d88edb2080b8c3cef02116ff04489c1d7950a58e7990d7c0f5adc09",
+   "gimics.json": "fa17981d66617acb10297d56fcfc552fd19cb505ee24d0b44575778a6cc7319d",
    "formations.json": "75ae7a099bf13b8d2f0032f5b8cccf72cdd8187df066870b2c4d302b27cc3bb5",
-   "items.json": "1494a1400f7bf09dd086f17ed2f426f30aaa826ba4ddc4c36ac8e83ed68c40da",
-   "gimics.json": "fa17981d66617acb10297d56fcfc552fd19cb505ee24d0b44575778a6cc7319d"
+   "items.json": "1494a1400f7bf09dd086f17ed2f426f30aaa826ba4ddc4c36ac8e83ed68c40da"
   }
  },
  "live_dungeon_additive": [
   {
    "promoted_from": "batch-005-grave-legion",
-   "date": "2026-07-16",
+   "date": "2026-07-24",
    "added": {
     "enemies.json": [
      "zombie",
@@ -88,7 +88,15 @@
      "soul_blast",
      "paralyzing_dread",
      "bone_breath",
-     "necrotic_roar"
+     "necrotic_roar",
+     "zombie_already_rotten",
+     "ghost_incorporeal",
+     "mummy_death_curse",
+     "skel_no_flesh",
+     "wight_undying",
+     "necro_deathly_ward",
+     "lich_undying_will",
+     "bonedrag_death_collapse"
     ],
     "packs.json": [
      "pack_grave_shamble",
@@ -97,14 +105,14 @@
     ]
    },
    "files": {
-    "enemies.json": "6c0388da74c6d3b6f3cb255e7dc85a85465b0964ff10a5038e35a7331eca447f",
-    "skills.json": "d9a40d30cce4dd506561bc4225e1513f427a168f2a91f65f88a96261e8108684",
-    "packs.json": "fd40c893a7d659a486548cac1b4c60882ab891e146a55fe28013d0b6681e83fa"
+    "enemies.json": "28fe30a398f8d3914610c02461a9d17f40371d12d13bc5112b7dc1294a54dfd8",
+    "skills.json": "4bbdbf428e630106df78bab8c7bb9c2864fafac0676037da43b58a162b3d6b93",
+    "packs.json": "a26b2013e42a61518358515e55e142d8e3b2fac5a22ac0d66ff4f25be829b1e6"
    }
   },
   {
    "promoted_from": "batch-006-wildlands",
-   "date": "2026-07-16",
+   "date": "2026-07-24",
    "added": {
     "enemies.json": [
      "alpha_werewolf",
@@ -140,7 +148,19 @@
      "headless_charge",
      "doom_toll",
      "hellfire_wave",
-     "dominion_of_flame"
+     "dominion_of_flame",
+     "werewolf_lunar_regen",
+     "direwolf_harrier_retort",
+     "boar_wounded_fury",
+     "bat_erratic_flight",
+     "spider_clinging_web",
+     "scorpion_barbed_carapace",
+     "snake_retaliatory_venom",
+     "basilisk_venom_blooded",
+     "imp_death_pop",
+     "gargoyle_stone_skin",
+     "dullahan_headless",
+     "demonlord_wrath"
     ],
     "packs.json": [
      "pack_wild_hunt",
@@ -149,14 +169,14 @@
     ]
    },
    "files": {
-    "enemies.json": "8d466de4232857a5c633ef888f1c1d9fe8a674f12aed0308836eb408ba6b003f",
-    "skills.json": "32f808ad5c96cd0fb886bd614a6b5724616925a8464d62621e49c4310de67ed9",
-    "packs.json": "85057ed7338e67739d96904c27655c2282b7aaa48c1ed77153a8ab6baad95921"
+    "enemies.json": "5017e3353066705c80d48c35a26a6b67f17f0b668ae1510f56bbc52f161ceee3",
+    "skills.json": "ed37845365eef69131c5754fd0fc8fef2a01854f7348522eba470605a1a37f9a",
+    "packs.json": "4c6298505af0fc63ee23fd0f6da1d00cfe16fd0a751a8cf989b0c853c72ada5b"
    }
   },
   {
    "promoted_from": "batch-007-deepstone-legions",
-   "date": "2026-07-17",
+   "date": "2026-07-24",
    "added": {
     "enemies.json": [
      "kraken",
@@ -208,7 +228,24 @@
      "winters_call",
      "hurl_boulder",
      "trollish_vigor",
-     "rending_claw"
+     "rending_claw",
+     "kraken_regrowing_tendrils",
+     "seaserpent_cold_native",
+     "sahuagin_blood_frenzy",
+     "crab_hard_shell",
+     "medusa_stone_gaze",
+     "cockatrice_bristling_plumage",
+     "lamia_shedding_skin",
+     "golem_immovable",
+     "goblin_cornered_stab",
+     "shaman_totemic_mending",
+     "kobold_caltrops",
+     "orc_cleaving_riposte",
+     "ogre_thick_hide",
+     "behemoth_last_stand",
+     "giant_ice_born",
+     "cyclops_mighty_thews",
+     "troll_regeneration"
     ],
     "packs.json": [
      "pack_deep_tide",
@@ -218,8 +255,8 @@
     ]
    },
    "files": {
-    "enemies.json": "895df7698b2ef5afcfa33f4baa8a9c218e41031e18d3cd43dc26eae62d0f14e4",
-    "skills.json": "2b08ef4abf90268dc52d8e138f2fbf953382d2ed97ea904f6ba58d80060d7018",
+    "enemies.json": "d80e9e6546f8272e39a17bca3c081f7ee25f55de500449fdc7b150c30efc343a",
+    "skills.json": "03be33bac99391bf4dee68f5c2fdc03e6422e98c83c26b9f94442ee7f5f32e4c",
     "packs.json": "764c77449f67d6830191087f3858dece2ea6fa12384565783701b87380f60817"
    }
   }
@@ -232,7 +269,7 @@
   "seeds": 6,
   "files": {
    "enemies.json": "d80e9e6546f8272e39a17bca3c081f7ee25f55de500449fdc7b150c30efc343a",
-   "skills.json": "3f498f26f74741ebfcd7df2ee274ddddb31c83b683d37010c6448c8539860738",
+   "skills.json": "03be33bac99391bf4dee68f5c2fdc03e6422e98c83c26b9f94442ee7f5f32e4c",
    "packs.json": "764c77449f67d6830191087f3858dece2ea6fa12384565783701b87380f60817"
   }
  }
