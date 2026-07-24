@@ -2111,6 +2111,12 @@ require('./req0297_phase2_test.cjs').register({ T, eq, ok, approx });
 // for the unit suite). Sibling module; register() rolls into run.cjs totals.
 require('./req0297_phase3_test.cjs').register({ T, eq, ok, approx });
 
+// REQ-0298: monster-pack formation-fill inspector -- packFill footprint-area
+// math, the 30% PASS/FAIL boundary, placeableCells derivation from the field
+// constants, and the --json summary shape (failing count/ids). Pure +
+// deterministic sibling; register() rolls its T() cases into run.cjs totals.
+require('./req0298_pack_formation_test.cjs').register({ T, eq, ok, approx });
+
 console.log('----------------------------------');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
