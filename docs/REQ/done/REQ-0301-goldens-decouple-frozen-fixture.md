@@ -94,3 +94,8 @@ OLD master (e62f7b8); a PARALLEL session merged REQ-0299 (44 monster-pack flavor
 via the REQ-0297 autobalance tool) to master (now c239eb6), advancing the main-checkout live enemies.json
 (895df7 -> d80e9e6) that the non-hermetic lossless test cross-reads. It clears on rebase onto current master.
 STATUS: BUILT; MERGE PENDING a rebase onto current master c239eb6 (then the lossless artifact clears).
+
+## Merged (2026-07-24)
+- Merge commit 09deac4 into master (test-code + fixture only; no runtime/content -> no api restart). goldens
+  byte-identical (replay_hashes.json unchanged), sim/tests/run.cjs green on merged master. The determinism
+  goldens are now content-INDEPENDENT (self-owned fixture), so the pack-fix (and any content edit) is golden-safe.
