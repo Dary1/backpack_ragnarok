@@ -6,7 +6,7 @@
   "entries": [
     {
       "id": "pack_frost_scouts",
-      "powerLevel": -15.5256,
+      "powerLevel": 4.5769,
       "name": "Frost Scouts",
       "i18n": { "en": { "name": "Frost Scouts" }, "ja": { "name": "氷霜の斥候" } },
       "members": [
@@ -31,7 +31,7 @@
     },
     {
       "id": "pack_rime_choir",
-      "powerLevel": -17.3654,
+      "powerLevel": 3.9038,
       "name": "Rime Choir",
       "i18n": { "en": { "name": "Rime Choir" }, "ja": { "name": "霧氷の聖歌隊" } },
       "members": [
@@ -56,7 +56,7 @@
     },
     {
       "id": "pack_bear_and_stalker",
-      "powerLevel": -5.8333,
+      "powerLevel": 7,
       "name": "Bear and Stalker",
       "i18n": { "en": { "name": "Bear and Stalker" }, "ja": { "name": "熊と追跡者" } },
       "members": [
@@ -80,7 +80,7 @@
     },
     {
       "id": "pack_hrimgrimnir",
-      "powerLevel": 4.8462,
+      "powerLevel": 9.7372,
       "name": "Hrimgrimnir",
       "i18n": { "en": { "name": "Hrimgrimnir" }, "ja": { "name": "フリームグリームニル" } },
       "members": [
@@ -104,7 +104,7 @@
     },
     {
       "id": "pack_grave_shamble",
-      "powerLevel": -5.9679,
+      "powerLevel": -5.609,
       "name": "Grave Shamble",
       "i18n": {
         "en": {
@@ -160,7 +160,7 @@
     },
     {
       "id": "pack_grave_legion",
-      "powerLevel": -1.3462,
+      "powerLevel": -1.9744,
       "name": "Grave Legion",
       "i18n": {
         "en": {
@@ -216,7 +216,7 @@
     },
     {
       "id": "pack_bone_court",
-      "powerLevel": 6.0577,
+      "powerLevel": -1.6154,
       "name": "Bone Court",
       "i18n": {
         "en": {
@@ -248,7 +248,7 @@
     },
     {
       "id": "pack_wild_hunt",
-      "powerLevel": -1.6603,
+      "powerLevel": -3.5897,
       "name": "Wild Hunt",
       "i18n": {
         "en": {
@@ -296,7 +296,7 @@
     },
     {
       "id": "pack_venom_nest",
-      "powerLevel": 1.4359,
+      "powerLevel": -4.6218,
       "name": "Venom Nest",
       "i18n": {
         "en": {
@@ -344,7 +344,7 @@
     },
     {
       "id": "pack_demon_gate",
-      "powerLevel": 9.5128,
+      "powerLevel": -2.5128,
       "name": "Demon Gate",
       "i18n": {
         "en": {
@@ -380,7 +380,7 @@
     },
     {
       "id": "pack_deep_tide",
-      "powerLevel": 10.3205,
+      "powerLevel": -1.4808,
       "name": "Deep Tide",
       "i18n": {
         "en": {
@@ -412,7 +412,7 @@
     },
     {
       "id": "pack_petrifying_court",
-      "powerLevel": 2.3782,
+      "powerLevel": -3.2308,
       "name": "Petrifying Court",
       "i18n": {
         "en": {
@@ -460,7 +460,7 @@
     },
     {
       "id": "pack_greenskin_warband",
-      "powerLevel": 0.2692,
+      "powerLevel": -1.9295,
       "name": "Greenskin Warband",
       "i18n": {
         "en": {
@@ -512,7 +512,7 @@
     },
     {
       "id": "pack_titan_ridge",
-      "powerLevel": 12.8782,
+      "powerLevel": 1.3462,
       "name": "Titan Ridge",
       "i18n": {
         "en": {

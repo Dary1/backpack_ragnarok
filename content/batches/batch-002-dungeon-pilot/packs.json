@@ -6,7 +6,7 @@
   "entries": [
     {
       "id": "pack_frost_scouts",
-      "powerLevel": -15.5256,
+      "powerLevel": 4.5769,
       "name": "Frost Scouts",
       "i18n": { "en": { "name": "Frost Scouts" }, "ja": { "name": "氷霜の斥候" } },
       "members": [
@@ -31,7 +31,7 @@
     },
     {
       "id": "pack_rime_choir",
-      "powerLevel": -17.3654,
+      "powerLevel": 3.9038,
       "name": "Rime Choir",
       "i18n": { "en": { "name": "Rime Choir" }, "ja": { "name": "霧氷の聖歌隊" } },
       "members": [
@@ -56,7 +56,7 @@
     },
     {
       "id": "pack_bear_and_stalker",
-      "powerLevel": -5.8333,
+      "powerLevel": 7,
       "name": "Bear and Stalker",
       "i18n": { "en": { "name": "Bear and Stalker" }, "ja": { "name": "熊と追跡者" } },
       "members": [
@@ -80,7 +80,7 @@
     },
     {
       "id": "pack_hrimgrimnir",
-      "powerLevel": 4.8462,
+      "powerLevel": 9.7372,
       "name": "Hrimgrimnir",
       "i18n": { "en": { "name": "Hrimgrimnir" }, "ja": { "name": "フリームグリームニル" } },
       "members": [
