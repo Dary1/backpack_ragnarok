@@ -116,6 +116,12 @@ T('gain=damage: dragonknight banks real player damage, fires multi_strike + Burn
   const verbs = sp[0].effects.map(e => e.verb);
   ok(verbs.indexOf('multi_strike') >= 0, 'spend applied multi_strike on self');
   ok(r.chargeState.targets.alpha.onHitStatus.Burn > 0, 'Burn on-hit rider attached to self');
+  // REQ-0292 (charge ramp wire): every spend carries the ramp snapshot; an
+  // EVENT-DRIVEN trigger (on_damage_dealt) publishes value+capacity but NO rate
+  // (its counter is not a function of time -- there is nothing to interpolate).
+  ok(sp[0].capacity > 0, 'spend carries the rolled capacity');
+  eq(sp[0].value, 0, 'spend value is the post-reset counter (0)');
+  ok(sp[0].rate === undefined, 'event-driven charge carries NO rate (no time-fill)');
 });
 
 // ---- F4: every_secs fire_on_full + units_connected AND on_connected_unit_attack ----
@@ -130,6 +136,12 @@ T('fire_on_full: alchemist fires on a timer at a linked unit; bard fires when a 
   ok(alch.length >= 1, 'alchemist (every_secs) fired (got ' + alch.length + ')');
   ok(alch[0].effects.every(e => e.to === 'gamma'), 'alchemist add_on_hit_status landed on the linked unit (gamma)');
   ok(spendEvents(r, 'beta').length >= 1, 'bard fired from a connected unit attacking');
+  // REQ-0292 (charge ramp wire): an every_secs charge publishes value+capacity
+  // AND rate (counts/sec = 1/period), the parameter the client interpolates the
+  // charge wedge against the pt clock; rate*capacity^-1 gives fraction/sec.
+  ok(alch[0].capacity > 0, 'alchemist spend carries the rolled capacity');
+  eq(alch[0].value, 0, 'alchemist spend value is the post-reset counter (0)');
+  ok(alch[0].rate > 0, 'every_secs charge carries a positive fill rate (counts/sec)');
 });
 
 // ---- F5: grant_charge cascade deferral -- king<->jester loop TERMINATES ----

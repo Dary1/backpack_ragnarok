@@ -1,0 +1,19 @@
+-- backpack_ragnarok -- server/migrations/026_artwork_kind_skill_icon.sql
+-- REQ-0292: add the 'skill_icon' artwork kind.
+--
+-- A `skill_icon` artwork is a LOCKED 256x256 still (an ability icon, sized
+-- exactly like an `si` -- no shape, no role) -- see server/services/art_sizing.cjs.
+-- Its system_name IS the skill's content id (skills.json / monster_skills), and
+-- it is served DIRECTLY at /api/art/<skill_id>.png by the exact-name convention
+-- (like monster/gimic/dungeon art), NEVER joined into computeArtUrls(): skill ids
+-- are absent from content.cjs artUrlNameBatch() and per-skill art already
+-- direct-serves (the vfx precedent). No new column: skill_icon has a null shape.
+--
+-- Apply as the postgres superuser (same invocation as 001..025):
+--   docker exec -i supabase-db psql -U postgres < server/migrations/026_artwork_kind_skill_icon.sql
+--
+-- Idempotent: ADD VALUE IF NOT EXISTS (PG 12+). NOTE: ALTER TYPE ... ADD VALUE
+-- cannot run inside a transaction block / DO $$ ... $$, so it is a bare
+-- top-level statement. Migration-first is safe on a live deploy: old code never
+-- emits 'skill_icon'; new code does. New enum values inherit nothing to GRANT.
+ALTER TYPE artwork_kind ADD VALUE IF NOT EXISTS 'skill_icon';

@@ -1981,6 +1981,39 @@ T('REQ-0256 s15.5/s15.13 (AC5/AC13): the chain fires player-then-enemy then ray 
   ok(fs.existsSync(path.join(__dirname, '..', 'lib', 'heap.cjs')) === false, 'heap.cjs does not exist (AC1)');
 });
 
+// REQ-0292 (cooldown ramp wire): the CADENCE ray_fire fields the instance HUD's
+// item-cooldown overlay + monster skill-badge sweep are derived from. A batch-002
+// golden run (the same fixture the determinism goldens hash) exercises player item
+// fires (field:'enemy'), a live enemy monster (hrimgrimnir) + a door cadence skill
+// (field:'player'), and a ONE-SHOT trap volley -- so all three arms are covered.
+T('REQ-0292: cadence ray_fire carries slot/cooldownTicks (player) + srcInst/cooldownTicks (enemy); one-shot volleys carry neither', () => {
+  const r = combat.runDungeon({ masterSeed: 'golden-A', dungeonDef: dungeonRaw, level: 3, squadSnapshots: fourSquadSnapshots(), itemDefsById, enemyDefsById, skillDefsById, monsterPackDefsById, formationId: 'formation1', participants: ['pA', 'pB'] });
+  const rf = r.events.filter(e => e.ev === 'ray_fire');
+  const isInt = (n) => typeof n === 'number' && Number.isInteger(n);
+  // Player item fires (field:'enemy') -- every one re-arms, so every one carries a
+  // squad slot (0..3, the board location) + a back-patched cooldownTicks (> 0).
+  const playerFires = rf.filter(e => e.field === 'enemy');
+  ok(playerFires.length > 0, 'player item fires present');
+  for (const e of playerFires) {
+    ok(isInt(e.slot) && e.slot >= 0 && e.slot <= 3, 'player fire slot is a 0..3 squad index (got ' + e.slot + ')');
+    ok(isInt(e.cooldownTicks) && e.cooldownTicks > 0, 'player fire carries a positive integer cooldownTicks (got ' + e.cooldownTicks + ')');
+  }
+  // Enemy/gimic CADENCE fires (field:'player' + srcInst) -- keyed by instanceId+skill.
+  const enemyCad = rf.filter(e => e.field === 'player' && e.srcInst != null);
+  ok(enemyCad.length > 0, 'enemy/gimic cadence fires present (hrimgrimnir / door skills)');
+  for (const e of enemyCad) {
+    ok(typeof e.srcInst === 'string' && e.srcInst.length > 0, 'enemy cadence fire carries the firing instance id');
+    ok(isInt(e.cooldownTicks) && e.cooldownTicks > 0, 'enemy cadence fire carries positive cooldownTicks');
+    ok(typeof e.skill === 'string' && e.skill.length > 0, 'enemy cadence fire carries its skills.json id (REQ-0280)');
+  }
+  // One-shot trap volleys (field:'player', a skill, but NO cadence slot) never re-arm.
+  const oneShot = rf.filter(e => e.field === 'player' && e.srcInst == null);
+  for (const e of oneShot) {
+    ok(e.cooldownTicks == null, 'a one-shot volley carries NO cooldownTicks (never re-arms): ' + e.src);
+    ok(e.slot == null, 'a one-shot volley carries no player slot');
+  }
+});
+
 
 // =====================================================================
 // REQ-0293: enemy level scaling (sim/lib/level_scale.cjs)
