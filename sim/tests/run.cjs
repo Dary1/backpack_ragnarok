@@ -1102,7 +1102,7 @@ T('full-run smoke: batch-002 Niflheim Depths dungeon runs end-to-end with a fixe
     masterSeed: 'full-dungeon-smoke-seed-1',
     dungeonDef: dungeonRaw, monsterPackDefsById,
     squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
-    itemDefsById: itemDefsWithPilots, enemyDefsById, skillDefsById,
+    itemDefsById: itemDefsWithPilots, enemyDefsById: liveEnemyDefsById, skillDefsById: liveSkillDefsById, // REQ-0303: live roster (frost packs ref cross-batch bodies)
     formationId: 'formation2', level: 3, participants: ['alice', 'bob', 'carol', 'dave'],
   });
   ok(['victory', 'wipe', 'incomplete'].includes(result.result), 'full dungeon run must end in a legal terminal state, got ' + result.result);
@@ -1126,7 +1126,7 @@ T('REQ-0042 LRDST reward: a victorious run accrues a positive lrdstReward within
     masterSeed: 'lrdst-reward-victory-seed-1',
     dungeonDef: dungeonRaw, monsterPackDefsById,
     squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
-    itemDefsById, enemyDefsById, skillDefsById,
+    itemDefsById, enemyDefsById: liveEnemyDefsById, skillDefsById: liveSkillDefsById, // REQ-0303: live roster
     formationId: 'formation2', level: 3, participants: ['alice'],
   });
   if (result.result === 'victory') {
@@ -1255,7 +1255,7 @@ T('REQ-0042 LRDST reward: a single cleared non-boss encounter rolls within [1,3]
       masterSeed: 'lrdst-iso-nonboss-seed-' + i,
       dungeonDef: singleNonBoss,
       squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
-      itemDefsById, enemyDefsById, skillDefsById, monsterPackDefsById, // REQ-0184: realNonBoss names its pack by id
+      itemDefsById, enemyDefsById: liveEnemyDefsById, skillDefsById: liveSkillDefsById, monsterPackDefsById, // REQ-0184 realNonBoss (REQ-0303: live roster)
       formationId: 'formation2', level: 3, participants: ['alice'],
     });
     if (r.result !== 'wipe') {
@@ -1268,7 +1268,7 @@ T('REQ-0042 LRDST reward: a single cleared non-boss encounter rolls within [1,3]
       masterSeed: 'lrdst-iso-boss-seed-' + i,
       dungeonDef: singleBoss,
       squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
-      itemDefsById, enemyDefsById, skillDefsById, monsterPackDefsById, // REQ-0184: realBoss names its pack by id
+      itemDefsById, enemyDefsById: liveEnemyDefsById, skillDefsById: liveSkillDefsById, monsterPackDefsById, // REQ-0184 realBoss (REQ-0303: live roster)
       formationId: 'formation2', level: 3, participants: ['alice'],
     });
     if (r.result === 'victory') {
@@ -1987,7 +1987,7 @@ T('REQ-0256 s15.5/s15.13 (AC5/AC13): the chain fires player-then-enemy then ray 
 // fires (field:'enemy'), a live enemy monster (hrimgrimnir) + a door cadence skill
 // (field:'player'), and a ONE-SHOT trap volley -- so all three arms are covered.
 T('REQ-0292: cadence ray_fire carries slot/cooldownTicks (player) + srcInst/cooldownTicks (enemy); one-shot volleys carry neither', () => {
-  const r = combat.runDungeon({ masterSeed: 'golden-A', dungeonDef: dungeonRaw, level: 3, squadSnapshots: fourSquadSnapshots(), itemDefsById, enemyDefsById, skillDefsById, monsterPackDefsById, formationId: 'formation1', participants: ['pA', 'pB'] });
+  const r = combat.runDungeon({ masterSeed: 'golden-A', dungeonDef: dungeonRaw, level: 3, squadSnapshots: fourSquadSnapshots(), itemDefsById, enemyDefsById: liveEnemyDefsById, skillDefsById: liveSkillDefsById, monsterPackDefsById, formationId: 'formation1', participants: ['pA', 'pB'] }); // REQ-0303: live roster
   const rf = r.events.filter(e => e.ev === 'ray_fire');
   const isInt = (n) => typeof n === 'number' && Number.isInteger(n);
   // Player item fires (field:'enemy') -- every one re-arms, so every one carries a
