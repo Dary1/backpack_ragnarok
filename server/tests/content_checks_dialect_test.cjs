@@ -329,10 +329,18 @@ T('REQ-0171 unit_def: the 12 LIVE roster defs pass all applicable checks', () =>
 // the sim will honour, cell for cell.
 // =====================================================================
 
-T('REQ-0184 positive: every live monster_pack/1 entry PASSes with its data untouched', () => {
+T('REQ-0184 positive: every live monster_pack/1 entry passes its schema_vocab + engine_types checks, data untouched (REQ-0300: overall may now be lowered by the SEPARATE formation_fill row -- pinned in the REQ-0300 block below)', () => {
   for (const pack of monsterPacks.entries) {
     const r = checks.runChecks('monster_pack', PACK_SCHEMA, pack);
-    assert.strictEqual(r.overall, 'PASS', pack.id + ' must PASS, got ' + r.overall + ': ' + JSON.stringify(r.checks));
+    // REQ-0300 made `overall` additionally reflect the 30% formation-fill rule, so
+    // a geometrically-perfect but sparse live pack now FAILs overall on fill. The
+    // REQ-0184 guarantee is unchanged and pinned here AT THE CHECK LEVEL: the
+    // geometry (schema_vocab) and member field types (engine_types) still pass for
+    // every live pack with its data untouched.
+    for (const name of ['schema_vocab', 'engine_types']) {
+      const c = checkOf(r, name);
+      assert.ok(c && c.ok, pack.id + ' -> ' + name + ' must PASS, got: ' + (c && c.detail));
+    }
   }
 });
 
@@ -412,7 +420,10 @@ T('REQ-0184 the CHECKER and the PLACER agree: blessed layout == where the sim pu
   for (const sk of skills.entries) skillDefs[sk.id] = { trigger: sk.trigger, verb: sk.verb, attack_profile: sk.attack_profile, modes: sk.modes };
   for (const pack of monsterPacks.entries) {
     const r = checks.runChecks('monster_pack', PACK_SCHEMA, pack);
-    assert.strictEqual(r.overall, 'PASS', pack.id + ' precondition');
+    // REQ-0300: overall may be lowered by the formation_fill row; the placer
+    // agreement depends only on the geometry being blessed, so pin schema_vocab.
+    const sv = checkOf(r, 'schema_vocab');
+    assert.ok(sv && sv.ok, pack.id + ' precondition: schema_vocab (the geometry the placer honours) must be valid; got ' + (sv && sv.detail));
     const compiled = compileEnemyPack(pack, enemyDefs, skillDefs, combat.makeRng('agree'), { rowMin: 2, colMin: 2, rowMax: 17, colMax: 25 });
     pack.members.forEach((m, i) => {
       const expected = v.cellsFor(v.parseA1(m.at), enemyDefs[m.enemy].footprint || [1, 1]);
@@ -425,6 +436,73 @@ T('REQ-0184 the CHECKER and the PLACER agree: blessed layout == where the sim pu
 T('REQ-0184 the monster_pack dialect does NOT leak: po/si keep their own rules', () => {
   const r = checks.runChecks('po_def', PO_SCHEMA, GOOD_PO);
   assert.strictEqual(r.overall, 'PASS', 'a good po/2 must still PASS after the monster_pack dialect landed');
+});
+
+// ============================================================
+// REQ-0300: the 30% formation-fill rule as a live admincontent WARNING.
+// A monster_pack whose formation fills < FILL_MIN (30%) of the placeable area
+// gets a not-ok `formation_fill` runChecks row that LOWERS overall -- the same
+// row the contentadmin UI already renders (no new UI). ADDITIVE: schema_vocab
+// (geometry) and engine_types (member types) are untouched. gimic is a different
+// KIND and never gets the row (naturally exempt, no per-pack flag). All DB-free.
+// ============================================================
+
+T('REQ-0300 a sparse monster_pack (< 30% fill) gets a not-ok formation_fill row that lowers overall', () => {
+  // Synthetic and independent of any single live pack (robust to the pack-fix
+  // REQ that will later fill the live packs): two 1x1 members = 2 of 384
+  // placeable cells = 0.5%. The geometry is perfectly valid, so ONLY
+  // formation_fill fails -- proving the fill rule is what lowers overall.
+  const sparse = mpackClone();
+  sparse.id = 'pack_req0300_sparse';
+  sparse.members = [{ enemy: 'frost_gnoll', at: 'B2' }, { enemy: 'ice_archer', at: 'B4' }];
+  const r = checks.runChecks('monster_pack', PACK_SCHEMA, sparse);
+  const ff = checkOf(r, 'formation_fill');
+  assert.ok(ff, 'a monster_pack must carry a formation_fill row');
+  assert.strictEqual(ff.applicable, true, 'formation_fill APPLIES to monster_pack');
+  assert.strictEqual(ff.ok, false, 'a 0.5% pack must FAIL the fill rule: ' + ff.detail);
+  assert.strictEqual(ff.detail,
+    'formation fill 0.5% (2/384) < 30% minimum -- add monsters (boss packs: boss + entourage); gimic exempt',
+    'the exact warning string a failing pack surfaces');
+  // ADDITIVE: the geometry + type checks still PASS; ONLY fill lowered overall.
+  assert.ok(checkOf(r, 'schema_vocab').ok, 'schema_vocab must still PASS (geometry is valid)');
+  assert.ok(checkOf(r, 'engine_types').ok, 'engine_types must still PASS (member types valid)');
+  assert.strictEqual(r.overall, 'FAIL', 'a not-ok formation_fill row must lower overall to FAIL');
+});
+
+T('REQ-0300 a >= 30% monster_pack does NOT warn (formation_fill ok, overall PASS)', () => {
+  const full = mpackClone();
+  full.id = 'pack_req0300_full';
+  // two 8x8 members = 128 of 384 = 33.3%, non-overlapping and in the placeable area.
+  full.members = [{ enemy: 'demon_lord', at: 'B2' }, { enemy: 'demon_lord', at: 'K2' }];
+  const r = checks.runChecks('monster_pack', PACK_SCHEMA, full);
+  const ff = checkOf(r, 'formation_fill');
+  assert.ok(ff && ff.applicable === true && ff.ok, 'a 33.3% pack must PASS the fill rule: ' + (ff && ff.detail));
+  assert.strictEqual(ff.detail, 'formation fill 33.3% (128/384) >= 30% minimum');
+  assert.strictEqual(r.overall, 'PASS', 'a full, valid pack must PASS overall (failed: ' + failedNames(r).join(',') + ')');
+});
+
+T('REQ-0300 the FILL_MIN boundary is strict `<`: exactly 30% PASSES, just below FAILS', () => {
+  // Pinned through the SAME row-builder runChecks uses, with a synthetic roster
+  // + placeable count so the exact 30% boundary is constructible (the live field
+  // is 384, where 30% is a non-integer cell count).
+  const roster = { three: { footprint: [3, 1] }, one: { footprint: [1, 1] } };
+  const atMin = checks._formationFillResult({ members: [{ enemy: 'three', at: 'B2' }] }, roster, 10); // 3/10 = 30.0%
+  assert.ok(atMin.ok, 'exactly 30% must PASS (the rule is a strict <): ' + atMin.detail);
+  assert.strictEqual(atMin.detail, 'formation fill 30.0% (3/10) >= 30% minimum');
+  const below = checks._formationFillResult({ members: [{ enemy: 'one', at: 'B2' }, { enemy: 'one', at: 'B4' }] }, roster, 10); // 2/10 = 20%
+  assert.ok(!below.ok, 'just below 30% must FAIL: ' + below.detail);
+});
+
+T('REQ-0300 gimic and every non-pack kind are naturally exempt (no formation_fill row at all)', () => {
+  // gimic is a different KIND; it never reaches the monster_pack branch, so it
+  // gets no formation_fill row -- exemption by construction, no per-pack flag.
+  const rEnemy = checks.runChecks('monster_def', ENEMY_SCHEMA, GOOD_ENEMY);
+  assert.strictEqual(checkOf(rEnemy, 'formation_fill'), undefined, 'monster_def gets no formation_fill row');
+  const rPo = checks.runChecks('po_def', PO_SCHEMA, GOOD_PO);
+  assert.strictEqual(checkOf(rPo, 'formation_fill'), undefined, 'po_def gets no formation_fill row');
+  // and the exported check is honest if called directly for a non-pack kind.
+  const direct = checks.formationFillCheck('gimic', { id: 'x' });
+  assert.strictEqual(direct.applicable, false, 'formationFillCheck is applicable:false for gimic');
 });
 
 // ============================================================

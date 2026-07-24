@@ -7,11 +7,25 @@ const crypto = require('crypto');
 const storage = require('../storage.cjs');
 const combat = require('../../sim/combat.cjs');
 const dungeonRoll = require('../../sim/dungeon_roll.cjs'); // REQ-0185: the dive roller
+const fs = require('fs'); // REQ-0293
+const path = require('path'); // REQ-0293
+const { loadProfile } = require('../../sim/lib/level_scale.cjs'); // REQ-0293: enemy level-scaling engine
 const { WAREHOUSE_TTL_MS, SQUAD_SLOTS, getScheduleContent, resolveRewardItemId, genId } = require('./core.cjs');
 const { squadCanvasOf, applyPendingSwapIfAny } = require('./squads.cjs');
 const { addToWarehouse } = require('./warehouse.cjs');
 const bioService = require('./bio.cjs'); // REQ-0060
 const pacing = require('./pacing.cjs'); // REQ-0240: presentation-pacing serving-layer decoration
+
+// REQ-0293: the enemy level-scaling manifest, loaded ONCE at module load (the
+// same discipline as the sim content fixtures). v1 ships NEUTRAL -- every rule
+// is identity -- so this changes no output; it wires the effLevel-driven,
+// per-field scaling path for the gated follow-up that supplies real g values.
+// null on a missing/malformed file => no scaling (today behaviour), never a
+// startup crash.
+let SCALING_PROFILE = null;
+try {
+  SCALING_PROFILE = loadProfile(JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'content', 'scaling_profile.json'), 'utf8')));
+} catch (_e) { SCALING_PROFILE = null; }
 
 function computeDurationSecs(events) {
   let maxT = 0;
@@ -89,6 +103,16 @@ function startRun(room, profileCanvas) {
   if (!dungeonDefRef) { const e = new Error('no dungeon def available to roll for room ' + room.id); e.code = 'BAD_REQUEST'; throw e; }
   const genSeed = room.genSeed || crypto.randomBytes(16).toString('hex');
   const dungeonDef = dungeonRoll.rollDungeon(dungeonDefRef, room.level, genSeed, { gimicDefsById });
+  // REQ-0297: enemy STRENGTH now scales PER PACK. Each encounter derives its own
+  // effLevel = attackLv - pack.powerLevel (+ boss bonus) inside the sim, where the
+  // pack def is resolved -- so runs.cjs no longer computes one dungeon-wide
+  // effLevel. REQ-0293/0295's dungeon.baseDifficulty is RETIRED as a runtime input
+  // (dungeon.Lv / baseDifficulty remain AUTHORING anchors only). attackLv IS
+  // room.level, passed to runDungeon below as `level`; COUNTS still key off
+  // room.level via the rollDungeon call above. A pack with no powerLevel scales at
+  // effLevel 0 (factor 1) => byte-identical, so today's live packs (none carry a
+  // powerLevel yet -- the calibrated values ship via the Phase-3 surgical path)
+  // are unchanged.
   const seed = crypto.randomBytes(16).toString('hex'); // crypto random, stored (per task brief) -- combat RNG, INDEPENDENT of genSeed (layout vs combat outcome stay separate seeds, see sim/dungen.cjs's own header comment)
   const participants = [room.ownerId]; // solo scope: the room owner is the sole participant/reward recipient
 
@@ -96,6 +120,7 @@ function startRun(room, profileCanvas) {
     masterSeed: seed, dungeonDef, squadSnapshots, itemDefsById, enemyDefsById, skillDefsById,
     monsterPackDefsById, // REQ-0184: resolves an encounter's packId -> its monster_pack def
     formationId: room.formationId, level: room.level, participants,
+    scaling: SCALING_PROFILE, // REQ-0297: profile only; per-pack effLevel derived in the sim from room.level (= attackLv) + each pack's powerLevel (+ boss bonus)
     // REQ-0170: without these the sim would see every BP as unlinked -- the board
     // would draw rays the battle did not honour.
     unitDefsById, connShapes,

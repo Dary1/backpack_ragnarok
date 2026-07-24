@@ -16,6 +16,7 @@ const { FIELD_ROWS, FIELD_COLS } = require('./field.cjs');
 const { maskLabel } = require('./replay.cjs');
 const { effectStreamName, makeBPActor, makeEnemyActor, fireSkillRay, defaultAttackProfileFor, applyReactiveVerbToTarget, selectHealAllyTarget } = require('./skills.cjs');
 const { compileEnemyPack } = require('./packs.cjs');
+const { effLevelForPack } = require('./level_scale.cjs'); // REQ-0297: per-pack effLevel = attackLv - pack.powerLevel (+ boss bonus)
 const { createEncounterChargeManager } = require('./unit_charge_encounter.cjs'); // REQ-0200
 
 function runEncounter(opts) {
@@ -28,6 +29,12 @@ function runEncounter(opts) {
     // called `packDefsById` in one opts bag is a bug waiting for a careless
     // destructure to feed emission pools to the monster placer.
     monsterPackDefsById,
+    // REQ-0293/0297: enemy level scaling. `scaling` is the profile; `attackLv`
+    // (= room.level) drives the PER-PACK effLevel derived below, where the pack
+    // def (its powerLevel) and the boss-slot signal are both known. Both optional
+    // -- absent (every current sim/test caller) means no scaling, so
+    // compileEnemyPack stays byte-identical.
+    scaling, attackLv,
   } = opts;
   const events = [];
   const seq = new SeqCounter(); // REQ-0256: seq is now an emission-order OUTPUT, not an ordering input (s3.3)
@@ -195,7 +202,15 @@ function runEncounter(opts) {
       if (!resolved) throw new Error('runEncounter: encounter ' + encounterDef.id + ' names monster_pack "' + packDef.packId + '", which has no def');
       packDef = resolved;
     }
-    enemyActors = compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyFieldBox).map(en => ({ raw: en, actor: makeEnemyActor(en) }));
+    // REQ-0297: PER-PACK effLevel. The resolved pack def (hence its powerLevel)
+    // and the boss-slot signal (encounterDef.type === 'boss' -- the encounter
+    // dungeon_roll.cjs built from the dungeon's bossPool) are both known HERE, so
+    // each pack scales by its OWN g^effLevel. Only computed when a scaling profile
+    // is present; absent (goldens, every direct test caller) => effLevel 0 => no
+    // scaling => byte-identical. A pack with no powerLevel also yields 0 (see
+    // effLevelForPack), so today's live/fixture packs are unchanged either way.
+    const effLevel = scaling ? effLevelForPack(attackLv, packDef.powerLevel, encounterDef.type === 'boss') : 0;
+    enemyActors = compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyFieldBox, { scaling, effLevel }).map(en => ({ raw: en, actor: makeEnemyActor(en) })); // REQ-0297: per-pack effLevel
   }
   let entity = null; // trap/door/chest "?" entity
   if (encounterDef.entityDef) {
@@ -646,7 +661,10 @@ function runEncounter(opts) {
         const rayEvents = [];
         const fr = fireSkillRay({
           attacker, attackProfile: s.attackProfile, verbEff: s.effect, mode: encounterDef.mode,
-          targetActors: enemyActorList(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
+          // REQ-0296: was enemyActorList() -- now the firing instance's opponents
+          // (bp-map instance -> enemyActorList(), same list/order). The machinery
+          // below (charge feeds, PO offensive dispatch) stays bp-gated; only the LIST moved.
+          targetActors: inst.opponents(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
           rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + t, events: rayEvents, aoeStatuses: !!s.attackProfile.aoe_statuses,
         });
         pushCadenceFire(inst, rayEvents, t); // REQ-0292: +slot (player squad) + back-patched cooldownTicks
@@ -668,7 +686,11 @@ function runEncounter(opts) {
             fireSkillRay({
               attacker: { fieldCells: ent.raw.fieldCells, ownerId: ent.raw.ownerId + '#react', bonusVsStatus: ent.raw.bonusVsStatus || [] },
               attackProfile: ap, verbEff: sk, mode: 'battle', skill: ent.raw.skillIds && ent.raw.skillIds[ent.raw.skills.indexOf(sk)], // REQ-0280
-              targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
+              // REQ-0296: the struck opponent's retaliation aims at the FIRING
+              // instance's allies (bp-map -> playerActors, same ref). LIMITATION: this
+              // OnSquadBeenHit dispatch still lives ONLY in the bp body, so pure enemy-
+              // vs-enemy won't retaliate until phase-2 generalises the dispatch itself.
+              targetActors: inst.allies(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
               rng, streamPrefix: 'reactive/OnSquadBeenHit/' + ent.raw.ownerId + '/' + t,
               events: reactDef, aoeStatuses: !!ap.aoe_statuses,
             });
@@ -714,56 +736,19 @@ function runEncounter(opts) {
       // the mode match above, preserving the heap driver's "reschedule
       // regardless" cadence.
     } else {
-      // ---- enemy / entity side (the heap driver's enemy skill_fire branch) ----
-      const s = cd;
-      const raw = inst.raw;
-      const attackProfile = s.effect.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
-      const attacker = { fieldCells: raw.fieldCells, ownerId: s.ownerId, bonusVsStatus: raw.bonusVsStatus || [], selfActor: inst.actor };
-      if (s.effect.verb && s.effect.verb.t === 'heal_ally') {
-        // REQ-0203: enemy SUPPORT skill -- NO ray at the player field. Heal the
-        // lowest-HP living pack ally (self only if alone); target is deterministic
-        // (selectHealAllyTarget), the amount rolls from an isolated named stream.
-        const target = selectHealAllyTarget(inst.actor, enemyActors.map(e => e.actor));
-        if (target) {
-          const healN = rng.stream(effectStreamName(s.ownerUid, s.effIdx) + '/' + t + '/heal_ally').range(s.effect.verb.n[0], s.effect.verb.n[1]);
-          const hpBefore = target.hp();
-          target.heal(healN);
-          events.push({ t, seq: seq.nextSeq(), ev: 'heal_ally', src: s.ownerId, dst: target.id, amount: healN, hp_before: hpBefore, hp_after: target.hp() });
-        }
-      } else {
-        events.push({ t: tickT(Math.max(0, simTick - LEAD_TICKS)), seq: seq.nextSeq(), ev: 'telegraph', src: s.ownerId, skill: s.effect.verb.t, edge: (attackProfile.edge || ['top'])[0], fires_at: t });
-        const rayEvents = [];
-        const fr = fireSkillRay({
-          attacker, attackProfile, verbEff: s.effect, mode: 'battle', skill: raw && raw.skillIds && raw.skillIds[s.effIdx], // REQ-0280
-          targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
-          rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + t, events: rayEvents, aoeStatuses: !!attackProfile.aoe_statuses,
-        });
-        pushCadenceFire(inst, rayEvents, t); // REQ-0292: +srcInst (instanceId) + back-patched cooldownTicks
-        // REQ-0078 reactive (offensive rider): this monster's OnHit/OnSquadHit
-        // skills fire on each player actor its attack just directly hit
-        // (OnHit == OnSquadHit for a flat monster squad); isolated RNG.
-        const reactOff = [];
-        for (const sk of (raw.skills || [])) {
-          if (!sk.trigger || (sk.trigger.t !== 'OnHit' && sk.trigger.t !== 'OnSquadHit')) continue;
-          (fr.landedHits || []).forEach((lh, li) => {
-            const rs = rng.stream('reactive/' + sk.trigger.t + '/' + s.ownerUid + '/' + t + '/' + li);
-            applyReactiveVerbToTarget(sk.verb, inst.actor, lh.actor, rs, reactOff, sk.trigger.t);
-          });
-        }
-        for (const re of reactOff) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
-        const playerDef = [];
-        dispatchPlayerDefensive((fr.landedHits || []).map(lh => lh.actor), t, playerDef);
-        for (const re of playerDef) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
-        if (chargeMgr) {
-          // REQ-0200: a player BP taking a direct enemy hit feeds OnBPBeenHit on that
-          // BP + on_connected_unit_bp_been_hit on its linked BPs.
-          for (const lh of (fr.landedHits || [])) {
-            if (lh.actor && lh.actor.kind === 'bp') feedCharge({ type: 'bp_damaged', bpId: lh.actor.id, amount: lh.amount }, t);
-          }
-          // REQ-0200 real-actor: reflect_damage pct of each hit onto the attacker.
-          chargeMgr.onDefensiveLanded(inst.actor, fr.landedHits || [], t);
-        }
-      }
+      // ---- enemy / entity side. REQ-0296 extracted the timed-fire body to the
+      // module-level fireEnemyInstanceSlot (shared with the headless monster
+      // arena). REQ-0292: tag the emitted cadence ray_fire with srcInst and
+      // register them for the cooldownTicks back-patch, mirroring the player
+      // side above -- at the CALL SITE, so the shared function (and the arena)
+      // stay untouched.
+      const preLen = events.length;
+      fireEnemyInstanceSlot(inst, cd, {
+        rng, events, seq, t, simTick, LEAD_TICKS, tickT,
+        dispatchDefensive: dispatchPlayerDefensive, chargeMgr, feedCharge,
+      });
+      pendingCadenceFire = events.slice(preLen).filter((ev) => ev.ev === 'ray_fire');
+      for (const ev of pendingCadenceFire) ev.srcInst = inst.id;
     }
   }
 
@@ -772,8 +757,13 @@ function runEncounter(opts) {
   // attachments, pulses, the fire bodies and the result stay here (s14 Out
   // records the not-moved scaffolding).
   const battle = createBattle({
-    playerMap: createFormationMap({ instances: playerInstances }),
-    enemyMap: createFormationMap({ instances: enemyInstances }),
+    // REQ-0296: side-agnostic target binding. The standard encounter is
+    // player-vs-enemy: a player-map instance's opponents ARE the enemy actor list
+    // (entity included, exactly what the bp fire body read) and its allies are the
+    // player actors; an enemy-map instance mirrors that. SAME lists, SAME order as
+    // the hardcoded args they replace below -> byte-identical goldens.
+    playerMap: createFormationMap({ instances: playerInstances, opponents: () => enemyActorList(), allies: () => playerActors }),
+    enemyMap: createFormationMap({ instances: enemyInstances, opponents: () => playerActors, allies: () => enemyActors.map(e => e.actor) }),
     modeConfig: null, // s7.0: RESERVED. REQ-0259 populates it; nothing here reads it.
     fire: fireInstanceSlot,
     rollCooldownTicks: rollCooldownTicksFor,
@@ -904,6 +894,98 @@ function runEncounter(opts) {
   return { events, result, discoveredEntity, entity, attachments: attachments.map(a => ({ id: a.id, kind: a.kind, discovered: a.discovered, opened: (a.settled && a.kind !== 'trap' && a.hp <= 0), settled: a.settled })), attachmentRewards, doorShortcut, chargeState: chargeMgr ? chargeMgr.summary() : undefined };
 }
 
+// REQ-0296: the enemy/entity timed-fire body, lifted VERBATIM out of
+// fireInstanceSlot's else-branch so BOTH the standard encounter (runEncounter)
+// AND the headless monster arena drive the SAME logic -- side-agnostic by
+// construction (targets are inst.opponents()/inst.allies(), never provenance).
+// ctx = the runEncounter-local seam the body reads. dispatchDefensive, chargeMgr
+// and feedCharge are player-side machinery: inert for monster-vs-monster (no
+// troopPos, null chargeMgr), so the arena passes a no-op dispatchDefensive and
+// null chargeMgr. KNOWN LIMITATION (REQ-0296): the struck group's OnSquadBeenHit
+// reactive retaliation is dispatched ONLY in the bp fire body, so pure enemy-vs-
+// enemy does not retaliate -- generalising that dispatch is phase-2.
+function fireEnemyInstanceSlot(inst, cd, ctx) {
+  const { rng, events, seq, t, simTick, LEAD_TICKS, tickT, dispatchDefensive, chargeMgr, feedCharge } = ctx;
+  const s = cd;
+  const raw = inst.raw;
+  const attackProfile = s.effect.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
+  const attacker = { fieldCells: raw.fieldCells, ownerId: s.ownerId, bonusVsStatus: raw.bonusVsStatus || [], selfActor: inst.actor };
+  if (s.effect.verb && s.effect.verb.t === 'heal_ally') {
+    // REQ-0203: enemy SUPPORT skill -- NO ray at the opposing field. Heal the
+    // lowest-HP living pack ally (self only if alone); target is deterministic
+    // (selectHealAllyTarget), the amount rolls from an isolated named stream.
+    const target = selectHealAllyTarget(inst.actor, inst.allies()); // REQ-0296: own-side list (enemy-map -> enemyActors' actors, same order)
+    if (target) {
+      const healN = rng.stream(effectStreamName(s.ownerUid, s.effIdx) + '/' + t + '/heal_ally').range(s.effect.verb.n[0], s.effect.verb.n[1]);
+      const hpBefore = target.hp();
+      target.heal(healN);
+      events.push({ t, seq: seq.nextSeq(), ev: 'heal_ally', src: s.ownerId, dst: target.id, amount: healN, hp_before: hpBefore, hp_after: target.hp() });
+    }
+  } else {
+    events.push({ t: tickT(Math.max(0, simTick - LEAD_TICKS)), seq: seq.nextSeq(), ev: 'telegraph', src: s.ownerId, skill: s.effect.verb.t, edge: (attackProfile.edge || ['top'])[0], fires_at: t });
+    const rayEvents = [];
+    const fr = fireSkillRay({
+      attacker, attackProfile, verbEff: s.effect, mode: 'battle', skill: raw && raw.skillIds && raw.skillIds[s.effIdx], // REQ-0280
+      targetActors: inst.opponents(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' }, // REQ-0296: enemy-map instance's opponents (standard -> playerActors; label kept 'player' for golden parity)
+      rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + t, events: rayEvents, aoeStatuses: !!attackProfile.aoe_statuses,
+    });
+    for (const re of rayEvents) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+    // REQ-0078 reactive (offensive rider): this monster's OnHit/OnSquadHit
+    // skills fire on each opposing actor its attack just directly hit
+    // (OnHit == OnSquadHit for a flat monster squad); isolated RNG.
+    const reactOff = [];
+    for (const sk of (raw.skills || [])) {
+      if (!sk.trigger || (sk.trigger.t !== 'OnHit' && sk.trigger.t !== 'OnSquadHit')) continue;
+      (fr.landedHits || []).forEach((lh, li) => {
+        const rs = rng.stream('reactive/' + sk.trigger.t + '/' + s.ownerUid + '/' + t + '/' + li);
+        applyReactiveVerbToTarget(sk.verb, inst.actor, lh.actor, rs, reactOff, sk.trigger.t);
+      });
+    }
+    for (const re of reactOff) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+    const playerDef = [];
+    dispatchDefensive((fr.landedHits || []).map(lh => lh.actor), t, playerDef);
+    for (const re of playerDef) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+    // REQ-0297: faction-neutral struck-group defensive dispatch. dispatchDefensive
+    // (above) fires the struck PLAYER side's OnBPBeenHit/OnSquadBeenHit; it is inert
+    // for a struck MONSTER group (no troopPos / no-op in the arena). So when this
+    // enemy fire lands on OTHER ENEMIES (pure monster-vs-monster), fire each struck
+    // monster's OWN OnSquadBeenHit retaliation at the FIRING instance's allies (the
+    // attacker's group -- inst.allies(), driven by map membership, never a hardcoded
+    // side). MIRRORS the bp fire body's struck-enemy retaliation exactly (same event
+    // shape, same 'reactive/OnSquadBeenHit/<ownerId>/<t>' stream). GATED on
+    // kind==='enemy': in the standard enemy->player path every struck actor is a BP,
+    // so this loop body never runs and emits ZERO events -> goldens byte-identical.
+    const structDef = [];
+    for (const lh of (fr.landedHits || [])) {
+      const struck = lh.actor;
+      if (!struck || struck.kind !== 'enemy' || !struck.alive) continue;
+      const draw = struck.ref || {};
+      (draw.skills || []).forEach((sk, ski) => {
+        if (!sk.trigger || sk.trigger.t !== 'OnSquadBeenHit') return;
+        const ap = sk.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
+        structDef.push({ ev: 'reactive_proc', trigger: 'OnSquadBeenHit', verb: sk.verb.t, src: draw.ownerId });
+        fireSkillRay({
+          attacker: { fieldCells: draw.fieldCells, ownerId: draw.ownerId + '#react', bonusVsStatus: draw.bonusVsStatus || [] },
+          attackProfile: ap, verbEff: sk, mode: 'battle', skill: draw.skillIds && draw.skillIds[ski],
+          targetActors: inst.allies(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
+          rng, streamPrefix: 'reactive/OnSquadBeenHit/' + draw.ownerId + '/' + t,
+          events: structDef, aoeStatuses: !!ap.aoe_statuses,
+        });
+      });
+    }
+    for (const re of structDef) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+    if (chargeMgr) {
+      // REQ-0200: an opposing BP taking a direct enemy hit feeds OnBPBeenHit on that
+      // BP + on_connected_unit_bp_been_hit on its linked BPs.
+      for (const lh of (fr.landedHits || [])) {
+        if (lh.actor && lh.actor.kind === 'bp') feedCharge({ type: 'bp_damaged', bpId: lh.actor.id, amount: lh.amount }, t);
+      }
+      // REQ-0200 real-actor: reflect_damage pct of each hit onto the attacker.
+      chargeMgr.onDefensiveLanded(inst.actor, fr.landedHits || [], t);
+    }
+  }
+}
+
 function tickAndEmit(actor, t, events, onHeal) {
   const ticks = tickStatuses(actor.statusBag, TUNABLES.STATUS_TICK_PERIOD_SECS);
   for (const tk of ticks) {
@@ -940,6 +1022,7 @@ function bonusVsStatusForOwnerUid(ownerUid, troopPos, troopBps) {
 
 module.exports = {
   runEncounter,
+  fireEnemyInstanceSlot, // REQ-0296: shared enemy timed-fire body (also drives the monster arena)
   tickAndEmit,
   unionCells,
   playerActorsInSameBpAs,

@@ -48,7 +48,7 @@
   "date": "2026-07-15",
   "files": {
    "dungeon.json": "b78b1c5c03640278dad6b1956aa41d25cf821d29e0a5bda2879553733a3f9f00",
-   "dungeons.json": "346d8c590799556fc9129a5f48403bf726ed139187342f5219b8fea93c9240b2",
+   "dungeons.json": "df1da3f52fbab09d7136b30f55e54fdb727a4d020898f3ef5e3279c18064f1f5",
    "enemies.json": "7384eee5b1f21edadc170634ee91012770aa082b9b8001f988bea6555f722c6b",
    "packs.json": "c1a4e2f8ae51dcd349f639f06bf605a96e3ea9daae366770cef0a9e7c0c002e3",
    "skills.json": "622ae17e12ed43f2819ffc3d41818e5e3530f356bfdd7ad0f51a895d1d8f1bb3",
@@ -220,8 +220,20 @@
    "files": {
     "enemies.json": "895df7698b2ef5afcfa33f4baa8a9c218e41031e18d3cd43dc26eae62d0f14e4",
     "skills.json": "2b08ef4abf90268dc52d8e138f2fbf953382d2ed97ea904f6ba58d80060d7018",
-    "packs.json": "60b4d7b6340ff178a7c47312f3aba0671c5e87bbdfb09f9ebac265553f8dfed0"
+    "packs.json": "5ae9c79127eaa33e5cf0eec81ddc714820deaff9ff49e285a0ff9e9223405653"
    }
   }
- ]
+ ],
+ "powerlevel_calibrated_from": {
+  "note": "REQ-0297: sha256 of the level-affecting live files at the last powerLevel autobalance. --check is dirty when live differs.",
+  "date": "2026-07-24",
+  "alpha": 0.7,
+  "loops": 8,
+  "seeds": 6,
+  "files": {
+   "enemies.json": "895df7698b2ef5afcfa33f4baa8a9c218e41031e18d3cd43dc26eae62d0f14e4",
+   "skills.json": "2b08ef4abf90268dc52d8e138f2fbf953382d2ed97ea904f6ba58d80060d7018",
+   "packs.json": "5ae9c79127eaa33e5cf0eec81ddc714820deaff9ff49e285a0ff9e9223405653"
+  }
+ }
 }

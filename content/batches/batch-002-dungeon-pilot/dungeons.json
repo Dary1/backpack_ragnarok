@@ -9,6 +9,7 @@
       "i18n": { "en": { "name": "Niflheim Depths" }, "ja": { "name": "ニヴルヘイムの深層" } },
       "theme": "frost",
       "levelMin": 1,
+      "baseDifficulty": 1,
       "levelMax": 8,
       "dive": {
         "packEncounters": { "base": 3, "perLevels": 3, "max": 6 },
@@ -41,6 +42,7 @@
       "i18n": { "en": { "name": "Grave Hollows" }, "ja": { "name": "墓所の窪み" } },
       "theme": "grave",
       "levelMin": 4,
+      "baseDifficulty": 15,
       "levelMax": 14,
       "dive": {
         "packEncounters": { "base": 3, "perLevels": 3, "max": 6 },
@@ -65,6 +67,7 @@
       "i18n": { "en": { "name": "Beastreach Wilds" }, "ja": { "name": "獣境の荒野" } },
       "theme": "wild",
       "levelMin": 8,
+      "baseDifficulty": 16,
       "levelMax": 20,
       "dive": {
         "packEncounters": { "base": 4, "perLevels": 4, "max": 6 },
