@@ -25,7 +25,7 @@
 // pulse converging on the player field. ALL transient FX live in
 // monitorFx.ts (glow budget + reduced-motion/webdriver gating); the `silent`
 // apply path spawns none of them.
-import { Application, Container, Graphics, Text, type Texture } from 'pixi.js';
+import { Application, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import type { ApiRunEvent, ApiRunRoster } from '../api';
 import type { ChimeSink } from './chimes/chimeMapping';
 import { cellIdToXY, FIELD_COLS, FIELD_ROWS, parseBoxToPixelRect, type RawCell } from './fieldGeometry';
@@ -35,11 +35,17 @@ import { poBoxPx } from '../board/squadCellGeom'; // REQ-0286: shared cell->px c
 import type { Offset } from '../engine/engine.d.ts';
 import { EnemyPlane } from './monitorActors';
 import { MJ } from './monitorTheme';
-import { gimicGlyph } from './monitorGlyphs';
-import { MonitorFx } from './monitorFx';
+import { gimicGlyph, skillGlyph } from './monitorGlyphs';
+import { MonitorFx, FX_MODE } from './monitorFx';
 // REQ-0280 P3: per-skill ray/hit VFX-art resolver (composed-name chain, direct
 // /api/art fetch, per-NAME cache incl. null misses -- see monitorVfxArt.ts).
 import { resolveVfxTexture, peekVfxTexture } from './monitorVfxArt';
+// REQ-0292 P2: pt-clock ramp store, skill-icon texture cache, sweep/wedge draw
+// primitives, and the presentation-time helper (pt of an event).
+import { RampStore } from './monitorRamps';
+import { resolveSkillTexture, peekSkillTexture } from './monitorSkillArt';
+import { sweepPie, sweepRectMasked } from './monitorHud';
+import { ptOfEvent } from './monitor/pacingClient';
 import { t } from '../i18n';
 import type { Locale } from '../store';
 
@@ -232,6 +238,36 @@ export class MonitorRenderer {
    * ray_fire so ray_step (trail) and ray_hit (impact) resolve the SAME art. */
   private currentRayVfxKey: { skill: string | null; src: string | null } = { skill: null, src: null };
 
+  // ---- REQ-0292 P2: instance-HUD ramps (cooldown overlays / charge wedges / skill badges) ----
+  /** The pt-clock ramp store: STATE (not VFX) -- captured on every applyEvents
+   * (silent included), cleared by reset(), evaluated each frame at currentPt. */
+  private ramps = new RampStore();
+  /** Latest presentation-time playhead (ms), pushed by Monitor.setPlayhead each
+   * rAF; the persistent ramp ticker reads it. */
+  private currentPt = 0;
+  /** pacingVersion for ptOfEvent (paced runs carry pt; legacy fall back to t*1000).
+   * Defaults to 1 (paced is universal now) so the e2e seam captures pt directly. */
+  private pacingVersion = 1;
+  /** Set when a ramp is captured / on reset -- lets the reduced-motion mode redraw
+   * once on change instead of every frame (no animation churn). */
+  private rampsDirty = true;
+  /** Player-field annotation layer for the item-cooldown sweeps (above the squad
+   * visuals; re-attached per mountSquads since PO geometry lives in the slot boxes). */
+  private cooldownLayer = new Container();
+  /** Enemy-field annotation layer for the skill badges (above the gimic overlay). */
+  private skillBadgeLayer = new Container();
+  /** Per-slot unit-charge wedge slot: the seat-annotation Container the compositor
+   * reserved BEHIND the unit icon, its disc centre + radius, and a lazily-created
+   * pie. Keyed by squad slot index; rebuilt by mountSquads. */
+  private wedgeSlots = new Map<number, { container: Container; cx: number; cy: number; radius: number; pie?: Graphics }>();
+  /** Item-cooldown overlays keyed `${slot}|${src}` -- one masked pie per matching PO
+   * footprint box (built lazily, redrawn each frame, destroyed on reset/mount). */
+  private itemCooldownGfx = new Map<string, Array<{ pie: Graphics; mask: Graphics; box: { x: number; y: number; w: number; h: number } }>>();
+  /** Skill-badge STATE keyed `skill|${srcInst}|${skill}` -- always tracked (seam-
+   * readable even under `off`); the drawn badge objects live in skillBadges. */
+  private skillBadgeDefs = new Map<string, { srcInst: string; skill: string }>();
+  private skillBadges = new Map<string, { container: Container; ring: Graphics; sweep: Graphics; icon: Sprite | null; glyph: Text; skill: string }>();
+
   private constructor(app: Application, textures: Map<string, Texture>) {
     this.app = app;
     this.textures = textures;
@@ -263,6 +299,16 @@ export class MonitorRenderer {
     this.enemyOverlay = new Container();
     this.enemyOverlay.eventMode = 'none';
     this.enemyField.addChild(this.enemyOverlay);
+    // REQ-0292 P2: the skill-badge annotation layer sits above the gimic overlay;
+    // the cooldown layer is (re)attached to the player field by mountSquads.
+    this.skillBadgeLayer.eventMode = 'none';
+    this.enemyField.addChild(this.skillBadgeLayer);
+    this.cooldownLayer.eventMode = 'none';
+    // REQ-0292 P2: ONE persistent per-frame ramp ticker (the Pixi ticker already
+    // runs -- no per-event churn). NOT registered via addTicker(), so reset() never
+    // cancels it. Under `off` (webdriver) it is not added at all: ramp STATE is
+    // still tracked (seams assert it), only DRAWING is skipped.
+    if (FX_MODE !== 'off') this.app.ticker.add(this.tickRamps);
   }
 
   static async mount(canvas: HTMLCanvasElement, textures: Map<string, Texture>): Promise<MonitorRenderer> {
@@ -314,6 +360,19 @@ export class MonitorRenderer {
     this.locale = locale;
     this.enemyPlane.setLocale(locale === 'ja' ? 'ja' : 'en');
     for (const h of this.squadSlots.values()) this.refreshKoStamp(h);
+  }
+
+  /** REQ-0292 P2: push the presentation-time playhead (ms). Monitor.tsx calls this
+   * each rAF; the persistent ramp ticker evaluates cooldown/charge fractions
+   * against it. Cheap field set -- no drawing here. */
+  setPlayhead(pt: number): void {
+    this.currentPt = pt;
+  }
+
+  /** REQ-0292 P2: pacingVersion for ptOfEvent (paced runs carry a per-event pt;
+   * legacy runs replay on sim t*1000). */
+  setPacingVersion(v: number): void {
+    this.pacingVersion = typeof v === 'number' ? v : 1;
   }
 
   /** REQ-0240 test/inspection seam: enemy count the roster (M1) declared -- a
@@ -428,6 +487,14 @@ export class MonitorRenderer {
     // Keep the backdrop (child 0) + grid (child 1); clear prior squad visuals.
     while (this.playerField.children.length > 2) this.playerField.removeChildAt(2);
     this.squadSlots.clear();
+    // REQ-0292 P2: PO/seat geometry is rebuilt below, so drop the old ramp overlays
+    // (the STORE was already cleared by reset()); clear the DRAWN objects tied to
+    // the previous squad boxes and reset the wedge/cooldown layers.
+    for (const arr of this.itemCooldownGfx.values()) for (const o of arr) { o.pie.destroy(); o.mask.destroy(); }
+    this.itemCooldownGfx.clear();
+    this.wedgeSlots.clear();
+    if (this.cooldownLayer.parent) this.cooldownLayer.parent.removeChild(this.cooldownLayer);
+    this.cooldownLayer.removeChildren();
     for (const squad of squads) {
       const rect = parseBoxToPixelRect(squad.box, FIELD_CELL_PX);
       if (rect.w <= 0 || rect.h <= 0) {
@@ -471,7 +538,16 @@ export class MonitorRenderer {
           bps: squad.bps.map((bp) => ({ cells: bp.cells, seatCell: bp.seatCell ?? null, color: bp.color, unitId: bp.unitId })),
           pos: squad.icons.map((icon) => ({ shape: icon.shape, rot: icon.rot, origin: icon.origin, spriteKey: icon.textureKey, itemId: icon.itemId })),
         },
-        { cellPx: cellW, originX: rect.x, originY: rect.y, textures: this.textures, fillAlpha: 0.72, cellStrokeColor: MJ.void, cellStrokeAlpha: 0.55, cellStrokeWidth: 1 }
+        {
+          cellPx: cellW, originX: rect.x, originY: rect.y, textures: this.textures,
+          fillAlpha: 0.72, cellStrokeColor: MJ.void, cellStrokeAlpha: 0.55, cellStrokeWidth: 1,
+          // REQ-0292 P2: reserve the unit-charge wedge slot BEHIND the seat icon
+          // (compositor stays draw-only). Record the FIRST seated BP per squad slot.
+          onSeatAnnotation: (info) => {
+            if (this.wedgeSlots.has(squad.slotIndex)) return;
+            this.wedgeSlots.set(squad.slotIndex, { container: info.container, cx: info.center.x, cy: info.center.y, radius: info.radius });
+          },
+        }
       );
 
       const label = new Text({ text: squad.label, style: { fill: MJ.bone, fontSize: 10 } });
@@ -524,6 +600,8 @@ export class MonitorRenderer {
         icons: iconCells, pips, koStamp, koLabel, koPlate, charge: 0, ko: false, label: squad.label,
       });
     }
+    // REQ-0292 P2: the cooldown overlays draw ABOVE every squad's visuals.
+    this.playerField.addChild(this.cooldownLayer);
   }
 
   /** REQ-0276 B2: light N charge pips (0..4) on a squad plate; cleared (hidden)
@@ -877,6 +955,23 @@ export class MonitorRenderer {
             void resolveVfxTexture('hit', vfxSkill, vfxSrc);
           }
         }
+        // REQ-0292 P2: capture the cooldown RAMP (STATE -- runs silent too). The
+        // PRESENCE of cooldownTicks is the cadence discriminator (a re-arming fire);
+        // reactive/pulse/charge fires and one-shot trap volleys omit it and get NO
+        // overlay (they still FLASH below). Player fire keys by (slot, src) -> item
+        // overlay; enemy/gimic fire keys by (srcInst, skill) -> skill badge.
+        if (typeof ev.cooldownTicks === 'number') {
+          const pt0 = ptOfEvent(ev, this.pacingVersion);
+          if (typeof ev.slot === 'number' && typeof ev.src === 'string' && ev.src !== '?') {
+            this.ramps.setCooldown('item|' + ev.slot + '|' + String(ev.src).split('#')[0], pt0, ev.cooldownTicks);
+            this.rampsDirty = true;
+          } else if (typeof ev.srcInst === 'string' && typeof ev.skill === 'string') {
+            const badgeKey = 'skill|' + ev.srcInst + '|' + ev.skill;
+            this.ramps.setCooldown(badgeKey, pt0, ev.cooldownTicks);
+            this.skillBadgeDefs.set(badgeKey, { srcInst: ev.srcInst, skill: ev.skill });
+            this.rampsDirty = true;
+          }
+        }
         // REQ-0276 C1: element colour by origin (the wire carries none) --
         // frost = our volley crossing to the enemy field, ember = theirs
         // arriving on ours; a pulse payload overrides to gold at ray_step.
@@ -1009,6 +1104,12 @@ export class MonitorRenderer {
       case 'unit_charge_transfer':
       case 'unit_charge_shieldbreak': {
         if (typeof ev.slot === 'number') this.lightChargePips(ev.slot, ev.ev, ev, silent);
+        // REQ-0292 P2: capture the charge RAMP (STATE -- silent too). Only
+        // spend/stack/transform carry value+capacity(+rate); keyed by squad slot.
+        if (typeof ev.slot === 'number' && typeof ev.value === 'number' && typeof ev.capacity === 'number') {
+          this.ramps.setCharge(String(ev.slot), ptOfEvent(ev, this.pacingVersion), ev.value, ev.capacity, typeof ev.rate === 'number' ? ev.rate : null);
+          this.rampsDirty = true;
+        }
         break;
       }
       // REQ-0049 / REQ-0276 B1: gimic-attachment badges on the enemy field.
@@ -1201,6 +1302,16 @@ export class MonitorRenderer {
     // REQ-0276 C: cancelled tickers can never release their glow holds --
     // zero the budget alongside them.
     this.fx.resetBudget();
+    // REQ-0292 P2: ramps are STATE -- clear the store + every drawn overlay so a
+    // silent replay/seek rebuilds them from scratch (no stale cooldown/wedge/badge).
+    this.ramps.clear();
+    this.skillBadgeDefs.clear();
+    for (const b of this.skillBadges.values()) { if (!b.container.destroyed) b.container.destroy({ children: true }); }
+    this.skillBadges.clear();
+    for (const arr of this.itemCooldownGfx.values()) for (const o of arr) { if (!o.pie.destroyed) o.pie.destroy(); if (!o.mask.destroyed) o.mask.destroy(); }
+    this.itemCooldownGfx.clear();
+    for (const w of this.wedgeSlots.values()) w.pie?.clear();
+    this.rampsDirty = true;
     this.currentRayVfxKey = { skill: null, src: null }; // REQ-0280 P3
   }
 
@@ -1217,6 +1328,126 @@ export class MonitorRenderer {
    * the actor plane and art/HP wired. */
   getEnemyActors(): ReturnType<EnemyPlane['getActors']> {
     return this.enemyPlane.getActors();
+  }
+
+  /** REQ-0292 P2: the persistent per-frame ramp projection. `full` redraws every
+   * frame (smooth sweep); `reduced` redraws only on change (static fractions, no
+   * churn); `off` never runs (the ticker is not registered). */
+  private tickRamps = (): void => {
+    if (FX_MODE === 'reduced' && !this.rampsDirty) return;
+    this.rampsDirty = false;
+    const pt = this.currentPt;
+    this.drawItemCooldowns(pt);
+    this.drawChargeWedges(pt);
+    this.drawSkillBadges(pt);
+  };
+
+  /** Item-cooldown overlay: a clockwise translucent-black sweep over each matching
+   * PO footprint box (masked to the box -- nothing displaced). Vanishes at ready. */
+  private drawItemCooldowns(pt: number): void {
+    for (const key of this.ramps.cooldownKeys()) {
+      if (!key.startsWith('item|')) continue;
+      const bar = key.indexOf('|', 5);
+      const slot = Number(key.slice(5, bar));
+      const src = key.slice(bar + 1);
+      const frac = this.ramps.cooldownFrac(key, pt);
+      let entry = this.itemCooldownGfx.get(key);
+      if (!entry) {
+        const h = this.squadSlots.get(slot);
+        if (!h) continue;
+        entry = [];
+        for (const ic of h.icons) {
+          if (ic.itemId.split('#')[0] !== src) continue;
+          const mask = new Graphics(); mask.eventMode = 'none';
+          const pie = new Graphics(); pie.eventMode = 'none';
+          pie.mask = mask;
+          this.cooldownLayer.addChild(mask); this.cooldownLayer.addChild(pie);
+          entry.push({ pie, mask, box: { x: ic.x, y: ic.y, w: ic.w, h: ic.h } });
+        }
+        this.itemCooldownGfx.set(key, entry);
+      }
+      for (const o of entry) sweepRectMasked(o.pie, o.mask, o.box.x, o.box.y, o.box.w, o.box.h, frac, MJ.void, 0.55);
+    }
+  }
+
+  /** Unit-charge wedge: a clockwise translucent fill BEHIND the unit icon within
+   * the seat disc area (REQ-0263 (l), never occludes the icon). Slot-keyed. */
+  private drawChargeWedges(pt: number): void {
+    for (const [slot, w] of this.wedgeSlots) {
+      const key = String(slot);
+      if (!this.ramps.hasCharge(key)) { w.pie?.clear(); continue; }
+      if (!w.pie) { w.pie = new Graphics(); w.pie.eventMode = 'none'; w.container.addChild(w.pie); }
+      sweepPie(w.pie, w.cx, w.cy, w.radius, this.ramps.chargeFrac(key, pt), MJ.gold, 0.32);
+    }
+  }
+
+  /** Monster/gimic skill badges: circle + skill_icon + clockwise translucent-black
+   * cooldown sweep, anchored at the owning instance's footprint (fixed offset --
+   * never displaced), stacked horizontally within the footprint width + truncated. */
+  private drawSkillBadges(pt: number): void {
+    const byInst = new Map<string, Array<{ key: string; skill: string }>>();
+    for (const [key, def] of this.skillBadgeDefs) {
+      const g = byInst.get(def.srcInst); if (g) g.push({ key, skill: def.skill }); else byInst.set(def.srcInst, [{ key, skill: def.skill }]);
+    }
+    const live = new Set<string>();
+    for (const [srcInst, defs] of byInst) {
+      const box = this.enemyPlane.instanceBox(srcInst);
+      if (!box) continue; // no roster actor (gimic / legacy) -> state tracked, no draw
+      defs.sort((a, b) => (a.skill < b.skill ? -1 : a.skill > b.skill ? 1 : 0));
+      const d = Math.max(9, Math.min(FIELD_CELL_PX * 0.95, Math.min(box.w, box.h) * 0.85));
+      const gap = 2;
+      const maxN = Math.max(1, Math.floor((box.w + gap) / (d + gap)));
+      for (let i = 0; i < defs.length && i < maxN; i++) {
+        const bx = box.x + i * (d + gap);
+        if (bx + d > FIELD_W) break; // never overflow the field
+        const by = box.y + 1; // fixed top-inside anchor (clear of the status/HP rows)
+        const badge = this.ensureSkillBadge(defs[i].key, defs[i].skill);
+        live.add(defs[i].key);
+        badge.container.x = bx; badge.container.y = by;
+        const r = d / 2;
+        badge.ring.clear();
+        badge.ring.circle(r, r, r).fill({ color: MJ.panel, alpha: 0.85 }).stroke({ color: MJ.borderLo, width: 1, alpha: 0.9 });
+        const tex = peekSkillTexture(defs[i].skill);
+        if (tex && badge.icon) {
+          badge.icon.texture = tex; badge.icon.visible = true; badge.glyph.visible = false;
+          const ib = d * 0.82;
+          badge.icon.width = ib; badge.icon.height = ib;
+          badge.icon.x = r - ib / 2; badge.icon.y = r - ib / 2;
+        } else {
+          if (badge.icon) badge.icon.visible = false;
+          badge.glyph.visible = true;
+          badge.glyph.style.fontSize = Math.max(8, d * 0.6);
+          badge.glyph.x = r; badge.glyph.y = r;
+        }
+        sweepPie(badge.sweep, r, r, r, this.ramps.cooldownFrac(defs[i].key, pt), MJ.void, 0.55);
+      }
+    }
+    for (const [key, b] of this.skillBadges) b.container.visible = live.has(key);
+  }
+
+  private ensureSkillBadge(key: string, skill: string): { container: Container; ring: Graphics; sweep: Graphics; icon: Sprite | null; glyph: Text; skill: string } {
+    const existing = this.skillBadges.get(key);
+    if (existing) return existing;
+    const container = new Container(); container.eventMode = 'none';
+    const ring = new Graphics(); ring.eventMode = 'none';
+    const icon = new Sprite(); icon.eventMode = 'none'; icon.visible = false;
+    const glyph = new Text({ text: skillGlyph(skill), style: { fill: MJ.bone, fontSize: 10 } });
+    glyph.anchor.set(0.5); glyph.eventMode = 'none';
+    const sweep = new Graphics(); sweep.eventMode = 'none';
+    container.addChild(ring); container.addChild(icon); container.addChild(glyph); container.addChild(sweep);
+    this.skillBadgeLayer.addChild(container);
+    const badge = { container, ring, sweep, icon, glyph, skill };
+    this.skillBadges.set(key, badge);
+    void resolveSkillTexture(skill); // warm the icon; the glyph shows until it lands
+    return badge;
+  }
+
+  /** REQ-0292 P2 e2e seam: read-only ramp snapshot at the current pt (cooldown +
+   * charge keys/fractions) plus the tracked skill-badge keys -- the structural
+   * assertion for "the overlay objects exist" without touching pixels. */
+  getRampsSnapshot(): { pt: number; cooldowns: Array<{ key: string; frac: number }>; charges: Array<{ key: string; value: number; capacity: number; frac: number }>; badges: string[] } {
+    const s = this.ramps.snapshot(this.currentPt);
+    return { pt: s.pt, cooldowns: s.cooldowns, charges: s.charges, badges: Array.from(this.skillBadgeDefs.keys()) };
   }
 
   destroy(): void {

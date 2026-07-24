@@ -126,11 +126,31 @@ function createChargeEngine(opts) {
       counter: 0, stacks: 0, transformed: false,
       lastEverySecFire: 0, spentThisTick: false,
       capacity: resolveRolledRange(spec.charge.capacity, rolls, spec.id + ':cap'),
+      // REQ-0292 (charge ramp wire): the resolved fill PERIOD (seconds per +1
+      // counter) for an every_secs charge, so the served spend/stack/transform
+      // event can carry a `rate` (1/period counts/sec) the client interpolates
+      // the charge wedge against the pt clock. null for event-driven triggers --
+      // their counter jumps on combat events, never a function of t, so there is
+      // no time-rate to publish (and no mid-ramp modifier exists; verified).
+      period: (spec.charge.trigger && spec.charge.trigger.t === 'every_secs')
+        ? resolveRolledRange(spec.charge.trigger.s, rolls, spec.id + ':secs') : null,
     };
   }
   const killed = new Set();          // enemyId set (on_kill dedup)
   let deferred = [];                 // ids whose grant_charge fill spends next tick
   const spendCount = {};             // id -> total spends (observability)
+
+  // REQ-0292 (charge ramp wire): the ramp-state snapshot merged onto every
+  // engine-emitted charge event, so the client can size the charge wedge from
+  // ground truth and (every_secs only) interpolate its fill against the pt clock.
+  //   value    = the instance counter at emit (0 right after a fire_on_full/
+  //              transform spend; the live counter on a passive_per_stack tick);
+  //   capacity = the per-instance ROLLED full mark (def range midpoint today;
+  //              REQ-0190 makes it a true per-instance roll -- either way the
+  //              client CANNOT derive it, which is why it rides the wire);
+  //   rate     = the every_secs fill in counts/sec (1/period); OMITTED for
+  //              event-driven triggers (no time-rate exists to publish).
+  const snap = (s) => { const o = { value: s.counter, capacity: s.capacity }; if (s.period > 0) o.rate = 1 / s.period; return o; };
 
   // ALL adjacency neighbours -- target resolution (units_connected / bp_connected /
   // selectors) reaches any linked BP, not only charge-bearing ones. The trigger-firing
@@ -173,7 +193,7 @@ function createChargeEngine(opts) {
       s.unitId = ch.transform_to;
       s.counter = 0;
       s.spentThisTick = true;
-      emit({ ev: 'unit_charge_transform', id: s.id, into: ch.transform_to });
+      emit(Object.assign({ ev: 'unit_charge_transform', id: s.id, into: ch.transform_to }, snap(s))); // REQ-0292: +value/capacity/rate?
       return;
     }
     // fire_on_full
@@ -207,7 +227,7 @@ function createChargeEngine(opts) {
       }
     }
     s.counter = 0;
-    emit({ ev: 'unit_charge_spend', id: s.id, spend: 'fire_on_full', effects: applied });
+    emit(Object.assign({ ev: 'unit_charge_spend', id: s.id, spend: 'fire_on_full', effects: applied }, snap(s))); // REQ-0292: +value/capacity/rate?
     // on_connected_unit_spend: linked units observe this spend (same cascade, bounded
     // by spentThisTick). NOT a grant_charge fill, so these may spend this tick.
     fireTrigger('on_connected_unit_spend', connected(s.id), undefined, work, depth + 1);
@@ -227,7 +247,7 @@ function createChargeEngine(opts) {
       if (s.charge.spend === 'passive_per_stack') {
         s.stacks = Math.min(Math.floor(s.counter), Math.floor(s.capacity));
         applyStanding(s);
-        emit({ ev: 'unit_charge_stack', id: s.id, stacks: s.stacks });
+        emit(Object.assign({ ev: 'unit_charge_stack', id: s.id, stacks: s.stacks }, snap(s))); // REQ-0292: +value/capacity/rate?
         continue;
       }
       if (s.charge.spend === 'transform') {

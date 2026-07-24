@@ -16,7 +16,8 @@
         "po",
         "si",
         "unit",
-        "vfx"
+        "vfx",
+        "skill_icon"
       ],
       "blocking": false
     },
@@ -57,7 +58,8 @@
       "kit_id": "si.subject_frame",
       "kit_version": "1",
       "applies_to": [
-        "si"
+        "si",
+        "skill_icon"
       ],
       "blocking": false
     },

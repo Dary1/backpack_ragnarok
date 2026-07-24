@@ -5,8 +5,8 @@
 // read-only; this copy only powers the live resolution display).
 import type { ArtworkDto } from '../api';
 
-export type Kind = 'po' | 'si' | 'unit' | 'monster' | 'bpskin' | 'custom' | 'gimic' | 'vfx';
-export const KINDS: Kind[] = ['po', 'si', 'unit', 'monster', 'bpskin', 'custom', 'gimic', 'vfx']; // REQ-0211: gimic == monster; REQ-0280/0264: vfx
+export type Kind = 'po' | 'si' | 'unit' | 'monster' | 'bpskin' | 'custom' | 'gimic' | 'vfx' | 'skill_icon';
+export const KINDS: Kind[] = ['po', 'si', 'unit', 'monster', 'bpskin', 'custom', 'gimic', 'vfx', 'skill_icon']; // REQ-0211: gimic == monster; REQ-0280/0264: vfx; REQ-0292: skill_icon (256x256 icon, no shape/role)
 
 // REQ-0179: ComfyUI flux2-latent max (mirror of art_sizing.cjs MAX_RESOLUTION).
 export const MAX_RES = 16384;
@@ -31,6 +31,7 @@ export function maskCellCount(mask: boolean[][]): number {
  * cells -> 256x768 etc.). */
 export function deriveSizeClient(kind: Kind, mask: boolean[][], mw: number, mh: number, cw = 1024, ch = 1024, role: 'ray' | 'hit' = 'ray'): { width: number; height: number } {
   if (kind === 'si') return { width: 256, height: 256 };
+  if (kind === 'skill_icon') return { width: 256, height: 256 }; // REQ-0292: locked 256x256 icon (like si)
   if (kind === 'unit') return { width: 512, height: 512 };
   if (kind === 'bpskin') return { width: 1024, height: 1024 };
   if (kind === 'vfx') return role === 'hit' ? { width: 256, height: 256 } : { width: 256, height: 64 }; // REQ-0280/0264: ray 4:1 strip / hit 1:1 burst
@@ -50,6 +51,7 @@ export function defaultTemplate(kind: Kind): string {
   if (kind === 'monster' || kind === 'gimic') return '{main_object}, white background'; // REQ-0211
   if (kind === 'custom') return '{main_object}';
   if (kind === 'vfx') return '{main_object}'; // REQ-0280/0264: role-specific style applied server-side
+  if (kind === 'skill_icon') return '{main_object}'; // REQ-0292: icon prompt-template ruling is P3's (Fable)
   return '';
 }
 

@@ -60,6 +60,7 @@
 .aa-kind--bpskin { color: var(--r-epic); border-color: var(--r-epic); }
 .aa-kind--custom { color: var(--gold-hi); border-color: var(--gold-lo); } /* REQ-0179 */
 .aa-kind--vfx { color: var(--frost); border-color: var(--frost-lo); } /* REQ-0280/0264 */
+.aa-kind--skill_icon { color: var(--gold-hi); border-color: var(--frost-lo); } /* REQ-0292 */
 .aa-res-inputs { display: flex; gap: 8px; } /* REQ-0179 custom W x H row */
 .aa-res-inputs .aa-field { flex: 1; }
 .aa-adopt-badge {

@@ -112,6 +112,12 @@ export interface ComposeOpts {
   /** Called when an async bp-skin raster finishes decoding, so a live caller
    * can repaint. Omit for a one-shot draw (skin then paints only if cached). */
   onSkinReady?: () => void;
+  /** REQ-0292: OPTIONAL per-seat annotation hook. drawUnitSeat inserts an empty
+   * Container in board z-order BETWEEN the core disc and the unit icon sprite, so a
+   * live annotation (the unit-charge wedge) fills the seat-disc background BEHIND
+   * the icon without ever occluding it (REQ-0263 (l)), then calls this with the seat
+   * geometry. Draw-only: the compositor only reserves the correctly-ordered slot. */
+  onSeatAnnotation?: (info: { bp: CompositorBP; center: { x: number; y: number }; radius: number; container: Container }) => void;
 }
 
 /** Absolute px of a cell's top-left corner (board canon: origin + (c-1)*cellPx). */
@@ -260,6 +266,15 @@ function drawUnitSeat(container: Container, bp: CompositorBP, o: ComposeOpts): v
     .stroke({ color: o.discStroke ?? DEFAULT_DISC_STROKE, width: Math.max(1, r * 0.06), alpha: 0.9 });
   core.eventMode = 'none';
   container.addChild(core);
+
+  // REQ-0292: reserve the seat-annotation slot (behind the icon, above the disc)
+  // so a live wedge fills the disc background BEHIND the unit icon (REQ-0263 (l)).
+  if (o.onSeatAnnotation) {
+    const seatAnno = new Container();
+    seatAnno.eventMode = 'none';
+    container.addChild(seatAnno);
+    o.onSeatAnnotation({ bp, center: { x: cx, y: cy }, radius: r, container: seatAnno });
+  }
 
   const res = resolveUnitIcon(
     {

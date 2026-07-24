@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import art_route as ROUTE
 import art_style as STYLE
 import art_shape as SHAPE
-KIND_TO_STYLE = {"po": "item", "si": "item", "unit": "unit", "monster": "monster", "vfx": "vfx"}  # REQ-0280/0264
+KIND_TO_STYLE = {"po": "item", "si": "item", "unit": "unit", "monster": "monster", "vfx": "vfx"}  # REQ-0280/0264; vfx + skill_icon route to their dedicated grammars in compose_prompt (REQ-0280 P4 / REQ-0292 P3), never through a KIND_TEMPLATE
 
 
 def po_shape_mask(job):
@@ -113,6 +113,17 @@ def compose_prompt(job):
         # entity kinds' style/background injection) -- the composed subject IS
         # the final prompt. style_override above still wins when present.
         return subject, subject
+    if kind == "skill_icon":
+        # REQ-0292 P3 (FINAL -- supersedes the P1 provisional item routing):
+        # 256x256 emblem grammar on a pure black ground, silhouette-first so it
+        # still reads at the badge's ~22 px draw size. The rulings (black
+        # ground, no runes/text, no outline, no baked glow) live with the style
+        # in art_style.py (SKILL_ICON_STYLE). The clause is the COMPOSED
+        # subject (prompt_template applied), same contract as vfx/bpskin.
+        clause = subject.strip()
+        if clause and not clause.endswith(","):
+            clause += ","
+        return subject, STYLE.skill_icon_prompt((clause + " ") if clause else "")
     return subject, STYLE.render(STYLE.KIND_TEMPLATE[KIND_TO_STYLE[kind]], prompt_subject)
 
 

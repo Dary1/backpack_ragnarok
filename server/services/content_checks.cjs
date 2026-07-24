@@ -624,6 +624,69 @@ function integrateCheck(kind, data, root) {
   return Object.assign({}, result, { applicable: true, content_live_unchanged: true });
 }
 
+// ---- 5. formation_fill (REQ-0300: the 30% rule as an admincontent warning) --
+//
+// REQ-0300 (user 2026-07-24: "put this 30% constraint into the admincontent
+// WARNING system"). A monster_pack/1 whose formation fills < FILL_MIN (30%) of
+// the enemy placeable area becomes a LIVE admincontent warning: a not-ok
+// `formation_fill` check row that lowers `overall`, rendered by the contentadmin
+// UI exactly like every other runChecks row (no new UI). The rule and its math
+// are REQ-0298's sim/lib/pack_formation.cjs (packFill + FILL_MIN) measured over
+// the SAME placeable area sim/lib/field.cjs defines -- REUSED, never re-derived,
+// so a field resize or a FILL_MIN re-tune moves the checker with the sim.
+//
+// ADDITIVE, not a weakening: schema_vocab (geometry + references) and
+// engine_types (member field types) are untouched -- a pack can be geometrically
+// perfect and still warn here for being too sparse. GIMIC content is a different
+// KIND and is never passed to this branch, so it is naturally exempt with no
+// per-pack flag (the REQ-0298 doctrine carried through). PURE / DB-free.
+
+/** The formation_fill row for an ALREADY-resolved pack (members -> enemy defs)
+ * over a given placeable-cell count. Split out so a test can pin the exact
+ * FILL_MIN boundary with a synthetic roster + count (the live field is 384,
+ * where 30% is non-integer). fillFrac >= FILL_MIN passes -- the fail test is a
+ * strict `<`, matching pack_formation.inspectPacks. */
+function _formationFillResult(data, enemyDefsById, placeableCells) {
+  const { FILL_MIN, packFill } = require(path.join(repoRoot(), 'sim', 'lib', 'pack_formation.cjs'));
+  const f = packFill(data, enemyDefsById, placeableCells);
+  const pct = (f.fillFrac * 100).toFixed(1);
+  const min = Math.round(FILL_MIN * 100);
+  if (f.fillFrac < FILL_MIN) {
+    return { ok: false, applicable: true,
+      detail: 'formation fill ' + pct + '% (' + f.occupiedCells + '/' + f.placeableCells + ') < ' + min
+        + '% minimum -- add monsters (boss packs: boss + entourage); gimic exempt' };
+  }
+  return { ok: true, applicable: true,
+    detail: 'formation fill ' + pct + '% (' + f.occupiedCells + '/' + f.placeableCells + ') >= ' + min + '% minimum' };
+}
+
+/** REQ-0300 formation-fill machine check for ONE monster_pack. Resolves member
+ * footprints against content/live/dungeon/enemies.json with the SAME read/guard
+ * the monster_pack schema_vocab check uses, then measures fill over the live
+ * placeable area (sim/lib/field.cjs FIELD_ROWS x FIELD_COLS). Deterministic and
+ * DB-free. If the enemy roster is unreadable it degrades to an HONEST
+ * applicable:false (never throws): the fill rule is simply skipped, exactly as
+ * the schema_vocab read degrades; the unreadable file is already reported by
+ * schema_vocab, so overall still FAILs there without a misleading fill number. */
+function formationFillCheck(kind, data) {
+  if (kind !== 'monster_pack') {
+    return { ok: true, applicable: false,
+      detail: 'formation_fill not applicable for ' + kind + ' (only monster_pack/1 has a field formation; gimic and every other kind are naturally exempt)' };
+  }
+  const { placeableCellsFor } = require(path.join(repoRoot(), 'sim', 'lib', 'pack_formation.cjs'));
+  const { FIELD_ROWS, FIELD_COLS } = require(path.join(repoRoot(), 'sim', 'lib', 'field.cjs'));
+  let enemyDefs;
+  try {
+    const enemies = loadJson(path.join(repoRoot(), 'content', 'live', 'dungeon', 'enemies.json'));
+    enemyDefs = {};
+    for (const e of (enemies.entries || [])) enemyDefs[e.id] = e;
+  } catch (e) {
+    return { ok: true, applicable: false,
+      detail: 'formation_fill n/a: cannot read content/live/dungeon/enemies.json to resolve member footprints (' + e.message + ')' };
+  }
+  return _formationFillResult(data, enemyDefs, placeableCellsFor(FIELD_ROWS, FIELD_COLS));
+}
+
 // ---- runner -------------------------------------------------------------
 
 /** Run all four machine checks on one variant's data. Pure of DB access
@@ -638,6 +701,10 @@ function runChecks(kind, schema_ref, data) {
   add('engine_types', engineTypesCheck(kind, data, root, dialect));
   add('gen_data', genDataCheck(kind, data, root));
   add('integrate', integrateCheck(kind, data, root));
+  // REQ-0300: the 30% formation-fill rule as a live admincontent warning row,
+  // ONLY for monster_pack (a different kind -- e.g. gimic -- never reaches it, so
+  // it is naturally exempt with no per-pack flag). A not-ok row lowers overall.
+  if (kind === 'monster_pack') add('formation_fill', formationFillCheck(kind, data));
   const overall = checks.every((c) => c.applicable === false || c.ok) ? 'PASS' : 'FAIL';
   return { checks, overall, dialect: dialect.name, schema_ref: vpath ? path.relative(root, vpath) : schema_ref, ran_at: new Date().toISOString() };
 }
@@ -835,6 +902,6 @@ if (require.main === module) {
   })().catch((e) => { console.error('FATAL', (e && e.stack) || e); process.exit(1); });
 }
 
-module.exports = { runChecks, _repoRoot: repoRoot, _contentLiveManifest: contentLiveManifest, _dialectFor: dialectFor, _DIALECTS: DIALECTS,
+module.exports = { runChecks, formationFillCheck, _formationFillResult, _repoRoot: repoRoot, _contentLiveManifest: contentLiveManifest, _dialectFor: dialectFor, _DIALECTS: DIALECTS,
   checkArtworkGeometry, defGeometry, artworkGeometry, sweepArtworkGeometry, ART_GEOM_CORPUS,
   _normCellSet, _maskCells, _rectCells, _setEq };
