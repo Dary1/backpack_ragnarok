@@ -112,3 +112,21 @@ Run content gates with `CONTENT_ROOT=$PWD/content`; goldens without.
   re-emits powerLevel (REQ-0297) for the grown packs, then ships. Coordinate with the user.
 - **REQ-0206** (batch-002 pack re-composition under art-authoritative footprints) remains separate and
   independent; frost packs here only gained members (no art-link changes).
+
+## Merged + deployed (2026-07-24)
+- **Merge** `5a680e3` into master (--no-ff). Gates on merged master: inspect `--gate` 14/14, goldens
+  byte-identical, run.cjs 184/0, req0203 15/0, req0207/0219 13/0, content_checks 69/0, api_test(pg) 194/0.
+- **powerLevel recalibrated** (user-approved 2026-07-24) — `autobalance --emit` (commit `635d55a`)
+  re-derived all 14 powerLevels for the grown content; `--check` now CLEAN. Because the frost packs gained
+  strong bodies (`frost_giant`), the relative (mean-conserved) calibration shifted the whole field:
+  frost packs rose (frost_scouts −15.53→+4.58, rime_choir −17.37→+3.90, bear_and_stalker −5.83→+7.00,
+  hrimgrimnir +4.85→+9.74) and the previously-strong packs fell (titan_ridge +12.88→+1.35,
+  deep_tide +10.32→−1.48, demon_gate +9.51→−2.51, bone_court +6.06→−1.62) — the dungeon difficulty curve
+  flattened, which the user explicitly accepted. The `--emit` FLAG stands: batch-005/006/007 SOURCE
+  packs.json powerLevel is unsynced (pre-existing since REQ-0297; sync on a future byte-lossless re-promotion).
+- **Deployed** — `backpack-api` (systemd --user) RESTARTED; `/api/health` ok; `/api/schedule/dungeons`
+  serves `niflheim_depths` (boss `pack_hrimgrimnir`). Served snapshot: frost_scouts 16 members / pL 4.5769,
+  hrimgrimnir 15 / 9.7372, titan_ridge 4 (unchanged) / 1.3462, grave_shamble 10 / −5.609. The formation-fill
+  admincontent warning is cleared for all 14 packs (`inspect --gate` OK on the live file).
+- Status: **done** (merged + deployed + live-verified). REQ-0206 (frost art-authoritative footprints) remains
+  a separate follow-up.
