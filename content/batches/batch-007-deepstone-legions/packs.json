@@ -20,10 +20,38 @@
       "name": "Petrifying Court",
       "i18n": { "en": { "name": "Petrifying Court" }, "ja": { "name": "石化の宮廷" } },
       "members": [
-        { "enemy": "stone_golem", "at": "B5" },
-        { "enemy": "medusa", "at": "H4" },
-        { "enemy": "cockatrice", "at": "H10" },
-        { "enemy": "lamia", "at": "M7" }
+        {
+          "enemy": "stone_golem",
+          "at": "B2"
+        },
+        {
+          "enemy": "stone_golem",
+          "at": "F2"
+        },
+        {
+          "enemy": "medusa",
+          "at": "J2"
+        },
+        {
+          "enemy": "medusa",
+          "at": "N2"
+        },
+        {
+          "enemy": "lamia",
+          "at": "R2"
+        },
+        {
+          "enemy": "cockatrice",
+          "at": "V2"
+        },
+        {
+          "enemy": "cockatrice",
+          "at": "J6"
+        },
+        {
+          "enemy": "cockatrice",
+          "at": "M6"
+        }
       ],
       "note": "Stun engine: medusa (petrifying_glare) and cockatrice (petri_peck) petrify the squad, then stone_golem (seismic_fist) converts Stun via bonus_vs_status x1.5 while lamia sustains with serpents_kiss lifesteal and softens with beguiling_song Weakness."
     },
@@ -32,11 +60,42 @@
       "name": "Greenskin Warband",
       "i18n": { "en": { "name": "Greenskin Warband" }, "ja": { "name": "緑肌の戦団" } },
       "members": [
-        { "enemy": "ogre", "at": "B6" },
-        { "enemy": "orc_warrior", "at": "G3" },
-        { "enemy": "goblin", "at": "G9" },
-        { "enemy": "kobold", "at": "G14" },
-        { "enemy": "goblin_shaman", "at": "L7" }
+        {
+          "enemy": "troll",
+          "at": "B2"
+        },
+        {
+          "enemy": "ogre",
+          "at": "F2"
+        },
+        {
+          "enemy": "ogre",
+          "at": "J2"
+        },
+        {
+          "enemy": "orc_warrior",
+          "at": "N2"
+        },
+        {
+          "enemy": "orc_warrior",
+          "at": "Q2"
+        },
+        {
+          "enemy": "orc_warrior",
+          "at": "T2"
+        },
+        {
+          "enemy": "goblin",
+          "at": "W2"
+        },
+        {
+          "enemy": "kobold",
+          "at": "F6"
+        },
+        {
+          "enemy": "goblin_shaman",
+          "at": "I6"
+        }
       ],
       "note": "Swarm tempo + sustain + Weakness convert: fast goblin/kobold spears and the ogre anchor pressure the line, goblin/goblin_shaman apply Weakness (goblin_jeer, hex_bolt) which orc_warrior (brutal_cleave) cashes in via bonus_vs_status x1.5, while goblin_shaman heals the lowest ally with crude_mending (heal_ally)."
     },
