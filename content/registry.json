@@ -220,7 +220,7 @@
    "files": {
     "enemies.json": "895df7698b2ef5afcfa33f4baa8a9c218e41031e18d3cd43dc26eae62d0f14e4",
     "skills.json": "2b08ef4abf90268dc52d8e138f2fbf953382d2ed97ea904f6ba58d80060d7018",
-    "packs.json": "5ae9c79127eaa33e5cf0eec81ddc714820deaff9ff49e285a0ff9e9223405653"
+    "packs.json": "764c77449f67d6830191087f3858dece2ea6fa12384565783701b87380f60817"
    }
   }
  ],
@@ -231,9 +231,9 @@
   "loops": 8,
   "seeds": 6,
   "files": {
-   "enemies.json": "895df7698b2ef5afcfa33f4baa8a9c218e41031e18d3cd43dc26eae62d0f14e4",
-   "skills.json": "2b08ef4abf90268dc52d8e138f2fbf953382d2ed97ea904f6ba58d80060d7018",
-   "packs.json": "5ae9c79127eaa33e5cf0eec81ddc714820deaff9ff49e285a0ff9e9223405653"
+   "enemies.json": "d80e9e6546f8272e39a17bca3c081f7ee25f55de500449fdc7b150c30efc343a",
+   "skills.json": "3f498f26f74741ebfcd7df2ee274ddddb31c83b683d37010c6448c8539860738",
+   "packs.json": "764c77449f67d6830191087f3858dece2ea6fa12384565783701b87380f60817"
   }
  }
 }
