@@ -204,9 +204,17 @@ test.describe('REQ-0057 ray forecast overlay', () => {
   });
 
   test('the formation picker ranks the four slots by expected pressure', async ({ page }) => {
-    await page.goto('/app/#/schedule');
-    // REQ-0057's other half: "works on both the canvas editor and the
-    // formation picker (per-slot summary = which squad slot eats the most)".
+    // REQ-0307: REQ-0239 moved the per-slot pressure summary off #/schedule and onto the
+    // sortie DungeonDossier (SlotPressureSummary renders in src/sortie/DungeonDossier.tsx).
+    // Boot, open the sortie page, and pick a dungeon so the dossier -- hence the slot
+    // summary -- is present. It runs over the formation GEOMETRY (empty field), so no
+    // deployed squad is needed. REQ-0057's other half: "the formation picker (per-slot
+    // summary = which squad slot eats the most)".
+    await bootApp(page);
+    await page.goto('/app/#/sortie');
+    await expect(page.locator('[data-testid="sortie-page"]')).toBeVisible({ timeout: 15000 });
+    await page.locator('[data-testid="sortie-dungeon-card-niflheim_depths"]').click();
+    await expect(page.locator('[data-testid="sortie-dossier"]')).toBeVisible({ timeout: 10000 });
     const summary = page.locator('[data-testid="slot-pressure"]');
     await expect(summary).toBeVisible({ timeout: 15000 });
 
@@ -226,7 +234,7 @@ test.describe('REQ-0057 ray forecast overlay', () => {
 
     // Switching formation re-ranks it.
     const before = means.join(',');
-    await page.locator('[data-testid="schedule-formation-select"]').selectOption('formation4');
+    await page.locator('[data-testid="sortie-formation-select"]').selectOption('formation4');
     await expect.poll(
       async () => (await page.locator('[data-testid="slot-pressure"] .slot-pressure-row')
         .evaluateAll((els) => els.map((el) => el.getAttribute('data-mean')))).join(','),
