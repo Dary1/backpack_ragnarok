@@ -139,3 +139,12 @@ implementation:
 - Gap wording: `levelMin` IS used today (count-scaling floor, schema, serving payload, UI lock chip) -- just never
   as a random-draw gate. No new e2e harness is added -> the 5000+3040+idx port rule is N/A.
 Status unchanged (`todo`): still ready to implement, now with the above decisions pinned.
+
+## Deploy / outcome (2026-07-25)
+Merged to master (b7fd923) on green master (REQ-0307). No content deploy / migration needed (drawSeed rides the
+room jsonb; the 2nd api-test dungeon is test-only). Client dist (web/app) rebuilt on the merged tree. backpack-api
+restarted (systemctl --user) -- clean startup ("listening on 8802"), no errors. Live-verified: GET
+/api/schedule/dungeons serves; web 8801 = 200; public tunnel https://backpack-dev.qtie.jp/app/ = 200. Post-merge
+sanity on master: goldens byte-identical, api_test(files) green, s4 14/0. Full scoped ci.sh was CI GREEN on the
+merged tree (worktree req-0304). NOTE: the pre-entry per-slot pressure preview (SlotPressureSummary) is removed by
+the ratified random-draw design; a post-entry re-homing against the DRAWN dungeon is a possible follow-up.
