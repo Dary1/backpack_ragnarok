@@ -405,19 +405,27 @@ test.describe('Reward LRDST reaching warehouse', () => {
         // "combat drift silently reddens an e2e fixture" class is REQ-0222's
         // remaining scope (e2e-harness-load-resilience), not this REQ. Uids stay
         // per-tag-unique so the REQ-0045 same-room deploy gate still passes.
+        // REQ-0307: the REQ-0279 loadout (berserker + 12 mixed starter weapons, 5x5,
+        // hp120) that won 500/500 under REQ-0256 combat now WIPES under the shipped
+        // REQ-0293/0297 per-pack enemy scaling. Per the guard above, RE-TUNED HERE (a
+        // stronger loadout, not a weakened gate): berserker + 12 war_picks (the highest-
+        // DPS starter weapon, strike [20,30]) on a 7x7 BP, hpMax 1000. MEASURED via real
+        // sim/combat.cjs runDungeon over the AUTHORED niflheim_depths (8 encounters, a
+        // superset of the rolled dive): 80/80 wins at L1 AND 40/40 at L3 vs the current
+        // scaling. settleRun's wipe->zero-rewards law is untouched.
         const arms: Array<{ id: string; cell: number[]; rot: number }> = [
-          { id: 'training_blade', cell: [2, 3], rot: 0 }, { id: 'hand_axe', cell: [2, 4], rot: 0 },
-          { id: 'war_pick', cell: [2, 5], rot: 0 }, { id: 'sling_stone', cell: [2, 6], rot: 0 },
-          { id: 'training_blade', cell: [3, 2], rot: 0 }, { id: 'hand_axe', cell: [4, 3], rot: 0 },
-          { id: 'war_pick', cell: [4, 4], rot: 0 }, { id: 'sling_stone', cell: [4, 5], rot: 0 },
-          { id: 'training_blade', cell: [4, 6], rot: 0 }, { id: 'hand_axe', cell: [5, 2], rot: 0 },
-          { id: 'war_pick', cell: [6, 3], rot: 1 }, { id: 'sling_stone', cell: [6, 5], rot: 1 },
+          { id: 'war_pick', cell: [2, 2], rot: 0 }, { id: 'war_pick', cell: [4, 2], rot: 0 },
+          { id: 'war_pick', cell: [6, 2], rot: 0 }, { id: 'war_pick', cell: [2, 3], rot: 0 },
+          { id: 'war_pick', cell: [4, 3], rot: 0 }, { id: 'war_pick', cell: [6, 3], rot: 0 },
+          { id: 'war_pick', cell: [2, 4], rot: 0 }, { id: 'war_pick', cell: [4, 4], rot: 0 },
+          { id: 'war_pick', cell: [6, 4], rot: 0 }, { id: 'war_pick', cell: [2, 5], rot: 0 },
+          { id: 'war_pick', cell: [4, 5], rot: 0 }, { id: 'war_pick', cell: [6, 5], rot: 0 },
         ];
         const shape: number[][] = [];
-        for (let r = 0; r < 5; r++) for (let c = 0; c < 5; c++) shape.push([r, c]);
+        for (let r = 0; r < 7; r++) for (let c = 0; c < 7; c++) shape.push([r, c]);
         return {
           linked: false,
-          bps: [{ id: `e2e_bp_${tag}`, name: `E2E BP ${tag}`, color: '#7a5b5b', shape, origin: [2, 2], unit: { id: 'berserker', off: [0, 0] }, hpMax: 120 }],
+          bps: [{ id: `e2e_bp_${tag}`, name: `E2E BP ${tag}`, color: '#7a5b5b', shape, origin: [2, 2], unit: { id: 'berserker', off: [0, 0] }, hpMax: 1000 }],
           pos: arms.map((a, i) => ({ uid: `e2e_arms_${tag}_${i}`, id: a.id, loc: 'grid', cell: a.cell, rot: a.rot })),
           sis: [],
         };
