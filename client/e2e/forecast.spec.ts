@@ -203,45 +203,12 @@ test.describe('REQ-0057 ray forecast overlay', () => {
     }
   });
 
-  test('the formation picker ranks the four slots by expected pressure', async ({ page }) => {
-    // REQ-0307: REQ-0239 moved the per-slot pressure summary off #/schedule and onto the
-    // sortie DungeonDossier (SlotPressureSummary renders in src/sortie/DungeonDossier.tsx).
-    // Boot, open the sortie page, and pick a dungeon so the dossier -- hence the slot
-    // summary -- is present. It runs over the formation GEOMETRY (empty field), so no
-    // deployed squad is needed. REQ-0057's other half: "the formation picker (per-slot
-    // summary = which squad slot eats the most)".
-    await bootApp(page);
-    await page.goto('/app/#/sortie');
-    await expect(page.locator('[data-testid="sortie-page"]')).toBeVisible({ timeout: 15000 });
-    await page.locator('[data-testid="sortie-dungeon-card-niflheim_depths"]').click();
-    await expect(page.locator('[data-testid="sortie-dossier"]')).toBeVisible({ timeout: 10000 });
-    const summary = page.locator('[data-testid="slot-pressure"]');
-    await expect(summary).toBeVisible({ timeout: 15000 });
-
-    const means = await page.locator('[data-testid="slot-pressure"] .slot-pressure-row')
-      .evaluateAll((els) => els.map((el) => Number(el.getAttribute('data-mean'))));
-    expect(means).toHaveLength(4);
-    for (const m of means) expect(Number.isFinite(m) && m > 0).toBe(true);
-    // The four boxes of a formation sit in genuinely different places, so
-    // they cannot all eat the same pressure -- if they did, the fold is not
-    // reading the formation geometry at all.
-    expect(Math.max(...means)).toBeGreaterThan(Math.min(...means));
-
-    // Exactly one slot is flagged as the worst, and it IS the worst.
-    const worst = page.locator('[data-testid="slot-pressure"] .slot-pressure-row.is-worst');
-    await expect(worst).toHaveCount(1);
-    expect(Number(await worst.getAttribute('data-mean'))).toBeCloseTo(Math.max(...means), 2);
-
-    // Switching formation re-ranks it.
-    const before = means.join(',');
-    await page.locator('[data-testid="sortie-formation-select"]').selectOption('formation4');
-    await expect.poll(
-      async () => (await page.locator('[data-testid="slot-pressure"] .slot-pressure-row')
-        .evaluateAll((els) => els.map((el) => el.getAttribute('data-mean')))).join(','),
-      { timeout: 5000 },
-    ).not.toBe(before);
-
-    // Same honesty line as the canvas panel.
-    await expect(page.locator('[data-testid="slot-pressure-disclaimer"]')).toContainText(/not a promise/i);
-  });
+  // REQ-0304 (integration with REQ-0307): the sortie-page per-slot pressure summary
+  // -- the formation picker that ranked the four slots by expected pressure -- rendered
+  // on the dungeon DOSSIER via SlotPressureSummary. REQ-0304 removed the dungeon
+  // picker/dossier by ratified design: the player no longer chooses or previews a dungeon
+  // before entry (the server draws it), so that pre-entry per-dungeon summary is gone from
+  // the UI, and this test is retired. The REQ-0057 canvas ray-forecast overlay (its other
+  // half) stays covered by the tests above; a post-entry summary against the DRAWN dungeon
+  // would be a separate follow-up, out of REQ-0304 scope.
 });
