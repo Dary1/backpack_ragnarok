@@ -64,7 +64,13 @@ T('(c) a clone of a live common item does not trip any flag', () => {
 
 // (d) enemy-side injection raises wipe rate
 T('(d) overpowered injected skill raises wipe rate vs baseline', () => {
-  const r = B.runMatrix({ candidate: { kind: 'skill', def: OP_SKILL, source: 'test' }, _defs: defs, boards: ['starter_arms'], levels: [3], seeds: 3 });
+  // REQ-0307: post-0293/0297 scaling, the default 4-encounter frost-scout arena wipes the
+  // starter_arms baseline 100% at EVERY level (empirically L1..L3 all -> wipeRate 1.0), so an
+  // OP-skill injection could not measurably RAISE it. Re-baseline the SCENARIO to a single arena
+  // encounter (arenaEncounters: 1): the baseline is survivable (wipeRate 0) while the injected
+  // 500-600/0.5s strike still guarantees a wipe (wipeRate 1.0) and trips delta_wipe_rate at flag
+  // level -- max headroom, deterministic across seeds. Harness logic unchanged; OP-detection intact.
+  const r = B.runMatrix({ candidate: { kind: 'skill', def: OP_SKILL, source: 'test' }, _defs: defs, boards: ['starter_arms'], levels: [3], seeds: 3, arenaEncounters: 1 });
   ok(r.payload.arms.candidate.wipeRate > r.payload.arms.baseline.wipeRate, 'candidate wipeRate ' + r.payload.arms.candidate.wipeRate + ' not > baseline ' + r.payload.arms.baseline.wipeRate);
   ok(hasFlag(r.payload), 'OP skill injection did not flag');
 });

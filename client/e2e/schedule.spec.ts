@@ -143,6 +143,31 @@ async function apiClaim(page: Page, token: string, itemUid: string): Promise<any
 let player: CreatedPlayer;
 let fixture: unknown;
 
+// REQ-0307: a squad that CLEARS niflheim_depths L1 under the shipped REQ-0293/0297 per-pack
+// enemy scaling (berserker + 12 war_picks on a 7x7 BP, hpMax 1000; measured 80/80 clears vs
+// the authored 8-encounter dive via sim/combat.cjs). Used ONLY by test 325 below, on its own
+// default-profile canvas -- the shared schedule-fixture.json (and every test that inspects
+// squads 0-3 / the warehouse board) is untouched.
+function winningSquad(tag: string) {
+  const shape: number[][] = [];
+  for (let r = 0; r < 7; r++) for (let c = 0; c < 7; c++) shape.push([r, c]);
+  const cells: number[][] = [];
+  for (const c of [2, 3, 4, 5]) for (const r of [2, 4, 6]) cells.push([r, c]);
+  return {
+    linked: false,
+    bps: [{ id: `bp_win_${tag}`, name: `Win ${tag}`, color: '#7a5b5b', shape, origin: [2, 2], unit: { id: 'berserker', off: [0, 0] }, hpMax: 1000 }],
+    pos: cells.map((cell, i) => ({ uid: `po_win_${tag}_${i}`, id: 'war_pick', loc: 'grid', cell, rot: 0 })),
+    sis: [],
+  };
+}
+function winningCanvas(tag: string) {
+  return {
+    ...winningSquad(`${tag}0`),
+    inv: { pages: [0, 1, 2, 3, 4].map(() => ({ bps: [], pos: [], sis: [], tms: [] })), names: ['1', '2', '3', '4', '5'] },
+    presets: { active: 0, names: ['P1', 'P2', 'P3', 'P4', 'P5'], store: [null, winningSquad(`${tag}1`), winningSquad(`${tag}2`), winningSquad(`${tag}3`), null] },
+  };
+}
+
 test.beforeAll(() => {
   player = createGuestPlayer('E2E ScheduleGuest');
   fixture = JSON.parse(readFileSync(SCHEDULE_FIXTURE_PATH, 'utf8'));
@@ -351,7 +376,13 @@ test.describe('warehouse receives rewards + claim moves item to inventory', () =
     const devProfileBackup = devProfileExisted ? fs.readFileSync(devProfilePath, 'utf8') : null;
 
     try {
-      await page.request.put('/api/profile/default/canvas', { data: fixture });
+      // REQ-0307: PUT a dedicated WINNING canvas instead of the shared fixture. Post
+      // REQ-0293/0297 scaling the fixture's starter squads WIPE niflheim_depths L1, so this
+      // gate always hit the victory-skip guard below AND -- because that skip `return`s
+      // before the room-cancel cleanup -- LEAKED an active room whose deployed squads 0-3
+      // then 409'd the later REQ-0099 settled-transport test. This squad wins reliably, so
+      // the gate again EXERCISES its reward-deposit + claim assertions rather than skipping.
+      await page.request.put('/api/profile/default/canvas', { data: winningCanvas('r307a') });
 
       const created = await apiCreateRoom(page, '', { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
       const roomId = created.body.room.id;
@@ -1444,7 +1475,13 @@ test.describe('REQ-0239: sortie page + squad status board', () => {
       await page.locator('[data-testid="sortie-advanced-toggle"]').click();
       await page.locator('[data-testid="sortie-seed-input"]').fill(opts.seed);
     }
-    for (let i = 0; i < 4; i++) await page.locator(`[data-testid="sortie-squad-card-${i}"]`).click();
+    // REQ-0307: select DEDICATED squads 11-14 (schedule-fixture.json tail) rather than 0-3.
+    // This sortie DEFAULTS to a deferred cancel policy (bug #6, asserted in the test below),
+    // so its room -- which a plain guest cannot force-settle -- stays ACTIVE and keeps its
+    // deployed squadIndices locked for the rest of the suite. Locking the shared 0-3 (as the
+    // old first-four selection did) 409'd whichever later guest test redeployed 0-3 during
+    // that window; squads 11-14 are used ONLY here, so the lingering lock is inert.
+    for (const idx of [11, 12, 13, 14]) await page.locator(`[data-testid="sortie-squad-card-${idx}"]`).click();
     await expect(page.locator('[data-testid="sortie-launch-btn"]')).toBeEnabled({ timeout: 10000 });
     await page.locator('[data-testid="sortie-launch-btn"]').click();
     await expect(page).toHaveURL(/#\/schedule$/, { timeout: 10000 });
