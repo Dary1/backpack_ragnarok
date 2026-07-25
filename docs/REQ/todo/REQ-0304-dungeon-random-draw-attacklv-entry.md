@@ -39,6 +39,31 @@ implemented, and the UI still selects a dungeon.
 - The UI sets attackLv (no dungeon pick) and shows the drawn dungeon post-entry.
 
 ## Gate results
+
+**_(on build — 2026-07-25) — INTEGRATED onto green master, literal `CI GREEN`. This SUPERSEDES the
+at-branch-time "BLOCKED / kept in todo/" assessment recorded below (which was true off the OLD master
+@079f2c5, before REQ-0307 re-baselined the balance/e2e gates)._**
+- **Integration:** REQ-0307 (green master HEAD `a0fe2e5`) merged into this branch via `git merge master`
+  -> merge commit `5583c4c`. The lone overlap `client/e2e/schedule.spec.ts` auto-merged correctly,
+  keeping BOTH intents: REQ-0304's attackLv-only `sortieLaunch` (no dungeon pick; waits on
+  `sortie-entry`) AND REQ-0307's test-isolation (winning-canvas gate 325; sortie musters dedicated
+  squads 11-14, not the shared 0-3). Verified: no conflict markers; drawSeed asserts + `winningCanvas`
+  helper + squads 11-14 all present.
+- **One merge interaction fixed in tests (not weakened):** REQ-0307 had re-pointed `forecast.spec.ts:206`
+  ("the formation picker ranks the four slots by expected pressure") at the sortie DungeonDossier's
+  `SlotPressureSummary`. REQ-0304 removed the dungeon picker/dossier by ratified design (the player no
+  longer picks OR previews a dungeon pre-entry), so that pre-entry per-dungeon summary no longer exists
+  in the UI (`SlotPressureSummary` is now unreferenced). The obsolete test was RETIRED (`55e4670`);
+  REQ-0057's canvas ray-forecast overlay half stays fully covered (`forecast.spec.ts:41-181`, all green).
+- **Dist:** client rebuilt on the merged tree (`5edbf25`, `build(web)`, deterministic; env baked in).
+- **Gate:** `bash tools/ci.sh` (DATABASE_URL from `server/.env`; STORAGE_BACKEND left unset so `[4]` is
+  files + `[5]` is pg; NOTHING skipped) prints literal **`CI GREEN`** (rc 0). `[2/7]` goldens
+  **byte-identical (12 cases)**; `[4] api_test (files)` + `[5] api_test (pg)` green incl. the 6 REQ-0304
+  draw/gate tests; `[6]` client tsc+build green; `[7/7]` scoped hermetic e2e **203 passed / 1 skipped
+  (pre-existing) / 0 failed**, incl. `schedule.spec.ts:1490` "REQ-0304: attackLv-only DRAW + 4 squads".
+- **New commits (this integration):** `5583c4c` merge, `55e4670` retire obsolete forecast test,
+  `5edbf25` web/app rebuild, then the Gate-results + `git mv todo -> built` commits.
+
 **Implemented on branch `req-0304-dungeon-random-draw-attacklv-entry` (worktree), off `master` @079f2c5. Commits:**
 - `7cb80a5` server-side levelMin-gated random dungeon draw on attackLv-only entry (rooms.cjs `drawDungeonId`
   + optional/override `dungeonId` + persisted `drawSeed`; route drawSeed gate; api harness 2nd dungeon + tests)
