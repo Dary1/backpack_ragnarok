@@ -49,6 +49,7 @@ module.exports = {
   isSquadIndependent: squads.isSquadIndependent,
   deployedUidSetsForGate: squads.deployedUidSetsForGate,
   createRoom: rooms.createRoom,
+  drawDungeonId: rooms.drawDungeonId, // REQ-0304: exported for the api harness's no-eligible-dungeon draw test
   getRoomOr404: rooms.getRoomOr404,
   getOwnRoomOr404: rooms.getOwnRoomOr404,
   listOwnRooms: rooms.listOwnRooms,

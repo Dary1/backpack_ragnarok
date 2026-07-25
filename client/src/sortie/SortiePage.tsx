@@ -3,7 +3,7 @@
 // dossier) and Muster (troop slots + squad shelf), with a sticky launch bar.
 // Owns the fetches (dungeons / rooms / me), the selection state, and the
 // atomic launch (POST /api/schedule/sorties, REQ-0239 D1).
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   createSortie,
   fetchDungeons,
@@ -17,13 +17,12 @@ import { friendlyScheduleError } from '../schedule/errors';
 import { t } from '../i18n';
 import { localizedName } from '../lib/contentName';
 import { clearSortieFocusDungeonId, setRoute, type Locale } from '../store';
-import { DungeonGallery } from './DungeonGallery';
-import { DungeonDossier } from './DungeonDossier';
 import { LaunchBar } from './LaunchBar';
 import { SquadShelf } from './SquadShelf';
 import { TroopSlots } from './TroopSlots';
+import { LevelStepper } from './LevelStepper';
 import { deriveSquadCard, type SquadCardEntry } from './deriveSquadCard';
-import { type SortieAdvanced } from './AdvancedFold';
+import { AdvancedFold, type SortieAdvanced } from './AdvancedFold';
 import { useSquadConflicts } from './useSquadConflicts';
 
 interface SortiePageProps {
@@ -38,9 +37,7 @@ export function SortiePage({ locale, focusDungeonId }: SortiePageProps) {
   const [rooms, setRooms] = useState<ApiRoom[] | null>(null);
   const [me, setMe] = useState<ApiMe | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [dungeonUnknown, setDungeonUnknown] = useState(false);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [level, setLevel] = useState(1);
   const [formationId, setFormationId] = useState('');
   const [assigned, setAssigned] = useState<(number | null)[]>(EMPTY_TROOP);
@@ -48,9 +45,6 @@ export function SortiePage({ locale, focusDungeonId }: SortiePageProps) {
 
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
-
-  const musterRef = useRef<HTMLDivElement | null>(null);
-  const scrolledForRef = useRef<string | null>(null);
 
   const loadDungeons = useCallback(() => {
     setLoadError(null);
@@ -63,40 +57,17 @@ export function SortiePage({ locale, focusDungeonId }: SortiePageProps) {
     fetchMe().then(setMe).catch(() => setMe(null));
   }, [loadDungeons]);
 
-  // Deep-link (#/sortie/<id>) preselection: consume the one-shot store focus.
+  // REQ-0304: the player no longer PICKS a dungeon -- the server draws one from
+  // { levelMin <= attackLv } on entry. Consume any legacy #/sortie/<id> deep-link
+  // focus so the old id-carrying route still resolves cleanly to the sortie page.
   useEffect(() => {
-    if (!focusDungeonId || !dungeons) return;
-    const found = dungeons.dungeons.find((d) => d.id === focusDungeonId);
-    if (found) { setSelectedId(found.id); }
-    else { setDungeonUnknown(true); }
-    clearSortieFocusDungeonId();
-  }, [focusDungeonId, dungeons]);
+    if (focusDungeonId) clearSortieFocusDungeonId();
+  }, [focusDungeonId]);
 
-  // Default formation once dungeons load.
+  // Default formation once dungeons load (still needed for the formation select + name lookup).
   useEffect(() => {
     if (dungeons && !formationId && dungeons.formations.length > 0) setFormationId(dungeons.formations[0].id);
   }, [dungeons, formationId]);
-
-  const selectedDungeon = useMemo(
-    () => (selectedId && dungeons ? dungeons.dungeons.find((d) => d.id === selectedId) ?? null : null),
-    [selectedId, dungeons],
-  );
-
-  const onSelectDungeon = useCallback((id: string) => {
-    setSelectedId(id);
-    setDungeonUnknown(false);
-    const d = dungeons?.dungeons.find((x) => x.id === id);
-    if (d && d.levelMin != null) setLevel(Math.max(1, d.levelMin));
-  }, [dungeons]);
-
-  // Auto-scroll Phase B into view ONCE per dungeon selection (design 01 sec 7).
-  useEffect(() => {
-    if (!selectedId) return;
-    if (scrolledForRef.current === selectedId) return;
-    scrolledForRef.current = selectedId;
-    const reduce = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    musterRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
-  }, [selectedId]);
 
   const conflicts = useSquadConflicts(rooms);
   const dungeonNameFor = useCallback((dungeonId: string): string => {
@@ -135,20 +106,23 @@ export function SortiePage({ locale, focusDungeonId }: SortiePageProps) {
   const isAdmin = !!me && Array.isArray(me.roles) && me.roles.includes('item_admin');
 
   const onLaunch = useCallback(async () => {
-    if (!selectedDungeon || assignedCount !== 4) return;
+    if (assignedCount !== 4 || launching) return;
     const squadIndices = assigned.filter((x): x is number => x != null);
     setLaunching(true);
     setLaunchError(null);
     try {
+      // REQ-0304: NO dungeonId -- the player sets ONLY attackLv (= level); the
+      // server RANDOM-DRAWS the dungeon from those whose levelMin <= attackLv and
+      // returns it on the room, which SchedulePage reveals post-entry.
       const { room } = await createSortie({
-        dungeonId: selectedDungeon.id,
         level,
         formationId: formationId || undefined,
         cancelPolicy: { immediate: advanced.cancelImmediate },
         genSeed: isAdmin && advanced.genSeed ? advanced.genSeed : undefined,
         squadIndices,
       });
-      // Hand the new room off to SchedulePage (read once on its mount).
+      // Hand the new room off to SchedulePage (read once on its mount): it opens the
+      // monitor for this room, revealing the DRAWN dungeon (name + theme + banner).
       try { sessionStorage.setItem('bp.watchRoom', room.id); } catch { /* private mode */ }
       setRoute('schedule');
     } catch (e) {
@@ -156,7 +130,14 @@ export function SortiePage({ locale, focusDungeonId }: SortiePageProps) {
     } finally {
       setLaunching(false);
     }
-  }, [selectedDungeon, assignedCount, assigned, level, formationId, advanced, isAdmin, locale]);
+  }, [assignedCount, launching, assigned, level, formationId, advanced, isAdmin, locale]);
+
+  // REQ-0304: pressing ENTER on the attackLv input commits the sortie (triggers the
+  // draw + entry) once the troop is fully mustered -- the ratified "set attackLv and
+  // press ENTER" gesture.
+  const onAttackLvEnter = useCallback(() => {
+    if (assignedCount === 4 && !launching) void onLaunch();
+  }, [assignedCount, launching, onLaunch]);
 
   return (
     <div className="sortie-page" data-testid="sortie-page">
@@ -173,35 +154,31 @@ export function SortiePage({ locale, focusDungeonId }: SortiePageProps) {
 
       <section className="sortie-zone sortie-zone-dest">
         <div className="sortie-zone-head">
-          <span className="den">{t(locale, 'sortie.dest.den')}</span>
+          <span className="den">{t(locale, 'sortie.entry.den')}</span>
           <span className="rune-divider" aria-hidden="true">ᚠ</span>
         </div>
-        {dungeonUnknown ? <div className="schedule-error sortie-notice">{t(locale, 'sortie.dungeonUnknown')}</div> : null}
-        <DungeonGallery
-          locale={locale}
-          dungeons={dungeons ? dungeons.dungeons : null}
-          loadError={loadError}
-          selectedId={selectedId}
-          onSelect={onSelectDungeon}
-          onRetry={loadDungeons}
-        />
-        {selectedDungeon && dungeons ? (
-          <DungeonDossier
-            locale={locale}
-            dungeon={selectedDungeon}
-            formations={dungeons.formations}
-            level={level}
-            onLevelChange={setLevel}
-            formationId={formationId}
-            onFormationChange={setFormationId}
-            advanced={advanced}
-            onAdvancedChange={setAdvanced}
-            isAdmin={isAdmin}
-          />
-        ) : null}
+        {loadError ? <div className="schedule-error sortie-notice" data-testid="sortie-load-error">{loadError}</div> : null}
+        <section className="sortie-entry panel" data-testid="sortie-entry">
+          <p className="sortie-entry-note">{t(locale, 'sortie.entry.note')}</p>
+          <div className="sortie-dossier-controls">
+            <LevelStepper locale={locale} level={level} onChange={setLevel} onEnter={onAttackLvEnter} />
+            <label className="sortie-formation">
+              <span className="den">{t(locale, 'sortie.formation.label')}</span>
+              <select
+                className="sortie-formation-select"
+                data-testid="sortie-formation-select"
+                value={formationId}
+                onChange={(e) => setFormationId(e.target.value)}
+              >
+                {(dungeons ? dungeons.formations : []).map((f) => <option key={f.id} value={f.id}>{localizedName(locale, f)}</option>)}
+              </select>
+            </label>
+          </div>
+          <AdvancedFold locale={locale} isAdmin={isAdmin} value={advanced} onChange={setAdvanced} />
+        </section>
       </section>
 
-      <section className="sortie-zone sortie-zone-muster" ref={musterRef}>
+      <section className="sortie-zone sortie-zone-muster">
         <div className="sortie-zone-head">
           <span className="den">{t(locale, 'sortie.muster.den')}</span>
           <span className="rune-divider" aria-hidden="true">ᛘ</span>
@@ -219,7 +196,6 @@ export function SortiePage({ locale, focusDungeonId }: SortiePageProps) {
 
       <LaunchBar
         locale={locale}
-        dungeonSelected={!!selectedDungeon}
         assignedCount={assignedCount}
         launching={launching}
         error={launchError}

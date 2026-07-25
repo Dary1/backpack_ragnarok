@@ -1463,11 +1463,13 @@ test.describe('REQ-0049: monitor renders layered-encounter attachment badges (in
 test.describe('REQ-0239: sortie page + squad status board', () => {
   // Drive the sortie page UI to launch a room (select dungeon, assign 4 squads,
   // launch). Lands on #/schedule (the sortie IS the launch).
-  async function sortieLaunch(page: Page, opts: { dungeonId: string; level?: number; seed?: string }): Promise<void> {
+  async function sortieLaunch(page: Page, opts: { level?: number; seed?: string }): Promise<void> {
     await page.goto('/app/#/sortie');
     await expect(page.locator('[data-testid="sortie-page"]')).toBeVisible({ timeout: 10000 });
-    await page.locator(`[data-testid="sortie-dungeon-card-${opts.dungeonId}"]`).click();
-    await expect(page.locator('[data-testid="sortie-dossier"]')).toBeVisible({ timeout: 10000 });
+    // REQ-0304: the player no longer PICKS a dungeon -- the attackLv-entry panel is
+    // always present. Set attackLv (+ optional dev seed), muster four squads, launch;
+    // the server draws the dungeon from those whose levelMin <= attackLv.
+    await expect(page.locator('[data-testid="sortie-entry"]')).toBeVisible({ timeout: 10000 });
     if (opts.level != null) await page.locator('[data-testid="sortie-level-input"]').fill(String(opts.level));
     if (opts.seed) {
       await page.locator('[data-testid="sortie-advanced-toggle"]').click();
@@ -1485,12 +1487,12 @@ test.describe('REQ-0239: sortie page + squad status board', () => {
     await expect(page).toHaveURL(/#\/schedule$/, { timeout: 10000 });
   }
 
-  test('the sortie page launches a room atomically (dungeon + 4 squads), records the def id + level, DEFAULTS cancel to deferred (bug #6), and carries lastRun (D1/B1)', async ({ page }) => {
+  test('REQ-0304: the sortie page launches a room atomically (attackLv-only DRAW + 4 squads), records the DRAWN def id + level, DEFAULTS cancel to deferred (bug #6), and carries lastRun (D1/B1)', async ({ page }) => {
     await page.request.put(`/api/profile/${player.playerId}/canvas`, { headers: { 'X-Auth-Token': player.token }, data: fixture });
     const beforeIds = new Set((await apiListRooms(page, player.token)).body.rooms.map((r: { id: string }) => r.id));
     await page.goto(`/app/#/invite/${player.token}`);
     await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
-    await sortieLaunch(page, { dungeonId: 'niflheim_depths', level: 3 });
+    await sortieLaunch(page, { level: 3 });
 
     let roomId = '';
     await expect(async () => {
@@ -1502,7 +1504,13 @@ test.describe('REQ-0239: sortie page + squad status board', () => {
     createdRoomIds.push(roomId);
 
     const view = await apiGetRoom(page, player.token, roomId);
+    // REQ-0304: no dungeon was picked -- the server DREW one from { levelMin <= 3 }.
+    // At attackLv 3 only niflheim_depths (levelMin 1) is eligible (grave_hollows
+    // levelMin 4 / beastreach_wilds levelMin 8 are gated OUT), so the draw is
+    // deterministic; the room carries the drawSeed it was drawn with.
     expect(view.body.room.dungeonId).toBe('niflheim_depths');
+    expect(typeof view.body.room.drawSeed).toBe('string');
+    expect((view.body.room.drawSeed as string).length).toBeGreaterThan(0);
     expect(view.body.room.level).toBe(3);
     expect(view.body.room.status).toBe('active');
     // bug #6 / golden g: the sortie default cancel policy is DEFERRED.
@@ -1540,7 +1548,8 @@ test.describe('REQ-0239: sortie page + squad status board', () => {
     await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
     await page.goto('/app/#/sortie');
     await expect(page.locator('[data-testid="sortie-page"]')).toBeVisible({ timeout: 10000 });
-    await page.locator('[data-testid="sortie-dungeon-card-niflheim_depths"]').click();
+    // REQ-0304: the AdvancedFold lives in the always-present attackLv-entry panel
+    // (no dungeon pick needed to reveal it).
     await page.locator('[data-testid="sortie-advanced-toggle"]').click();
     await expect(page.locator('[data-testid="sortie-seed-input"]')).toHaveCount(0);
 
@@ -1551,7 +1560,6 @@ test.describe('REQ-0239: sortie page + squad status board', () => {
     await page.evaluate(() => window.localStorage.clear());
     await page.reload();
     await expect(page.locator('[data-testid="sortie-page"]')).toBeVisible({ timeout: 15000 });
-    await page.locator('[data-testid="sortie-dungeon-card-niflheim_depths"]').click();
     await page.locator('[data-testid="sortie-advanced-toggle"]').click();
     await expect(page.locator('[data-testid="sortie-seed-input"]')).toBeVisible({ timeout: 10000 });
   });

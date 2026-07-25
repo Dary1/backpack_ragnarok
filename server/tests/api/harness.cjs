@@ -283,6 +283,19 @@ fs.writeFileSync(path.join(batchDir, 'dungeons.json'), JSON.stringify({
       gimicPool: [{ gimic: 'trap_frost_deadfall', weight: 2 }, { gimic: 'chest_frostbound_cache', weight: 1 }, { gimic: 'door_rimefast_stage1', weight: 1 }],
       rewards: { pack: 'blade', chest: 'blade', boss: 'fx_dagger' },
     },
+    {
+      // REQ-0304: a SECOND dungeon at a HIGHER levelMin so the levelMin-gated draw
+      // (and the "no eligible dungeon" branch) are exercised -- below levelMin 5 only
+      // test_dungeon qualifies; at attackLv >= 5 both do and the drawSeed picks.
+      id: 'test_dungeon_deep', name: 'Test Dungeon Deep',
+      i18n: { en: { name: 'Test Dungeon Deep' }, ja: { name: 'テスト深層' } },
+      theme: 'deep', levelMin: 5, levelMax: 12,
+      dive: { packEncounters: { base: 1, perLevels: 3, max: 3 }, gimicSlots: { base: 1, perLevels: 3, max: 2 } },
+      packPool: [{ packId: 'pack_test_slime', weight: 1 }],
+      bossPool: [{ packId: 'pack_test_boss', weight: 1 }],
+      gimicPool: [{ gimic: 'trap_frost_deadfall', weight: 2 }, { gimic: 'chest_frostbound_cache', weight: 1 }, { gimic: 'door_rimefast_stage1', weight: 1 }],
+      rewards: { pack: 'blade', chest: 'blade', boss: 'fx_dagger' },
+    },
   ],
 }));
 

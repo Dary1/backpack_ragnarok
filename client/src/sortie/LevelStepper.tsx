@@ -10,9 +10,11 @@ interface LevelStepperProps {
   onChange: (level: number) => void;
   /** true when the typed level is below the dungeon's recommended band. */
   belowBand?: boolean;
+  /** REQ-0304: fired when the player presses ENTER in the attackLv input. */
+  onEnter?: () => void;
 }
 
-export function LevelStepper({ locale, level, onChange, belowBand }: LevelStepperProps) {
+export function LevelStepper({ locale, level, onChange, belowBand, onEnter }: LevelStepperProps) {
   const clamp = (n: number) => (Number.isFinite(n) ? Math.max(1, Math.floor(n)) : 1);
   return (
     <div className={`sortie-level${belowBand ? ' is-below-band' : ''}`}>
@@ -25,6 +27,7 @@ export function LevelStepper({ locale, level, onChange, belowBand }: LevelSteppe
         min={1}
         value={level}
         onChange={(e) => onChange(clamp(parseInt(e.target.value, 10)))}
+        onKeyDown={(e) => { if (e.key === 'Enter' && onEnter) { e.preventDefault(); onEnter(); } }}
         aria-label={t(locale, 'sortie.level.label')}
       />
       <button type="button" className="btn sortie-level-btn" aria-label="+" onClick={() => onChange(clamp(level + 1))}>+</button>

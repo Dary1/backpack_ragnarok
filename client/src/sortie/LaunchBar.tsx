@@ -6,7 +6,6 @@ import type { Locale } from '../store';
 
 interface LaunchBarProps {
   locale: Locale;
-  dungeonSelected: boolean;
   assignedCount: number;
   launching: boolean;
   error: string | null;
@@ -15,14 +14,12 @@ interface LaunchBarProps {
   onResume?: () => void;
 }
 
-export function LaunchBar({ locale, dungeonSelected, assignedCount, launching, error, onLaunch, resumeAvailable, onResume }: LaunchBarProps) {
+export function LaunchBar({ locale, assignedCount, launching, error, onLaunch, resumeAvailable, onResume }: LaunchBarProps) {
   const missing = 4 - assignedCount;
-  const ready = dungeonSelected && missing === 0;
-  const statusText = !dungeonSelected
-    ? t(locale, 'sortie.launch.needDungeon')
-    : missing > 0
-      ? t(locale, 'sortie.launch.needSquads', { n: missing })
-      : t(locale, 'sortie.launch.ready');
+  const ready = missing === 0;
+  const statusText = missing > 0
+    ? t(locale, 'sortie.launch.needSquads', { n: missing })
+    : t(locale, 'sortie.launch.ready');
   return (
     <div className="sortie-launchbar" data-testid="sortie-launchbar">
       <div className={`sortie-launch-status${ready ? ' is-ready' : ''}`} data-testid="sortie-launch-status">

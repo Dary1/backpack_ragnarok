@@ -55,6 +55,8 @@ interface MonitorProps {
   room: ApiRoom;
   locale: Locale;
   dungeonName: string;
+  /** REQ-0304: the DRAWN dungeon's theme, surfaced in the monitor header post-entry. */
+  dungeonTheme?: string;
   isAdmin: boolean;
   onRunSettled?: () => void;
 }
@@ -67,7 +69,7 @@ function latestOfType(events: ApiRunEvent[], evName: string): ApiRunEvent | null
   return null;
 }
 
-export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: MonitorProps) {
+export function Monitor({ room, locale, dungeonName, dungeonTheme, isAdmin, onRunSettled }: MonitorProps) {
   const snapshot = useGameStore();
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => { const id = setInterval(() => setNowMs(Date.now()), 1000); return () => clearInterval(id); }, []);
@@ -361,7 +363,7 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
       <i className="k tl" /><i className="k tr" /><i className="k br" /><i className="k bl" />
 
       <MonitorHeader
-        locale={locale} dungeonId={room.dungeonId} dungeonName={dungeonName} level={room.level}
+        locale={locale} dungeonId={room.dungeonId} dungeonName={dungeonName} theme={dungeonTheme} level={room.level}
         live={isLive} returnAt={returnAt} seed={isAdmin ? room.genSeed ?? null : null}
         isAdmin={isAdmin} onCopyJsonl={onCopyJsonl} copyStatus={copyStatus}
       />

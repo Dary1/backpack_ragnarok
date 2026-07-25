@@ -261,9 +261,16 @@ module.exports.run = async function run(h) {
     await scheduleReq('DELETE', '/api/schedule/rooms/' + badFormation.body.room.id, scheduleP1.token);
   });
 
-  await AT('schedule: creating a room without a dungeonId is a 400', async () => {
+  await AT('REQ-0304: creating a room WITHOUT a dungeonId now DRAWS an eligible dungeon (attackLv-only entry), not a 400', async () => {
+    // REQ-0304 flipped the old contract: an absent dungeonId is the ratified
+    // attackLv-only entry -- the server RANDOM-DRAWS a dungeon whose levelMin <=
+    // attackLv. At level 1 only test_dungeon (levelMin 1) is eligible, so the draw
+    // is deterministic; test_dungeon_deep (levelMin 5) is gated OUT.
     const res = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { level: 1 });
-    assert.strictEqual(res.status, 400);
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    assert.strictEqual(res.body.room.dungeonId, 'test_dungeon', 'level 1 draws the only eligible dungeon');
+    assert.ok(typeof res.body.room.drawSeed === 'string' && res.body.room.drawSeed.length > 0, 'the room carries the drawSeed it was drawn with');
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + res.body.room.id, scheduleP1.token);
   });
 
   await AT('schedule: assigning an out-of-range slot index or an out-of-range squadIndex is a 400, not a crash', async () => {
@@ -637,6 +644,76 @@ module.exports.run = async function run(h) {
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
     assert.strictEqual(res.body.room.genSeed, 'dev-fallback-seed');
     await scheduleReq('DELETE', '/api/schedule/rooms/' + res.body.room.id, undefined);
+  });
+
+  // =====================================================================
+  // REQ-0304: dungeon entry by attackLv only + levelMin-gated RANDOM draw.
+  // The fixture authors TWO dungeons at DIFFERING levelMin (test_dungeon
+  // levelMin 1, test_dungeon_deep levelMin 5) so the draw's gating and the
+  // "no eligible dungeon" branch are both exercised; a pinned privileged
+  // drawSeed pins selection for determinism.
+  // =====================================================================
+
+  await AT('REQ-0304: attackLv-only create draws an eligible dungeon; levelMin gates the eligible set + the uniform draw reaches BOTH eligible dungeons', async () => {
+    // level 1: only test_dungeon (levelMin 1) qualifies -> deterministic draw.
+    const low = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { level: 1 });
+    assert.strictEqual(low.status, 200, JSON.stringify(low.body));
+    assert.strictEqual(low.body.room.dungeonId, 'test_dungeon', 'level 1: test_dungeon_deep (levelMin 5) is gated OUT of the eligible set');
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + low.body.room.id, scheduleP1.token);
+    // level 8: both dungeons are eligible; across two pinned seeds the draw lands on EACH.
+    const reached = new Set();
+    for (const sd of ['req0304-deep', 'pin-shallow']) {
+      const r = await scheduleReq('POST', '/api/schedule/rooms', undefined, { level: 8, drawSeed: sd });
+      assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+      reached.add(r.body.room.dungeonId);
+      await scheduleReq('DELETE', '/api/schedule/rooms/' + r.body.room.id, undefined);
+    }
+    assert.ok(reached.has('test_dungeon') && reached.has('test_dungeon_deep'), 'at level 8 the uniform draw reaches BOTH eligible dungeons across seeds: ' + JSON.stringify([...reached]));
+  });
+
+  await AT('REQ-0304: a pinned privileged drawSeed makes the draw DETERMINISTIC + reproducible (same seed -> same dungeon, stored verbatim)', async () => {
+    const a = await scheduleReq('POST', '/api/schedule/rooms', undefined, { level: 8, drawSeed: 'req0304-deep' });
+    const b = await scheduleReq('POST', '/api/schedule/rooms', undefined, { level: 8, drawSeed: 'req0304-deep' });
+    assert.strictEqual(a.body.room.dungeonId, 'test_dungeon_deep', 'the pinned seed selects the expected dungeon deterministically');
+    assert.strictEqual(a.body.room.dungeonId, b.body.room.dungeonId, 'same pinned drawSeed -> same dungeon (reproducible)');
+    assert.strictEqual(a.body.room.drawSeed, 'req0304-deep', 'the pinned drawSeed is stored verbatim on the room');
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + a.body.room.id, undefined);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + b.body.room.id, undefined);
+  });
+
+  await AT('REQ-0304: drawSeed is privileged-only -- 403 for a plain guest, accepted for item_admin + the dev_mode fallback (gated EXACTLY like genSeed)', async () => {
+    const guest = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { level: 8, drawSeed: 'guest-attempted-draw' });
+    assert.strictEqual(guest.status, 403, JSON.stringify(guest.body));
+    const asAdmin = await scheduleReq('POST', '/api/schedule/rooms', adminGuest.token, { level: 8, drawSeed: 'admin-draw' });
+    assert.strictEqual(asAdmin.status, 200, JSON.stringify(asAdmin.body));
+    assert.strictEqual(asAdmin.body.room.drawSeed, 'admin-draw');
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + asAdmin.body.room.id, adminGuest.token);
+    const asDev = await scheduleReq('POST', '/api/schedule/rooms', undefined, { level: 8, drawSeed: 'dev-draw' });
+    assert.strictEqual(asDev.status, 200, JSON.stringify(asDev.body));
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + asDev.body.room.id, undefined);
+  });
+
+  await AT('REQ-0304: a privileged/test dungeonId OVERRIDE still works (bypasses the draw); an unknown id is still a 400', async () => {
+    // dungeonId stays an accepted override (back-compat: legacy rooms, sealed runs,
+    // tools/tests) -- present -> honored verbatim, bypassing the random draw.
+    const override = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon_deep', level: 8 });
+    assert.strictEqual(override.status, 200, JSON.stringify(override.body));
+    assert.strictEqual(override.body.room.dungeonId, 'test_dungeon_deep', 'an explicit dungeonId overrides the draw');
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + override.body.room.id, scheduleP1.token);
+    const bad = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'no_such_dungeon', level: 8 });
+    assert.strictEqual(bad.status, 400, JSON.stringify(bad.body));
+  });
+
+  await AT('REQ-0304: NO eligible dungeon (attackLv below every levelMin) is a clear BAD_REQUEST error (drawDungeonId branch)', async () => {
+    // The create() clamp floors attackLv to LEVEL_MIN and the fixture keeps a
+    // levelMin-1 dungeon, so the empty-eligible branch cannot fire through create()
+    // here -- exercise it directly on the exported pure draw with an all-high map.
+    const highOnly = { deep_a: { id: 'deep_a', levelMin: 10 }, deep_b: { id: 'deep_b', levelMin: 20 } };
+    let threw = null;
+    try { schedule.drawDungeonId(highOnly, 3, 'any-seed'); } catch (e) { threw = e; }
+    assert.ok(threw, 'a below-every-levelMin attackLv must throw');
+    assert.strictEqual(threw.code, 'BAD_REQUEST', 'the no-eligible error is a 400-class BAD_REQUEST');
+    assert.ok(/no eligible dungeon/i.test(threw.message), 'the error message names the no-eligible condition: ' + threw.message);
   });
 
   await AT('REQ-0185: a room run rolls an encounter sequence identical to a direct rollDungeon() of the same def (serving path and direct roll share ONE roller)', async () => {

@@ -170,6 +170,10 @@ export function SchedulePage({ locale }: SchedulePageProps) {
     const entry = dungeons?.dungeons.find((d) => d.id === dungeonId);
     return entry ? localizedName(locale, entry) : t(locale, 'schedule.dungeonUnknown');
   }
+  // REQ-0304: the DRAWN dungeon's theme (種類), resolved for the post-entry reveal.
+  function dungeonThemeFor(dungeonId: string): string | undefined {
+    return dungeons?.dungeons.find((d) => d.id === dungeonId)?.theme;
+  }
 
   const hasRooms = rooms !== null && rooms.length > 0;
   const canceledCount = rooms ? rooms.filter((r) => r.status === 'canceled').length : 0;
@@ -295,7 +299,7 @@ export function SchedulePage({ locale }: SchedulePageProps) {
                   in the client") but did not close. Keyed on the room id so
                   switching rooms both remounts the Monitor and clears a prior error. */}
               <MonitorErrorBoundary key={selectedRoom.id} locale={locale}>
-                <Monitor room={selectedRoom} locale={locale} dungeonName={dungeonNameFor(selectedRoom.dungeonId)} isAdmin={isAdmin} onRunSettled={() => setSpoilsRefresh((n) => n + 1)} />
+                <Monitor room={selectedRoom} locale={locale} dungeonName={dungeonNameFor(selectedRoom.dungeonId)} dungeonTheme={dungeonThemeFor(selectedRoom.dungeonId)} isAdmin={isAdmin} onRunSettled={() => setSpoilsRefresh((n) => n + 1)} />
               </MonitorErrorBoundary>
             </>
           ) : (
