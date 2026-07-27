@@ -21,7 +21,7 @@
 // same way, instead of each maintaining its own placement math.
 //
 // Loose coupling, by design:
-//  - This module depends ONLY on mock-src/engine.js's pure, state-free
+//  - This module depends ONLY on shared/engine.js's pure, state-free
 //    `rotOffsets` free function (via engine/adapter.ts's `Engine` module
 //    export -- Engine.rotOffsets, not a bound EngineInstance/GameState) and
 //    on nothing PixiJS-specific. BoardRenderer.ts (a Pixi scene) and the
@@ -59,7 +59,7 @@ export interface FootprintCells {
 
 /**
  * Computes an item's occupied-cell footprint at a given rotation -- the
- * exact math mock-src/engine.js's shapeInfo(id,rot) performs internally
+ * exact math shared/engine.js's shapeInfo(id,rot) performs internally
  * (rotOffsets + bbox), but callable from a bare `shape` array with no
  * GameState/ItemDefMap/EngineInstance required. This is what makes the
  * function usable both from BoardRenderer (which already HAS a bound

@@ -29,7 +29,7 @@
 // genuinely inside its own bounds.
 //
 // This engine-level legality itself was ALREADY CORRECT (verified via a
-// direct mock-src/engine.js sanity script before ever touching the
+// direct shared/engine.js sanity script before ever touching the
 // client: canTransferBP() and transferBP() both behaved exactly as
 // specified for the empty-BP, contents-carrying, and overlap-rejection
 // cases) -- so no engine changes were needed or made; this is a pure
@@ -38,7 +38,7 @@
 // REQ-0033 Phase 2 update: tests 1-3 below were written against the
 // PRE-REQ-0033 "physicality" transfer model (inv->canvas PHYSICALLY
 // removed the BP from inv.pages[0]; canvas->inv physically removed it
-// from canvas.bps). Phase 1 (mock-src/engine.js) replaced that with the
+// from canvas.bps). Phase 1 (shared/engine.js) replaced that with the
 // reference model: inv->canvas now CREATES A REFERENCE (the home stays
 // in inv.pages[0] untouched, forever, regardless of how many squads
 // reference it) and canvas->inv now REMOVES A REFERENCE (the home was

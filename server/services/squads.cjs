@@ -23,7 +23,7 @@ function squadUidSet(squadCanvas) {
 }
 
 // isSquadIndependent(canvas, squadIndex) -- delegates to
-// mock-src/engine.js's OWN exported isSquadIndependent (golden d cites
+// shared/engine.js's OWN exported isSquadIndependent (golden d cites
 // REQ-0033 independence data as the enforcement source; this is that
 // exact function, not a reimplementation). Needs an engine instance
 // bound to some itemDefsById -- isSquadIndependent never actually
@@ -37,7 +37,7 @@ function isSquadIndependent(engine, canvas, squadIndex) {
 // isSquadDeployable(engine, canvas, squadIndex) -- REQ-0041 feedback 5
 // server-side half of the deploy gate ("squads WITHOUT any BP must NOT
 // be deployable" -- Backpack-as-HP, zero BP = dead on arrival).
-// Delegates to mock-src/engine.js's OWN exported isSquadDeployable (same
+// Delegates to shared/engine.js's OWN exported isSquadDeployable (same
 // "delegate, don't reimplement" convention as isSquadIndependent just
 // above -- this is the actual golden predicate, not a server-side
 // reimplementation of the bps.length check).

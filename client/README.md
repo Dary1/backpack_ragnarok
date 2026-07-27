@@ -6,7 +6,7 @@ static server (`web/` @ :8801, tunneled at backpack-dev.qtie.jp).
 ## Scope (T0.1)
 Read-only board render from the live API: canvas grid, BPs, placed POs
 (sprite v7 art), linker beams, port ◇/◆ marks. No drag-drop, no auth, no
-combat playback yet (T0.2+). The engine (`mock-src/engine.js`) is consumed
+combat playback yet (T0.2+). The engine (`shared/engine.js`) is consumed
 as-is via a thin typed adapter in `src/engine/` — never forked or rewritten.
 
 ## Develop
@@ -39,7 +39,7 @@ web service (no ingress change needed; `web/` is already served as-is).
 
 ## Structure
 - `src/engine/` — `engine.d.ts` (typed surface for the parts T0.1 uses) +
-  `adapter.ts` (thin wrapper importing `mock-src/engine.js` unmodified).
+  `adapter.ts` (thin wrapper importing `shared/engine.js` unmodified).
 - `src/api.ts` — typed client for `/api/content` and
   `/api/profile/default/canvas` (falls back to the scenario baked into
   `/api/content` on 404).

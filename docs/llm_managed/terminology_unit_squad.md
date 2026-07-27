@@ -39,7 +39,7 @@ Derived terms in use (proposed by orchestrator, accepted in session):
 exist.** `server/services/gacha.cjs` `rollCommonBp()` unconditionally stamps
 `linker:{off,dirs}` (Unit cell drawn from the polyomino's own cells, 1–3 distinct
 directions); `workshop.ruleUnit` states the seat is stamped at mint and cannot be
-chosen; `mock-src/engine.js:92` `unitCell(bp)` dereferences `bp.linker` unconditionally.
+chosen; `shared/engine.js:92` `unitCell(bp)` dereferences `bp.linker` unconditionally.
 The Unit's cell also **rejects PO placement** (`canPlaceCells()` → `why:'Unit cell'`).
 
 `connection_shape: none` (vocab v9) = a Unit that forms **no links** — NOT a BP without

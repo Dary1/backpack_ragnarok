@@ -212,7 +212,7 @@ module.exports.run = async function run(h) {
     // Seed an EXISTING lrdst stack directly into the players own
     // inventory (mirrors the clients firstFitOrMergeTM merge branch,
     // which lands the claim on the EXISTING stacks own cell, discarding
-    // the claimed rows uid entirely -- see mock-src/engine.js tmMove doc:
+    // the claimed rows uid entirely -- see shared/engine.js tmMove doc:
     // the destination stack uid persists and the dragged one is
     // discarded).
     const existingDoc = scheduleStorage.readProfile(scheduleP1.playerId);

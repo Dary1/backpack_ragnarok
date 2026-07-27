@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // client/scripts/check_placement.mjs -- REQ-0273 gate. Drives the REAL
-// client/src/lib/placement.ts against the REAL mock-src/engine.js (vite
+// client/src/lib/placement.ts against the REAL shared/engine.js (vite
 // ssrLoadModule, same rig as check_bpskin.mjs) and pins the bug-2 fix:
 // claiming a rolled BP must never MOVE an unrelated free-placed PO, and the
 // resulting state must be engine-legal in every page. Pre-fix, the
@@ -24,7 +24,7 @@ async function main() {
   const server = await createServer({ root: CLIENT, logLevel: 'error', server: { middlewareMode: true, hmr: false }, appType: 'custom' });
   try {
     const { firstFitPlaceBp, firstFitPlace } = await server.ssrLoadModule('/src/lib/placement.ts');
-    const Engine = require_(path.join(REPO, 'mock-src', 'engine.js'));
+    const Engine = require_(path.join(REPO, 'shared', 'engine.js'));
     const ITEMS = { hilt: { name: 'H', tags: [], shape: [[0, 0]], icon: 'icon-x' }, dagger: { name: 'D', tags: [], shape: [[0, 0], [1, 0]], icon: 'icon-x' } };
     const E = Engine.create(ITEMS, {}, { ROWS: 8, COLS: 8 });
     const fresh = () => E.migrateState({ linked: true, bps: [], pos: [], sis: [] });

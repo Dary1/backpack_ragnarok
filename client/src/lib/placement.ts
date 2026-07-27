@@ -42,7 +42,7 @@ function pageOrderFrom(openPage: number, pageCount: number): number[] {
  * one exists ANYWHERE on `openPage`, otherwise first-fit-CREATES a new
  * stack -- reusing engine.js's tmMove/tmCanPlace (the SAME merge-on-
  * same-id-drop logic the engine's own drag-and-drop TM handling uses,
- * see mock-src/engine.js's TM model comment for the merge/uid-survivor
+ * see shared/engine.js's TM model comment for the merge/uid-survivor
  * design). Tries `openPage` first, then every other page in ascending
  * order, exactly like firstFitPlace's po/si branches -- but the SCAN
  * itself is simpler here: rather than probing every cell for a legal
@@ -94,7 +94,7 @@ export function firstFitOrMergeTM(
 /** Client-side first-fit placement for a claimed item -- mirrors the
  * OLD server-side claimWarehouseItem's own scan bounds/order exactly
  * (open page's own bounded 1..8 x 1..8 cell scan, matching
- * mock-src/engine.js's PAGE layout), just relocated to run against the
+ * shared/engine.js's PAGE layout), just relocated to run against the
  * LIVE engine/state instance instead of a server-side profileCanvas
  * copy -- per REQ-0041's two-phase design, this placement happens on
  * the CLIENT, not on the server. Tries `openPage` first, then every

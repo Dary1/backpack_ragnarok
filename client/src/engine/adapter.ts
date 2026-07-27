@@ -1,9 +1,11 @@
-// Thin loader for the shared, framework-free mock-src/engine.js — REQ-0026
-// T0.1. This file does NOT reimplement or fork any engine logic; it only
-// evaluates the engine's own unmodified source in a CJS-shaped scope so a
-// Vite/Rollup (ESM) pipeline can consume it.
+// Thin loader for shared/engine.js, the framework-free engine — REQ-0026
+// T0.1, moved out of mock-src/ by REQ-0309 (byte-identical). This file does
+// NOT reimplement or fork any engine logic; it only evaluates the engine's
+// own unmodified source in a CJS-shaped scope so a Vite/Rollup (ESM)
+// pipeline can consume it. The shim below is unchanged by that move: it is
+// required by the engine being hand-written UMD, not by where it lives.
 //
-// Why not a plain `import`: mock-src/engine.js is a hand-written UMD module
+// Why not a plain `import`: shared/engine.js is a hand-written UMD module
 // (`(function(root,factory){ if module.exports ... else root.Engine=... })`)
 // with no import/export ES module syntax at all. Rollup treats any non-
 // node_modules .js file as ES module source and will not rewrite
@@ -22,7 +24,7 @@
 //      two injected parameters; no access to this module's closure.
 // Any future engine.js change (new export, bugfix) is picked up automatically
 // on next build with zero adapter changes, since the source is read fresh.
-import engineSource from '../../../mock-src/engine.js?raw';
+import engineSource from '../../../shared/engine.js?raw';
 import type { EngineModule } from './engine.d.ts';
 
 function loadEngineModule(): EngineModule {

@@ -16,7 +16,7 @@
 //      ranged verb params must be [lo,hi] int ranges; tags from the po_tags/
 //      socket_tags hierarchy) to the variant's data against schema_ref.
 //   2. engine_types  -- check_engine_types.cjs, WIRED as a subprocess
-//      precondition (the mock-src/engine.js type surface must not have
+//      precondition (the shared/engine.js type surface must not have
 //      drifted) PLUS a per-kind field-type conformance check of the def
 //      against the runtime types engine.js consumes (its "declared type must
 //      match runtime type" doctrine, applied to the content record).
@@ -459,7 +459,7 @@ function engineTypesCheck(kind, data, root, dialect) {
   }
   // REQ-0266: a unit_skin declares no ENGINE-consumed record at all -- it is
   // pure cosmetics (identity + slot + an artwork reference + the units it may
-  // dress). mock-src/engine.js never sees one: the def is consumed by the
+  // dress). shared/engine.js never sees one: the def is consumed by the
   // CLIENT's resolution chains (unitIcon / bpSkinResolve) and by the art_urls
   // join, neither of which is an engine type surface. Recorded honestly as
   // not-applicable WITH a reason, never as a free PASS (REQ-0160 ruling Q2-sub).

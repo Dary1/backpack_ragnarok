@@ -1,7 +1,7 @@
 // Workshop route (#/workshop) -- REQ-0042 behavior, REQ-0076 MJOLNIR
 // re-skin. Common BP gacha: costs GACHA_COMMON_BP_COST (10, single
 // source shared/constants.json since REQ-0145b (cb))
-// LRDST (a stackable TM currency, see mock-src/engine.js's TM model).
+// LRDST (a stackable TM currency, see shared/engine.js's TM model).
 // Follows the SAME "fetch on mount, loading/error states, t()" shape
 // SchedulePage.tsx/DexRoot.tsx/Settings.tsx already established for a
 // route-level component, and reuses WarehouseTab.tsx's EXACT two-phase

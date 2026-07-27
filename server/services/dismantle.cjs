@@ -16,7 +16,7 @@
 //      roll `q` in [0,1) whose FLOOR rises with that item id's own 分解
 //      値 (asymptotically toward, never reaching, a 50% cap -- see
 //      SUPPRESSION_CAP below). `q` rides on the instance itself (see
-//      mock-src/engine.js's q-carrying edits) and is consumed at combat-
+//      shared/engine.js's q-carrying edits) and is consumed at combat-
 //      compile time by sim/lib/compile.cjs's applyQualityToEffects,
 //      which narrows a strike/multi_strike verb's [lo,hi] range to
 //      [lo+q*(hi-lo), hi] -- i.e. "the minimum approaches the maximum,

@@ -1,4 +1,4 @@
-// Typed surface for mock-src/engine.js — REQ-0026 T0.1, extended REQ-0027 T0.2,
+// Typed surface for shared/engine.js — REQ-0026 T0.1, extended REQ-0027 T0.2,
 // extended REQ-0030 Phase 2 (inventory model).
 //
 // This is NOT a full re-typing of the engine; it covers the queries T0.1's
@@ -8,7 +8,7 @@
 // The engine itself is consumed as-is (see adapter.ts) — these types
 // describe its existing behavior, they do not change it.
 //
-// REQ-0027 T0.2 verification note: re-read mock-src/engine.js fresh against
+// REQ-0027 T0.2 verification note: re-read shared/engine.js fresh against
 // every mutator declaration below. Found and fixed one drift: movePO,
 // moveBP, and moveAssembly's failure path returns whatever the internal
 // canPlaceCells()/canMoveBP()/canPlaceAssembly() check produced (a
@@ -19,7 +19,7 @@
 // canMoveBP, canPlaceAssembly, hostOk, seatSI, stowSI, unseatOrphans).
 //
 // REQ-0030 Phase 2 verification note: every inv* declaration below was
-// checked line-for-line against mock-src/engine.js's "Inventory model"
+// checked line-for-line against shared/engine.js's "Inventory model"
 // section (added Phase 1). Container shape ({bps,pos,sis}) mirrors
 // GameState's own {bps,pos,sis} fields exactly (byte-identical field
 // names), per the engine's own design note ("mirrors the top-level
@@ -201,7 +201,7 @@ export interface SI {
  * only SI.host may additionally take the page-local free-placement shape
  * ({page,cell}), see InvSIHost above. */
 /** TM (Transmutator) stack record -- REQ-0042. Page-scoped, stackable,
- * always 1x1, never a canvas record (see mock-src/engine.js's TM model
+ * always 1x1, never a canvas record (see shared/engine.js's TM model
  * comment for why it structurally cannot reach canvas). */
 export interface TM {
   uid: string;
@@ -351,7 +351,7 @@ export interface EngineInstance {
   moveBP: (st: GameState, bpId: string, origin: Cell) => { ok: boolean; why?: string; cells?: Cell[] };
   /** REQ-0045 (a2): legality for rotating `bpId` 90 degrees CW IN PLACE
    * (origin unchanged; shape/unit/contained-PO layout all rotate about
-   * the BP's own bounding box). See mock-src/engine.js's computeRotatedBP
+   * the BP's own bounding box). See shared/engine.js's computeRotatedBP
    * doc comment for the exact transform ([r,c]->[c,-r] + renormalize,
    * same matrix rotOffsets uses for PO shapes; unit dirs shift +2 mod
    * 8; contained PO rot advances +1 mod 4). */
@@ -478,7 +478,7 @@ export interface EngineInstance {
   firstFitTMCell: (container: InvPage) => Cell | null;
   /** Consumes `qty` of TM `id` from page `pg`, largest-stack-first,
    * across every same-id stack ON THAT PAGE (page-scoped by design, see
-   * mock-src/engine.js's TM model comment for the documented judgment
+   * shared/engine.js's TM model comment for the documented judgment
    * call). Fails cleanly ({ok:false,why:'insufficient'}) with NO
    * mutation at all if the page's total is less than `qty`. */
   spendTM: (st: GameState, pg: number, id: string, qty: number) => { ok: boolean; why?: string; have?: number; need?: number; spent?: number };
@@ -665,7 +665,7 @@ export interface EngineInstance {
   /** Read-only auditor for the REQ-0033 reference-model invariant
    * (REPLACES the pre-REQ-0033 "uid lives in exactly one place"
    * physicality rule this same function used to check -- signature
-   * unchanged, semantics rewritten; see mock-src/engine.js's own updated
+   * unchanged, semantics rewritten; see shared/engine.js's own updated
    * comment on checkUidInvariant for the authoritative description this
    * mirrors). Now checks TWO things:
    *   (a) every uid (PO/BP/SI) has a HOME AT MOST ONCE across
@@ -699,7 +699,7 @@ export interface EngineInstance {
   // checkUidInvariant above). All queries below are deliberately
   // recomputed on demand (never cached) -- comfortably sub-millisecond at
   // this game's scale (SQUAD_COUNT squads x a few dozen items), per the
-  // perf note on tintSets in mock-src/engine.js.
+  // perf note on tintSets in shared/engine.js.
   // -----------------------------------------------------------------------
 
   /** Every squad index (0-based) that currently holds a reference to

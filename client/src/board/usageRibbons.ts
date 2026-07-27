@@ -109,7 +109,7 @@ export function drawSelfRibbon(self: BoardRenderer, bbox: BBoxPx): void {
 
 /** How many squads OTHER than the current one hold `uid` (spec item 2 --
  * `usageOf` minus the current squad). tintSets/usageOf are the only truth
- * (mock-src/engine.js); this never forks that math. */
+ * (shared/engine.js); this never forks that math. */
 function otherSquadCount(self: BoardRenderer, uid: string): number {
   const st = self.lastState;
   if (!st || !st.presets) return 0;

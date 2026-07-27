@@ -2,7 +2,7 @@
 //
 // =====================================================================
 // INVARIANT (read this before touching engine interop):
-// This module MAY require('../mock-src/engine.js') READ-ONLY to compile
+// This module MAY require('../shared/engine.js') READ-ONLY to compile
 // static topology facts (assembly/sockets/allConnections/connectionsFrom/
 // cellsOf/bpCells/combos/traceBeams). It must NEVER call any engine
 // MUTATOR (movePO, moveBP, rotatePO, seatSI, stowSI, invMovePO, etc.) and
@@ -44,7 +44,7 @@
 // working unchanged. Determinism proof: sim/tests/goldens.cjs.
 'use strict';
 const path = require('path');
-const engine = require(path.join(__dirname, '..', 'mock-src', 'engine.js'));
+const engine = require(path.join(__dirname, '..', 'shared', 'engine.js'));
 const core = require('./lib/core.cjs');
 const rng = require('./lib/rng.cjs');
 const geometry = require('./lib/geometry.cjs');

@@ -10,7 +10,7 @@
 //
 // ---------------------------------------------------------------------------
 // THERE IS NO CHARGE DATA IN THIS CODEBASE. Verified 2026-07-12 (REQ-0125a):
-//   * mock-src/engine.js is the PLACEMENT engine -- it has no time axis at all
+//   * shared/engine.js is the PLACEMENT engine -- it has no time axis at all
 //     (grep: no `charge`, no `cooldown`, no `timer`, no tick).
 //   * sim/ has no per-unit charge either. The only `cooldown` in the tree is
 //     sim/lib/dungeon.cjs's cooldownForH() -- the ROOM re-entry cooldown
