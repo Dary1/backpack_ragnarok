@@ -53,3 +53,27 @@ only passes on a quiet box tests the wrong thing.
 - REMAINING SCOPE (this REQ stays todo): release.sh rerun-then-abort
   codification with the provenance-carrying known-flaky list, and the
   loaded-box artadmin goto demo for the gate.
+
+---
+
+## Addendum (2026-07-27, REQ-0309 orchestrator) — a second load-related failure mode: the default 4-worker e2e run
+
+Measured while gating REQ-0309, and **reproduced on that REQ's BASE commit**, so it
+is pre-existing and unrelated to that change:
+
+- Two consecutive full `tools/ci.sh` runs each failed **a different** spec at the
+  default `E2E_PARALLEL=4`: once `auto-save`, once workshop gacha asserting
+  `expected 1, received 2` — i.e. a second roll arriving against the profile the
+  spec believed it owned.
+- Isolated re-runs: HEAD `pass / FAIL / pass`; base `c1456a5` `FAIL / FAIL / pass /
+  pass`. Green was reached only with `E2E_PARALLEL=1`, a documented seam.
+
+This is a different mechanism from the goto-timeout family above (that one is the
+harness's static server starving under box load; this one looks like cross-worker
+state contention), but it lands in the same place: **`tools/ci.sh` as configured by
+default cannot reliably reach literal green on this box.** That sits badly with
+REQ-0159's "CI GREEN means literally green" — a gate that must be re-run until it
+agrees is not a gate.
+
+Worth folding into this REQ's scope, or splitting out if the root cause turns out
+to be worker isolation (REQ-0214/0217 hermetic profiles) rather than load.
