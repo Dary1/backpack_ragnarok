@@ -340,3 +340,91 @@ Related and still open: two engine type surfaces exist (`shared/engine.d.ts` and
 own header still names the client one as its typed surface. REQ-0309 deferred it;
 this REQ is the natural place to settle it, but only if it is cheap — say so and
 defer again if it is not.
+
+---
+
+## 10. Orchestrator ratification (2026-07-27)
+
+Re-verified on the server: commits as reported; `git diff 112bd5d..HEAD -- client/e2e/`
+**empty** (the specs are provably unmodified, which is what makes G3 a behavioural
+proof rather than a claim); `web/app` byte-identical to base; `client/src/lib/placement.ts`
+gone; working tree clean; `shared/` now holds `placement.mjs`/`.d.mts` +
+`player_actions.mjs`/`.d.mts` + `tests/`.
+
+### Ruling 1 — commit `f4e6cae` (the behaviour change) is RATIFIED
+
+The implementer did exactly what §6 and STEP 4 asked: pinned the lossy behaviour as
+a golden first (so commits 1-2 are provably behaviour-preserving), then flipped it
+in a separate, loudly-labelled commit.
+
+The defect is **worse than §9.1(3) described, and the correction matters**. My
+addendum said the refund failed when "no page has room for even a 1×1 TM". Reading
+the source more closely than I did, the implementer found the refund was a
+**fixed-cell** attempt at `[1,1]` — not a first-fit scan. `tmCanPlace` accepts that
+cell only when free or already holding an `lrdst` stack, so a single PO parked on
+`[1,1]` of each page is enough to destroy the refund. The inventory need not be
+full, or anywhere near it.
+
+The sharpest case is the one that should worry us: when the spend drains the wallet
+stack to zero, that stack's cell is freed — and the refund still fails, because it
+only ever looks at `[1,1]`. **A player can lose their entire LRDST balance to a
+failed gacha roll while a legal cell sits empty.** This is live today.
+
+The fix routes the refund through `firstFitOrMergeTM` — the module's own helper,
+the same path the warehouse TM claim already uses. It closes the hole rather than
+narrowing it: after a page-scoped `spendTM` succeeds on page `pg`, that page either
+still holds an `lrdst` stack (a merge target) or has just had a cell freed, and the
+walk visits every page regardless. Nothing else changed: the spend stays
+page-scoped, the uid stays injected, `no_space` still leaves the pending roll
+unfinalized.
+
+### Ruling 2 — three spec defects, all called correctly
+
+1. **`shared/forecast.mjs` no longer exists.** §2 told the implementer to follow
+   its precedent "exactly"; REQ-0308 deleted it four commits before this REQ was
+   dispatched. Recovering the pattern from `74860da^` rather than guessing was the
+   right call. My spec was stale by one merge — a hazard of writing specs against a
+   moving master, worth remembering for 0311+.
+2. **`itemKindOf` argument order** was transposed in §2.2 (`(id, defs)` vs the
+   source's `(defs, itemId)`). Source order kept. Correct.
+3. **G4(c) is unsatisfiable as written for a TM *merge*.** I wrote "every kind
+   reuses the row uid"; `tmMove` deletes the dragged uid and keeps the destination
+   stack's. The server already anticipated this — `finalizeClaimingItemsForCanvas`
+   finalizes a tm row on `presentUids.has(itemUid) || presentTmIds.has(itemId)`.
+   Testing both sub-cases is the right resolution. My rule was too absolute; the
+   uid-reuse contract holds for po/si/bp, and the tm merge is the documented
+   exception.
+
+### Ruling 3 — the port rule is BROKEN IN THE TOOLS, and that is not this REQ's fault
+
+§9.4 told the implementer REQ-0310's decade was 8100 (PROJECT.md: `PORT = 5000 +
+REQ*10 + i`). `tools/e2e_ports.sh 0310` returns **3100/3101/3102**. Verified
+independently: `tools/e2e_ports.sh:4` implements `PORT = REQ * 10 + index` with no
+5000 base, and `:32-34` still carries the "cap at 6552 because 6553*10+9 would
+overrun 65535" reasoning — **the exact reasoning PROJECT.md postmortems** as
+"a bound that asked what the port NUMBER FIELD allows and never what the kernel
+will let us bind". `tools/check_e2e_ports.cjs:46` enforces the same old formula.
+
+So PROJECT.md (the user-maintained golden) documents a rule the tools do not
+implement, and the implemented rule is the one PROJECT.md explicitly describes as
+dangerous. Filed separately as REQ-0321; not fixed here. The implementer derived
+via the tool and never hand-typed, which is what the instruction actually required,
+so this REQ's ports are correct-by-construction either way.
+
+### Also noted
+
+- `refunded` added to the `no_space` result: not a behaviour change (the caller
+  ignores it), and it gives REQ-0314 a hook. Accepted.
+- `shared/tests` excluded from `tsconfig.server.json`, matching the existing
+  `server/tests`/`sim/tests` convention. Found by running `[3.5/7]` early per §9.5 —
+  which is the whole reason that instruction was in the spec.
+- G4(e)'s starter-seed golden was captured from the BASE implementation via the
+  real TypeScript compiler rather than a hand-strip, so it is independent of the
+  port. Good instinct; do this again for 0311+.
+- `[7/7]` flaked once at 4 workers (`workshop.spec.ts:121`, `Expected 1 Received 2`
+  — profile contamination), green 11/11 in isolation and green serially three
+  times. That is now the **third** independent observation. REQ-0222's addendum
+  stands.
+- `web/app` deliberately not rebuilt: the house convention is a dedicated
+  `build(web): rebuild app bundle on merged tree` commit at integration. Correct,
+  and it is the orchestrator's to do.
