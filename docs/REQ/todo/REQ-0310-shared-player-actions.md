@@ -135,7 +135,124 @@ treat a failure there as a release blocker, not a test bug.
 
 ## 7. Outcome
 
-*(to be filled at build time.)*
+**Built 2026-07-27** on branch `req-0310-shared-player-actions`, based on master
+`112bd5d`. Three commits: two pure extraction, one deliberate behaviour change.
+
+| commit | what |
+|---|---|
+| `c24adee` | (1/3) `shared/placement.mjs` + `.d.mts`; `client/src/lib/placement.ts` deleted; client + the REQ-0273 gate re-pointed. Pure extraction. |
+| `45cbd1c` | (2/3) `shared/player_actions.mjs` + `.d.mts` (`applyGachaRoll`, `applyWarehouseClaim`, `buildStarterUnitsState`, `itemKindOf`); call sites delegate; `shared/tests/player_actions.cjs` wired into `ci.sh` as `[3.2/7]`. Pure extraction. |
+| `f4e6cae` | (3/3) **BEHAVIOUR CHANGE** -- first-fit the gacha refund. Fixes the section 9.1(3) currency-loss defect. Separate by design. |
+
+### Gate results (actual output)
+
+| # | Gate | Result |
+|---|---|---|
+| G1 | shared/ charter intact | **PASS.** `shared/placement.mjs`: 0 imports, 0 requires. `shared/player_actions.mjs`: exactly 1 import, `./placement.mjs` (intra-`shared/`). No reference to `client/`, `server/`, `sim/` or `mock-src/` outside comments. |
+| G2 | No forked copy remains | **PASS.** `client/src/lib/placement.ts` deleted. Repo-wide `grep 'function buildStarterUnitsState\|function itemKindOf'` returns exactly 2 hits, both in `shared/player_actions.mjs`. |
+| G3 | Full CI green, e2e included | **PASS.** `tools/ci.sh` final line: `CI GREEN`. e2e `196 passed, 1 skipped (8.6m)`. The 1 skip is `dex-admin.spec.ts:102` (REQ-0182b 409), which skips in FILES mode by design and is covered by `[6.6/8]`. **Specs unmodified: `git diff 112bd5d..HEAD -- client/e2e/` is EMPTY.** `workshop.spec.ts:121` (gacha happy path, balance 999->989 + server-side uid/deduction after finalize) and all 5 `warehouse-mjolnir.spec.ts` claim/claim-all tests pass untouched. |
+| G4 | New unit goldens | **PASS.** `shared/tests/player_actions.cjs`: `player_actions: all green (76 checks)`, run in CI as `[3.2/7]`. Covers (a) balance -cost + BP placed; (b) no-space -> refunded, net balance unchanged, no BP; (c) po/si/tm-fresh/tm-merge/bp uid reuse; (d) no-space -> state byte-identical for all four kinds; (e) starter state deep-equals base. |
+| G5 | Invariant | **PASS.** `engine.checkUidInvariant(state).ok` asserted after every transition, 18 call sites, including the no-space and refund paths and the starter seed through `migrateState` against the live content defs. |
+| G6 | Client typing preserved | **PASS.** `[3.5/7]` `tsc -p tsconfig.server.json` clean; `[6/7]` client typecheck + build clean; `client/ pnpm exec tsc -b` clean. `placement.d.mts` and `player_actions.d.mts` present; no `any` at any call site (results are discriminated unions on `ok`). |
+
+### The section 9.1(3) defect: REPRODUCED, and worse than specced
+
+It reproduced, and the trigger is **much narrower than section 9.1(3) assumed**.
+The addendum described it as "no page has room for even a 1x1 TM". In fact the
+refund was `engine.tmMove(state, pg, uid, [1,1], 'lrdst', cost)` -- a **fixed
+cell**, not a first-fit scan. `tmCanPlace` accepts `[1,1]` only when it is free
+or already holds an `lrdst` stack, so the refund failed whenever **cell [1,1]
+alone was occupied on every page**. A single PO parked on `[1,1]` of each page
+is enough; the inventory need not be full.
+
+Sharpest case: when the spend DRAINS the wallet stack to zero its cell is
+freed, and the refund still fails because it never looks there -- the player
+loses their **entire** balance with a legal cell sitting empty.
+
+Both cases were first committed as *pinned defect* goldens asserting the lossy
+behaviour (in `45cbd1c`, so the extraction provably changed nothing), then
+flipped to assert full recovery in the fix commit `f4e6cae`:
+
+- `[1,1]` occupied on every page: balance **20 preserved** (was 10 -- 10 destroyed)
+- wallet drained to zero: balance **10 preserved** (was 0 -- total loss)
+
+The fix routes the refund through `firstFitOrMergeTM`. This closes the hole
+completely rather than narrowing it: after a successful page-scoped `spendTM`
+on page `pg`, that page necessarily either still holds an `lrdst` stack (a legal
+merge target) or has just had a cell freed by the stack that drained to zero, so
+the page walk can always place the refund.
+
+### Deviations and judgment calls
+
+1. **The `shared/forecast.mjs` precedent section 2 cites does not exist** --
+   REQ-0308 (`74860da`) deleted `forecast.mjs` + `forecast.d.mts` when it retired
+   the ray forecast. The pattern was recovered from `74860da^` and followed
+   exactly: `.mjs` + hand-written `.d.mts`, client resolves via
+   `moduleResolution: bundler`.
+2. **`itemKindOf`'s argument order is `(defs, itemId)`**, per the source and
+   section 9.2(2) -- section 2.2's `itemKindOf(id, defs)` is transposed.
+3. **A TM-MERGE claim cannot reuse the row uid**, contrary to a literal reading
+   of G4(c)/section 9.2(1). `tmMove` deletes the dragged uid and keeps the
+   destination stack's (engine TM model). The server already knows this:
+   `finalizeClaimingItemsForCanvas` finalizes a tm row on
+   `presentUids.has(itemUid) || presentTmIds.has(itemId)`. Both sub-cases are
+   tested: fresh TM stack keeps the row uid verbatim; merged TM leaves the
+   same-id stack the server actually scans for.
+4. **`refunded` added to the `no_space` result.** Not a behaviour change (the
+   caller ignores it and shows the same error); it makes the defect observable
+   and gives REQ-0314 a hook.
+5. **Bonus placement now precedes the cell pulse** (it followed it before).
+   Bonuses are state and had to move; the pulse is UI and stayed. Saved state is
+   identical and the pulsed cells are the BP's, unaffected by bonuses.
+6. **`shared/tests` excluded from `tsconfig.server.json`.** `shared/**/*.cjs`
+   would have pulled the new suite into `[3.5/7]`'s `checkJs`, demanding that
+   deliberately partial fixtures be widened into full wire payloads. Excluded to
+   match the existing convention: `server/tests` and `sim/tests` were never in
+   `include` -- no test suite in this repo is typechecked.
+7. **G4(e)'s golden was captured from the BASE implementation**, extracted from
+   `112bd5d:client/src/store/boot.ts` and transpiled by the real `typescript`
+   compiler rather than hand-stripped, so the comparison is independent of the
+   hand-written port. Fixture is the live `content/live/starter_units.json`.
+8. **`[7/7]` flaked once at the default 4 workers**, exactly as the dispatch
+   warned. `workshop.spec.ts:121` failed with `newBpIds.size` `Expected: 1,
+   Received: 2` (two freshly-minted BPs from one roll) alongside a burst of HTTP
+   500s -- profile contamination, not a code defect. It passed 11/11 in
+   isolation and the full suite then passed serially, twice. The recorded green
+   is from `E2E_PARALLEL=1`.
+9. **Ports: `tools/e2e_ports.sh 0310` yields 3100/3101/3102 (fleet 3104), NOT
+   the 8100/8101/8102 section 9.4 states.** The tool on master still implements
+   the pre-REQ-0251 rule `REQ*10` with no 5000 base. Ports were derived with the
+   tool, never hand-typed; `[0/8]` passed. Flagged, not fixed -- out of scope.
+10. **The `shared/engine.d.ts` vs `client/src/engine/engine.d.ts` question
+    (section 9.5, "settle it only if cheap") is DEFERRED.** It was not cheap: it
+    is untouched by this REQ's seam and both new `.d.mts` files consume
+    `./engine.d.ts` cleanly. No new `.d.ts`/`.js` shadowing was introduced --
+    `.mjs`/`.d.mts` is the correct pairing -- and `[3.5/7]` was run early per the
+    warning, which is what caught item 6.
+
+11. **The `web/app` bundle is deliberately NOT rebuilt on this branch.** CI step
+    `[6/7]` regenerates it, and an early `git add -A` swept those artifacts into
+    two commits; they were rewritten out. Repo convention is a dedicated
+    `build(web): rebuild app bundle on merged tree for REQ-NNNN` commit at
+    INTEGRATION (see `e5dc23f`, `5edbf25`, `f002b19`), and REQ-0286 records the
+    cost of a stranded bundle. `web/app` on this branch is byte-identical to
+    master `112bd5d`; the rebuild belongs to whoever merges.
+
+### Notes for REQ-0314 (`bpk`)
+
+- Import `shared/player_actions.mjs` and `shared/placement.mjs` directly; both are
+  dependency-free ESM and `import()` from plain node with no build step.
+- `applyGachaRoll` needs `{ mintUid }` injected for determinism;
+  `defaultRefundUidMinter` reproduces the browser's timestamp uid if you do not care.
+- **`spendTM` is page-scoped.** A bot holding 6+6 LRDST across two pages cannot
+  pay 10. Consolidate stacks before rolling, or expect `insufficient_lrdst`.
+- **Never mint a uid for a warehouse claim** -- pass `claimed.itemUid` through;
+  it is the server's finalize contract. (TM merges are the documented exception.)
+- Both transitions mutate `state` in place and return the same object. Persist by
+  PUTting the canvas -- that PUT *is* the commit for gacha and claim.
+- `POST /api/starter/claim` grants nothing; `buildStarterUnitsState` is the whole
+  of fresh-profile creation, and its result must go through `engine.migrateState`.
+
 
 ---
 
