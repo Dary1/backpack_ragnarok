@@ -30,7 +30,7 @@ import type { ApiConnShape } from '../../../shared/dto';
 import { getInventoryRenderer } from '../board/inventoryRenderer';
 import { resolveUnitArtUrl } from '../dex/unitArt'; // REQ-0266
 import { dirsLabel, shapeLabel } from '../lib/connShapeLabel'; // REQ-0208: lifted from this file
-import { firstFitPlace, firstFitOrMergeTM, firstFitPlaceBp } from '../../../shared/placement.mjs'; // REQ-0310
+import { applyGachaRoll } from '../../../shared/player_actions.mjs'; // REQ-0310
 import { pulseTab } from '../lib/tabPulse';
 import { BpDiagram } from '../dex/BpDiagram';
 import { DismantlePanel } from './DismantlePanel';
@@ -206,73 +206,36 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
         throw new Error('inventory not ready');
       }
 
-      // Phase 2 (THIS client): deduct `cost` LRDST via engine.spendTM
-      // (page-scoped, largest-stack-first -- see engine.js's TM model
-      // comment for why spend is page-scoped) from the CURRENTLY OPEN
-      // page first, falling back to any other page that alone holds
-      // enough to cover the cost (spendTM itself never partially spends
-      // across pages -- see its own doc -- so this loop tries whole
-      // pages in order until one page's own balance covers the cost).
+      // Phase 2 (THIS client): the whole STATE transition -- the page-scoped
+      // spendTM, the first-fit BP placement, the refund on placement failure
+      // and the pack's bonus slots -- lives in shared/player_actions.mjs since
+      // REQ-0310, so the headless player (REQ-0314) runs the SAME code this
+      // page does instead of reimplementing currency-losing logic. What stays
+      // here is UI: the error strings, the cell pulse, the tab pulse, the
+      // auto-save nudge and the toast.
       const openPage = snapshot.activeInvPage;
-      const pageOrder = [openPage, ...Array.from({ length: engine.PAGE_COUNT }, (_, i) => i).filter((i) => i !== openPage)];
-      let spent = false;
-      for (const pg of pageOrder) {
-        const spendRes = engine.spendTM(state, pg, 'lrdst', cost);
-        if (spendRes.ok) {
-          spent = true;
-          break;
-        }
-      }
-      if (!spent) {
-        // Should not happen (server already verified balance >= cost
-        // against the last-saved canvas moments ago) unless the balance
-        // changed in the interim on THIS client without a save, or the
-        // player's LRDST is split across multiple pages with none alone
-        // covering the cost -- surface an error rather than silently
-        // placing a BP the player never paid for.
-        setError(t(locale, 'workshop.spendFailed'));
-        return;
-      }
-
-      // First-fit place the rolled BP, same open-page-first/pulse/
-      // tab-pulse-fallback pattern as WarehouseTab.tsx's claim flow.
-      const placed = firstFitPlaceBp(engine, state, rolled, openPage, engine.PAGE_COUNT);
-      if (!placed) {
-        // No space anywhere -- per the same accepted design as the
-        // warehouse claim's own "no space" case, the pending roll is
-        // simply left unfinalized server-side; it lazily reverts after
-        // the timeout (see the gacha finalize/purge path). The LRDST was
-        // already deducted above, though -- to avoid silently losing
-        // currency for a roll that can never be placed, refund it locally
-        // before surfacing the error (no server round trip needed -- the
-        // pending roll was never finalized, so the server-side balance
-        // was never touched either).
-        for (const pg of pageOrder) {
-          const refund = engine.tmMove(state, pg, 'lrdst_refund_' + Date.now(), [1, 1], 'lrdst', cost);
-          if (refund.ok) break;
-        }
-        setError(t(locale, 'workshop.noSpace'));
+      const applied = applyGachaRoll(engine, state, rolled, cost, openPage, {
+        // The historical minter, verbatim: the refund stack's uid is a
+        // timestamp. Injected so the shared transition stays a pure,
+        // goldenable function.
+        mintUid: () => 'lrdst_refund_' + Date.now(),
+      });
+      if (!applied.ok) {
+        // 'insufficient_lrdst' should not happen (the server verified
+        // balance >= cost against the last-saved canvas moments ago) unless
+        // the balance changed in the interim on THIS client without a save,
+        // or the player's LRDST is split across pages with none alone
+        // covering the cost. 'no_space' leaves the pending roll unfinalized
+        // server-side; it lazily reverts after the timeout.
+        setError(t(locale, applied.reason === 'insufficient_lrdst' ? 'workshop.spendFailed' : 'workshop.noSpace'));
         return;
       }
 
       const renderer = getInventoryRenderer();
-      const cells = engine.bpCells({ shape: rolled.shape, origin: placed.origin } as Parameters<typeof engine.bpCells>[0]);
-      if (placed.page === openPage) {
-        renderer?.pulseCellsSuccess(cells);
+      if (applied.page === openPage) {
+        renderer?.pulseCellsSuccess(applied.cells);
       } else {
-        pulseTab(placed.page);
-      }
-
-      // REQ-0062: the pack's bonus slots (POs / SI lenses / TMs) ride the SAME save as
-      // the guaranteed BP -- first-fit them into inventory now, before the auto-save
-      // below finalizes the roll. Best-effort: a bonus that finds no room is simply not
-      // placed (the guaranteed BP remains the sole finalize gate, unchanged).
-      for (const b of rolled.bonuses ?? []) {
-        if (b.pool === 'tm') {
-          firstFitOrMergeTM(engine, state, b.uid, b.id, b.qty ?? 1, openPage, engine.PAGE_COUNT);
-        } else {
-          firstFitPlace(engine, state, b.pool, b.uid, b.id, openPage, engine.PAGE_COUNT);
-        }
+        pulseTab(applied.page);
       }
 
       // Let the existing debounced auto-save run naturally -- this PUT
@@ -281,9 +244,9 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
       notifyStateChanged();
 
       setToast(
-        placed.page === openPage
+        applied.page === openPage
           ? t(locale, 'workshop.rolledToast')
-          : t(locale, 'workshop.rolledOnOtherPage', { page: placed.page + 1 })
+          : t(locale, 'workshop.rolledOnOtherPage', { page: applied.page + 1 })
       );
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {

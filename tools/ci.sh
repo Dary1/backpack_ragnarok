@@ -125,6 +125,13 @@ echo "==== [2.96/7] REQ-0272 candidate one-door gate (validate/static/dynamic; k
 node sim/tests/candidate_gate_test.cjs
 echo "==== [3/7] shared engine tests ===="
 node mock-src/tests/run.cjs
+# REQ-0310: the client-authoritative player actions (gacha roll, warehouse
+# claim, fresh-profile seed) as pure state transitions in shared/. G4(b) and
+# G4(d) are the currency-loss and item-loss goldens -- a red there is a release
+# blocker, not a test bug. Dependency-free, so it sits with the other shared
+# suites in front of the typecheck.
+echo "==== [3.2/7] shared player actions (REQ-0310 G4/G5 goldens) ===="
+node shared/tests/player_actions.cjs
 echo "==== [3.5/7] typecheck (server modules + shared, checkJs) ===="
 if [ -x node_modules/.bin/tsc ]; then
   node_modules/.bin/tsc -p tsconfig.server.json

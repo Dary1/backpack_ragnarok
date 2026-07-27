@@ -96,7 +96,8 @@ import { useEffect, useRef, useState } from 'react';
 import { setInventorySlot } from '../board/inventorySlot';
 import { iconDataUrl } from '../dex/dexIcons';
 import { rarThemeClass } from '../render/uiBits';
-import { contentEntryFor, itemKindOf, localizedItemName } from '../lib/itemContent';
+import { contentEntryFor, localizedItemName } from '../lib/itemContent';
+import { itemKindOf } from '../../../shared/player_actions.mjs'; // REQ-0310
 import { formatWarehouseCountdown } from '../lib/time';
 import { localizedName } from '../lib/contentName'; // REQ-0239: relocated
 import { t } from '../i18n';
