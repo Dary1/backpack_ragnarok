@@ -157,3 +157,31 @@ the fix belongs there, not here. No REQ-0308 change can move it.
 ## Outcome
 Code-complete, self-green, and green on every deterministic gate. `todo -> built`; not yet merged
 or deployed.
+
+## Deploy / outcome (2026-07-27)
+
+Merged to master as `8f2944e` (`--no-ff`) on green master @`0918773`. No conflicts, no conflict
+markers (`git diff --check` clean). No migration and no content deploy: this REQ only DELETES a
+read-only serving-layer view -- no schema, no persisted field, no content file is touched.
+
+- **Dist:** already rebuilt and committed on the branch (`e5dc23f`) from the ci.sh `[6]` build, so
+  the merge carried it. Verified END TO END rather than assumed: the committed bundle is
+  `assets/index-BtzRS2zU.js`, and `https://backpack-dev.qtie.jp/app/` serves exactly that hash.
+- **Service:** `systemctl --user restart backpack-api` -- clean startup
+  ("backpack-api listening on http://127.0.0.1:8802 (v0.1.0)"), registry-first content line normal
+  (95 registry / 20 file fallback), no errors.
+- **Live verification:**
+  - `GET /api/schedule/forecast?dungeonId=niflheim_depths&level=1` -> **200 before the restart,
+    404 after**. The retirement is live, and the before/after pair proves the restart is what
+    removed it (not a stale process still serving the old code).
+  - `GET /api/schedule/dungeons` -> 200, all three defs serve.
+  - `GET /api/health` -> `{"ok":true,"version":"0.1.0"}`; web 8801 `/app/` -> 200; public tunnel
+    `https://backpack-dev.qtie.jp/app/` -> 200.
+- **Post-merge sanity on master:** goldens **byte-identical (12 cases)**, `sim/tests/run.cjs`
+  **184/0**, `s4_test` **14/0**, `api_test` (files) **199/0** (1663 assertions).
+
+**Accepted and live.** `built -> done`.
+
+**Left standing deliberately:** the `[7]` e2e parallel-load flake is untouched and still owned by
+REQ-0222 -- it predates this REQ and was proven on unmodified master (see Gate results). Nothing
+here memorises it as an accounted red.
