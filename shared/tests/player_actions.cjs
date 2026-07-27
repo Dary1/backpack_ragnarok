@@ -130,61 +130,51 @@ async function main() {
   }
 
   // ------------------------------------------------------------------ G4(b)
-  console.log('\n-- G4(b) gacha: NO SPACE -> refunded, net balance unchanged, no BP  [ITEM-LOSS GATE]');
+  console.log('\n-- G4(b) gacha: NO SPACE -> refunded, net balance unchanged, no BP  [CURRENCY-LOSS GATE]');
   {
     const st = fresh();
     st.inv.pages[0].tms.push({ uid: 'wallet', id: 'lrdst', qty: 20, cell: [8, 8] });
-    // Everything full except [1,1] on page 0 -- no 6-cell BP fits anywhere, but
-    // the refund's fixed target cell IS available.
+    // Everything full except [1,1] on page 0 -- no 6-cell BP fits anywhere.
     fillPage(st, 0, [[1, 1]]);
     for (let pg = 1; pg < E.PAGE_COUNT; pg++) fillPage(st, pg, []);
     const before = lrdstTotal(st);
-    const mint = counterMinter();
-    const res = applyGachaRoll(E, st, ROLLED, 10, 0, { mintUid: mint });
+    const res = applyGachaRoll(E, st, ROLLED, 10, 0, { mintUid: counterMinter() });
     ok(res.ok === false && res.reason === 'no_space', 'placement failed with no_space');
     ok(res.refunded === true, 'the refund landed');
     eq(lrdstTotal(st), before, 'NET BALANCE UNCHANGED -- the player lost no currency');
     ok(!st.inv.pages.some((p) => p.bps.some((b) => b.id === ROLLED.uid)), 'no BP was placed');
-    const refundStack = st.inv.pages[0].tms.find((t) => t.uid === 'refund_1');
-    ok(!!refundStack, 'the refund stack carries the INJECTED uid (no Date.now() leaked into the transition)');
-    eq(refundStack && refundStack.qty, 10, 'the refund stack holds exactly the cost');
     invariant(st, 'after a refunded no_space roll');
   }
 
-  // ---------------------------------------------------------- LATENT DEFECT
-  // REQ-0310 section 9.1(3). The refund is a FIXED-CELL attempt --
-  // tmMove(state, pg, uid, [1,1], ...) -- not a first-fit scan. tmCanPlace
-  // accepts [1,1] only when it is free or already holds an 'lrdst' stack, so
-  // the refund fails outright whenever every page's [1,1] is occupied by
-  // anything else. The original discarded the return value, so the cost was
-  // deducted and never returned: the player silently loses currency.
-  //
-  // These two cases assert the CURRENT, LOSSY behaviour. They are the bug
-  // report. The fix is a separate, clearly-labelled behaviour-change commit.
-  console.log('\n-- G4(b) LATENT DEFECT (section 9.1(3)): refund targets [1,1] ONLY -> currency can be lost');
+  // The two cases below PINNED A DEFECT before the REQ-0310 fix commit: the
+  // refund used to probe only cell [1,1] on each page, so with [1,1] occupied
+  // everywhere the deducted cost was never returned. They now assert the FIXED
+  // behaviour -- full recovery -- and stand as the regression guard for it.
+  console.log('\n-- G4(b) section 9.1(3) regression guard: refund recovers even with [1,1] occupied on EVERY page');
   {
     const st = fresh();
     st.inv.pages[0].tms.push({ uid: 'wallet', id: 'lrdst', qty: 20, cell: [8, 8] });
-    for (let pg = 0; pg < E.PAGE_COUNT; pg++) fillPage(st, pg, []); // [1,1] occupied by a PO on every page
+    for (let pg = 0; pg < E.PAGE_COUNT; pg++) fillPage(st, pg, []); // [1,1] occupied on every page
     const res = applyGachaRoll(E, st, ROLLED, 10, 0, { mintUid: counterMinter() });
     ok(res.ok === false && res.reason === 'no_space', 'no_space as expected');
-    ok(res.refunded === false, 'DEFECT PINNED: the refund could not land');
-    eq(lrdstTotal(st), 10, 'DEFECT PINNED: 10 LRDST deducted and LOST (was 20)');
-    invariant(st, 'after a lost-currency roll');
+    ok(res.refunded === true, 'FIXED: the refund merges back into the surviving stack (was: silently lost)');
+    eq(lrdstTotal(st), 20, 'FIXED: the full balance survives (was: 10 -- 10 LRDST destroyed)');
+    invariant(st, 'after a recovered no_space roll');
   }
   {
-    // The sharpest form: the wallet stack is drained to zero, so its cell is
-    // FREED by the spend -- and the refund still fails, because it only ever
-    // looks at [1,1]. A first-fit refund would always succeed here.
+    // The sharpest form: the wallet stack drains to zero, so no merge target
+    // survives and the refund must find the cell the spend just freed. The old
+    // fixed-cell refund lost the players ENTIRE balance here.
     const st = fresh();
     st.inv.pages[0].tms.push({ uid: 'wallet', id: 'lrdst', qty: 10, cell: [8, 8] });
     for (let pg = 0; pg < E.PAGE_COUNT; pg++) fillPage(st, pg, []);
     const res = applyGachaRoll(E, st, ROLLED, 10, 0, { mintUid: counterMinter() });
-    ok(res.refunded === false, 'DEFECT PINNED: refund fails even though the spend freed cell [8,8]');
-    eq(lrdstTotal(st), 0, 'DEFECT PINNED: the players ENTIRE balance is lost');
-    const free = E.tmCanPlace(st, 0, 'probe', [8, 8], [], 'lrdst');
-    ok(free.ok === true, 'and a first-fit refund WOULD have found [8,8] free -- proving the fix is first-fit');
-    invariant(st, 'after a total-loss roll');
+    ok(res.refunded === true, 'FIXED: the refund finds the cell the drained stack freed (was: total loss)');
+    eq(lrdstTotal(st), 10, 'FIXED: the entire balance survives (was: 0)');
+    const refundStack = st.inv.pages[0].tms.find((t) => t.uid === 'refund_1');
+    ok(!!refundStack, 'the fresh refund stack carries the INJECTED uid (no Date.now() leaked into the transition)');
+    eq(refundStack && refundStack.qty, 10, 'the refund stack holds exactly the cost');
+    invariant(st, 'after a recovered total-loss roll');
   }
 
   // ------------------------------------------------------------------ G4(c)

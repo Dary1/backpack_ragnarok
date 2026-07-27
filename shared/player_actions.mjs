@@ -81,9 +81,8 @@ export function defaultRefundUidMinter() {
  *     INSIDE the loop, once per attempt, exactly where `Date.now()` used to be
  *     evaluated.
  *
- * (3) THE REFUND CAN SILENTLY FAIL -- see `refunded` in the return value and
- *     the note on it below. Behaviour is UNCHANGED from the React original;
- *     the flag merely makes the outcome observable instead of discarded.
+ * (3) THE REFUND IS FIRST-FIT. It was a fixed-cell attempt until the REQ-0310
+ *     defect fix -- see the note at the refund site.
  *
  * (4) BONUSES ARE BEST-EFFORT AND COME AFTER THE BP. A bonus that finds no room
  *     is simply skipped: the guaranteed BP remains the sole finalize gate. Keep
@@ -120,22 +119,29 @@ export function applyGachaRoll(engine, state, rolled, cost, openPage, opts) {
     // pending roll was never finalized, so the server-side balance was never
     // touched either).
     //
-    // (3) THE REFUND IS A FIXED-CELL ATTEMPT, NOT A FIRST-FIT SCAN. tmMove
-    // targets cell [1,1] of each page in turn, and tmCanPlace accepts that cell
-    // only when it is FREE or already holds an 'lrdst' stack to merge into. So
-    // the refund fails outright when every page's [1,1] is occupied by anything
-    // else -- a single PO parked on [1,1] of every page is enough, the
-    // inventory need not be full. The original discarded this result; `refunded`
-    // reports it. See REQ-0310 section 9.1(3) and its outcome note.
-    let refunded = false;
-    for (const pg of pageOrder) {
-      const refund = engine.tmMove(state, pg, mintUid(), [1, 1], 'lrdst', cost);
-      if (refund.ok) {
-        refunded = true;
-        break;
-      }
-    }
-    return { ok: false, reason: 'no_space', state, refunded };
+    // (3) REQ-0310 DEFECT FIX -- THIS IS A DELIBERATE BEHAVIOUR CHANGE.
+    //
+    // This refund used to be a FIXED-CELL attempt:
+    //
+    //     for (const pg of pageOrder) {
+    //       const refund = engine.tmMove(state, pg, uid, [1, 1], 'lrdst', cost);
+    //       if (refund.ok) break;
+    //     }
+    //
+    // tmCanPlace accepts cell [1,1] only when it is free or already holds an
+    // 'lrdst' stack to merge into, so the refund failed outright whenever every
+    // page's [1,1] was occupied by anything else -- a single PO parked on [1,1]
+    // of each page was enough; the inventory did not have to be full. The
+    // return value was never checked, so the cost was deducted and never given
+    // back: the player SILENTLY LOST CURRENCY.
+    //
+    // first-fitting the refund closes it completely. After a successful
+    // spendTM on page pg, that page necessarily either still holds an 'lrdst'
+    // stack (a legal merge target) or has just had a cell freed by the stack
+    // that drained to zero -- so the walk, which visits every page, can always
+    // place the refund. `refunded` is still reported so a caller can tell.
+    const back = firstFitOrMergeTM(engine, state, mintUid(), 'lrdst', cost, openPage, engine.PAGE_COUNT);
+    return { ok: false, reason: 'no_space', state, refunded: !!back };
   }
 
   // (4) the pack's bonus slots (POs / SI lenses / TMs) ride the SAME save as
