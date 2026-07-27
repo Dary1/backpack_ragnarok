@@ -136,3 +136,90 @@ treat a failure there as a release blocker, not a test bug.
 ## 7. Outcome
 
 *(to be filled at build time.)*
+
+---
+
+## 9. Extraction addendum — the two entangled seams, read from source
+
+Added by the orchestrator after REQ-0309 landed. §2.2 named the functions; this
+section names the *lines that are easy to get wrong*. Both were read from source
+(`client/src/schedule/WorkshopPage.tsx` ~200-290, `client/src/warehouse/useWarehouseData.ts`
+~152-215) — do not re-derive them, verify them.
+
+### 9.1 `applyGachaRoll` — four subtleties
+
+1. **`spendTM` is page-scoped and never spends across pages.** The client builds
+   `pageOrder = [openPage, ...every other page]` and tries `engine.spendTM(state,
+   pg, 'lrdst', cost)` on **whole pages in order** until one page's own balance
+   covers the cost. A player whose LRDST is split 6+6 across two pages cannot
+   afford a cost of 10 — and that is correct, existing behaviour. Reproduce the
+   loop exactly; do not "improve" it into a cross-page spend.
+2. **The refund mints a uid from `Date.now()`.** On placement failure the client
+   refunds with `engine.tmMove(state, pg, 'lrdst_refund_' + Date.now(), [1,1],
+   'lrdst', cost)`. A pure function cannot call `Date.now()` and still be
+   goldenable, so the extracted signature takes an injected minter:
+
+       applyGachaRoll(engine, state, rolled, cost, openPage, { mintUid })
+
+   The client passes its existing timestamp minter; tests pass a counter. This is
+   the one signature change §2 does not already specify — take it.
+3. **A latent hole to TEST, not to silently fix.** The refund loop breaks on the
+   first `refund.ok`, and the return value is **never checked afterwards**. If
+   placement fails *and* no page has room for even a 1×1 TM, the cost is deducted
+   and never returned — the player loses currency. G4(b) must cover exactly this.
+   If it reproduces, follow §6's standing rule: record it here, fix it in a
+   separate clearly-labelled commit, and tell the orchestrator. An extraction REQ
+   must not quietly change behaviour, not even to fix a bug.
+4. **Bonuses are best-effort and come after the BP.** `rolled.bonuses` place with
+   `firstFitOrMergeTM` (pool `'tm'`) or `firstFitPlace` (everything else); a bonus
+   that finds no room is simply skipped. The guaranteed BP remains the sole
+   finalize gate. Keep that asymmetry.
+
+### 9.2 `applyWarehouseClaim` — three subtleties
+
+1. **uid reuse IS the finalize contract.** The placed item must carry
+   `claimed.itemUid` verbatim — that is what `finalizeClaimingItemsForCanvas`
+   scans for. A freshly minted uid would leave the row stuck in `claiming` until
+   it reverted, and the player would appear to lose the item. Assert it in G4(c).
+2. **Kind resolution needs content defs.** `claimed.kind === 'tm' ? 'tm' :
+   claimed.kind === 'bp' ? 'bp' : itemKindOf(content, claimed.itemId)` — hence
+   `defs` in the signature. Three different placement calls follow, one per kind.
+3. **The BP path has a post-placement restore step, and it is state, not UI.**
+   `firstFitPlaceBp` sets only id/name/color/shape/origin/unit/hpMax, so the client
+   then re-applies `name`, `color`, `cellCount`, `bonuses`, `roll` from the
+   verbatim payload onto the placed BP — REQ-0195d's "a bought unit stays
+   byte-faithful, never re-rolled". That loop **moves into `shared/`**. Leaving it
+   behind would make a bought BP silently lossy for any second client.
+
+### 9.3 Where the seam runs
+
+Everything from `const engine = snapshot.engine` down to (but excluding) the first
+UI call is state transition and moves. These stay in the component:
+`setToast`, `setError`, `setClaimErrors`, `setRollResult`, `beginClaimFadeOut`,
+`pulseCellsSuccess`, `pulseTab`, `notifyStateChanged`, and every `t(locale, …)`
+lookup. The extracted functions therefore return enough for the caller to drive
+its own UI — at minimum `{ ok, reason, page, cells }` — and never format a message.
+
+Rule of thumb when the seam is unclear: **if removing the line would change what
+gets SAVED, it moves; if it would only change what the user SEES, it stays.**
+
+### 9.4 Ports
+
+REQ-0310's e2e decade is `5000 + 310*10` → **8100 / 8101 / 8102**, fleet
+8104-8109. Derive with `source tools/e2e_ports.sh 0310`; never hand-pick.
+(REQ-0309 lost a re-run to a hand-typed `81092`, which is not a port.)
+
+### 9.5 A trap REQ-0309 hit that this REQ can hit again
+
+A `.d.ts` shadows a same-basename `.js` in TS module resolution. Moving a `.js`
+next to an existing `.d.ts` silently changes how every consumer types it —
+REQ-0309's `[3.5/7]` went red for exactly this reason and needed an unplanned
+commit. **Before creating `shared/placement.mjs` / `shared/player_actions.mjs`,
+check what `.d.mts`/`.d.ts` files will end up beside them, and run `[3.5/7]`
+early rather than at the end.**
+
+Related and still open: two engine type surfaces exist (`shared/engine.d.ts` and
+`client/src/engine/engine.d.ts`, now a bare re-export), while `shared/engine.js`'s
+own header still names the client one as its typed surface. REQ-0309 deferred it;
+this REQ is the natural place to settle it, but only if it is cheap — say so and
+defer again if it is not.
