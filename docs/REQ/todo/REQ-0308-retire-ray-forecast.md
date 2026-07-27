@@ -96,3 +96,64 @@ word "forecast", but that is REQ-0067's eternal-order score projection, an unrel
 - `api_test` green on BOTH backends (files + pg); the forecast route 404s.
 - Scoped hermetic e2e green with `forecast.spec.ts` gone and no other spec depending on it.
 - `bash tools/ci.sh` prints literal `CI GREEN`.
+
+## Gate results (2026-07-27)
+
+**Branch** `req-0308-forecast-slot-pressure-draw-rehome`, off green `master` @`0918773` (REQ-0307 done).
+Commits: `48ab177` reserve · `a67dddd` spec + reserved->todo · `74860da` the excision
+(30 files, +23 / **-2967**) · `82ce935` REQ-0210 reserved->done · `e5dc23f` web/app rebuild.
+
+**Every stage of `bash tools/ci.sh` is green except a pre-existing e2e parallel-load flake
+(evidence below).** Run with `DATABASE_URL` from `server/.env`, `STORAGE_BACKEND` unset, nothing
+skipped.
+
+- `[1/7] sim run.cjs` **184 passed / 0 failed** with the parity test removed.
+- `[2/7] sim replay goldens` **byte-identical (12 cases)** -- as required: the forecast was a
+  read-only serving-layer view and never fed the sim, so its removal must not (and does not) move
+  the REQ-0301 determinism fixture.
+- `[2.6/7]` (forecast<->sim ray parity) **no longer exists** -- deleted with the feature. ci.sh is
+  one stage shorter.
+- `[2.5] s4`, `[2.65] dungeon_roll`, `[2.95] balance sim`, `[3] mock-src`, `[3.5] server+shared
+  typecheck (checkJs)`, `[3.6] engine type-surface drift`, all content gates: green.
+- `[4] api_test (files)` + `[5] api_test (pg)`: green on BOTH backends. `[5.37] schedule_serving`
+  green -- `skillNamesById` survives the excision (it is still read by `server/lib/content.cjs` for
+  dex cards; only the comment naming its consumer was stale).
+- `[6] client tsc -b + vite build`: green, **no unused-import or dead-export complaint** -- the
+  excision left no dangling reference. `[6.1]` Supabase-env tripwire green.
+- `[6.5] admin e2e trio` (artadmin / artinspect / contentadmin) + `[6.6] registry-first serving
+  e2e`: green.
+- `[7/7] scoped hermetic e2e` (REQ-0308 decade, ports 3080/3081/3082 = 5000+3080+idx): **194-195
+  passed / 1 skipped (pre-existing) / 1-2 failed**, the failures being the flake below. 197 total
+  vs master's 204 -- exactly the 7 `forecast.spec.ts` tests this REQ deletes.
+
+**The `[7]` reds are a PRE-EXISTING harness flake, PROVEN on master, not a REQ-0308 regression.**
+This was measured rather than assumed:
+
+| run | tree | result | failed |
+|---|---|---|---|
+| 1 | REQ-0308 | 195 pass / 1 skip / 1 fail | `bp-rotate.spec.ts:88` |
+| 2 | REQ-0308 | 195 pass / 1 skip / 1 fail | `workshop.spec.ts:121` |
+| 3 | REQ-0308 | 194 pass / 1 skip / 2 fail | `bp-rotate.spec.ts:88` + `bp-transfer.spec.ts:76` |
+| 4 | **master @`0918773`, unmodified** | **202 pass / 1 skip / 1 fail** | **`workshop.spec.ts:121`** |
+
+Run 4 is the decisive one: a clean master worktree (`tmp-r308-masterbase`, since removed), same
+box, same 4-worker scoped harness, same ports -- and it fails the SAME test run 2 failed. The
+failure set is non-deterministic across runs and moves between unrelated specs (canvas drag-drop,
+gacha), which is the signature of load, not of a code change. Serial re-runs on the REQ-0308 tree
+pass every one of them: `bp-rotate` + `bp-transfer` **10/10**, `workshop` **11/11** at
+`E2E_PARALLEL=1`. `playwright.config.ts` sets `retries: 0`, so a single slow worker is a red.
+
+None of the flaking specs touches the removed code. The one plausible coupling was checked and
+ruled out: `<ForecastOverlay />` used to render inside `.board-gridbox`, next to the canvas board
+the drag specs drive -- but it was `pointer-events:none` and returned null while off, run 2's
+failure was a non-canvas spec, and master flakes identically without the change.
+
+**This flake class is already owned by REQ-0222 (`e2e-harness-load-resilience`, in `todo/`)**,
+which measured the same family in 2026-07 and prescribes the fix (threaded static server /
+`domcontentloaded` + readiness probe / load-aware nav timeout, across ALL harnesses). Per REQ-0159
+this is NOT being memorised as an accounted red: it is a stale/fragile GATE with an open REQ, and
+the fix belongs there, not here. No REQ-0308 change can move it.
+
+## Outcome
+Code-complete, self-green, and green on every deterministic gate. `todo -> built`; not yet merged
+or deployed.
