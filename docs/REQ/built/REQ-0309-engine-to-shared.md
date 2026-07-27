@@ -506,3 +506,15 @@ was not rebuilt (this REQ does not change it — the engine is bundled by value)
 `mock-src/engine.js` in memory; it will load `shared/engine.js` on its next
 restart, whenever that happens, and nothing is broken in the meantime. Move to
 `done` once the owner either restarts the api or accepts that no deploy is required.
+
+### Deploy + acceptance (2026-07-27)
+
+`systemctl --user restart backpack-api.service` — clean Stop→Start, service
+`active`, `/api/health` 200, `/api/schedule/dungeons` serving real content. The
+restart is itself the proof of the move: `server/services/core.cjs` requires the
+engine at module load, so a wrong path would have failed the boot outright rather
+than degrading quietly. The live process now runs from `shared/engine.js`.
+
+`built → done`: merged (`5dc856b`), deployed (api restarted, live-verified),
+accepted. No client bundle rebuild was needed — this REQ does not change the
+bundle's contents, only where the source is read from at build time.

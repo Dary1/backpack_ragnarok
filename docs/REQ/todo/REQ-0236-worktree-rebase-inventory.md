@@ -117,3 +117,22 @@ Not done here. Stopping a live service needs its own fresh owner go-ahead
 (PROJECT.md, HANDS-OFF list). Moving `draft → todo`: the decision that blocked this
 REQ is discharged, the destructive work is complete and recorded, and the single
 remaining step is queued.
+
+### Freeze lifted (2026-07-27) — this REQ is complete
+
+`systemctl --user disable --now backpack-e2e-freeze` — unit `inactive`, the
+`default.target.wants` symlink removed (so it no longer survives reboot), and
+`~/.cache/backpack/e2e.box.lock` verified to have **no holder**.
+
+The freeze existed because a stale pre-0217 worktree could re-run the old harness
+against live profile/content/api (incident 2026-07-17). With 104 worktrees retired
+and the three survivors all post-0217, there is no tree left on this box that
+could do it — the hazard is gone structurally, not merely guarded against. That
+was this REQ's stated end goal.
+
+`todo → done`: inventory taken, dispositions executed and recorded, uncommitted
+work salvaged, freeze lifted, all verified live.
+
+Note for whoever runs e2e next: the scoped hermetic run (`E2E_FLEET_ROOT` +
+REQ-derived ports) remains the right way to run it. Lifting the freeze only
+un-blocks the legacy box-lock path; it does not make the legacy path a good idea.
