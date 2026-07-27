@@ -4,7 +4,7 @@
 // pg-namespaced instance of THIS worktree). baseURL = the local proxy. Run
 // via tools/content_admin_e2e.sh (which invokes tools/e2e_run.sh + box lock).
 import { defineConfig, devices } from '@playwright/test';
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:8923';
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:6572';
 export default defineConfig({
   testDir: '.',
   testMatch: '**/contentadmin.spec.ts',

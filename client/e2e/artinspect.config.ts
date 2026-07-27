@@ -4,7 +4,7 @@
 // started manually against an isolated (HOME-namespaced) pg instance of THIS
 // worktree by tools/art_inspect_e2e.sh. baseURL = the local proxy.
 import { defineConfig, devices } from '@playwright/test';
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:8913';
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:6522';
 export default defineConfig({
   testDir: '.',
   testMatch: '**/artinspect.spec.ts',

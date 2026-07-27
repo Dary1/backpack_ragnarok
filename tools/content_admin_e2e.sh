@@ -26,8 +26,8 @@ WT="$(cd "$(dirname "$0")/.." && pwd)"
 PW_CACHE="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
 
 # REQ-0172: ports are DERIVED from this harness's REQ number, never hand-picked.
-#   PORT = REQ * 10 + index   (0 = static, 1 = api, 2 = proxy)
-# so REQ-0157 owns 1570..1579 and can never collide with another REQ's harness.
+#   PORT = 5000 + REQ * 10 + index   (0 = static, 1 = api, 2 = proxy)
+# so REQ-0157 owns 6570..6579 and can never collide with another REQ's harness.
 # The helper also preflights each port and aborts with ONE clear line if it is
 # busy, instead of letting the specs die later on ECONNREFUSED. See PROJECT.md,
 # "E2E / harness port allocation".

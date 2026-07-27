@@ -21,8 +21,8 @@ WT="$(cd "$(dirname "$0")/.." && pwd)"
 VENV_PY="${ART_KIT_PYTHON:-/home/qtie/backpack_ragnarok/.venv/bin/python}"
 
 # REQ-0172: ports are DERIVED from this harness's REQ number, never hand-picked.
-#   PORT = REQ * 10 + index   (0 = static, 1 = api, 2 = proxy)
-# so REQ-0152 owns 1520..1529 and can never collide with another REQ's harness.
+#   PORT = 5000 + REQ * 10 + index   (0 = static, 1 = api, 2 = proxy)
+# so REQ-0152 owns 6520..6529 and can never collide with another REQ's harness.
 # The helper also preflights each port and aborts with ONE clear line if it is
 # busy, instead of letting the specs die later on ECONNREFUSED. See PROJECT.md,
 # "E2E / harness port allocation".
