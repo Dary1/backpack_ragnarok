@@ -399,3 +399,86 @@ must not become the commit that quietly redefines the gate.
 - **e2e ports** for REQ-0310 derive to 8100/8101/8102 with fleet 8104-8109.
 - Merge this early. ~100 sibling worktrees will conflict on rebase past the
   rename; the diff is trivially re-appliable now and less so later (§6).
+
+---
+
+## 8. Orchestrator ratification (2026-07-27)
+
+Independently re-verified on the server, not taken on report:
+
+- **G1** `git rev-parse HEAD:shared/engine.js` → `23efff8c1ba151c320177d15bc53710ed92c9376` — the base blob exactly. Commit `b47115e` is recorded by git as a 100 % rename (`{mock-src => shared}/engine.js | 0`).
+- **G2** repo-wide grep for `mock-src/engine` outside `docs/REQ/` → **0** hits, including the `path.join(…,'mock-src','engine.js')` form.
+- **G6** `shared/engine.js` contains no `require(` and no `import` — the `shared/README.md` charter is now satisfied by the module that used to break it.
+- Worktree clean, branch unmerged, main checkout untouched (`master` still serves the engine from `mock-src/`).
+
+### Ruling 1 — commit `05e1243` is RATIFIED (option B)
+
+The implementer found something the spec got wrong and stopped to ask, which is
+the correct behaviour. §1 claimed "the type surface was already promoted; only the
+implementation was left behind", and §3 non-goal 5 said not to touch
+`engine.d.ts` semantics. Both assumed the move was type-neutral. It was not: a
+`.d.ts` shadows a same-basename `.js`, and nothing like that ever sat beside the
+engine at its old path — so co-locating them silently promoted `engine.d.ts` from
+a type library nothing resolved to, into the engine's declaration file, and
+`[3.5/7]` went red.
+
+Option B (bind the require to `EngineModule` via a JSDoc cast) is ratified over
+(A) renaming the `.d.ts` to stop the shadowing, because **A would recreate exactly
+the split this REQ exists to close.** Types and implementation now sit together;
+that is the desired end state, not an accident to be worked around. The cast is
+erased at runtime and is *checked*, not asserted — `tools/check_engine_types.cjs`
+(`[3.6/7]`) pins all 49 members against the live object.
+
+Non-goal 5 is therefore **amended, not violated**: the file's semantics changed as
+an unavoidable consequence of the move, and the change is the right one.
+
+### Ruling 2 — `recovered_from_server/` un-swept (commit `3a99f7d`)
+
+The implementer flagged that §2.2's mechanism (a path glob) and its rationale
+("historical REQ text is history and stays") disagreed about
+`docs/llm_managed/recovered_from_server/`, which holds recovered copies of old REQ
+docs, and chose the mechanism. Reverted: the rationale governs. G2 is unaffected —
+it greps for live references, and an archived narrative is not one.
+
+### Ruling 3 — the gate tool's own bug is fixed here, not deferred (commit `258018a`)
+
+`05e1243` corrected `core.cjs`'s `{po_tags, socket_tags}` → `{po, socket}`
+(`engine.js` create() reads `trees.po`/`trees.socket`, so the old keys were
+silently discarded) and *reported* the identical construction at
+`tools/check_engine_types.cjs:73` without fixing it — correctly, to keep that
+commit minimal. Fixed now because of where it is: that file is the gate pinning
+the engine type surface, and a known-wrong construction inside the guard is
+precisely the failure REQ-0251 postmortems. Provably inert either way;
+`[3.6/7]` re-run green.
+
+Independently confirmed the underlying claim: `shared/engine.js:88` documents
+`trees: optional {po:{…}, socket:{…}}`; `tools/tool_gen_data.cjs:184` and
+`tools/migrations/req0170_purge_unitless_bps.cjs:58` both already emitted the
+correct shape. `core.cjs` was the lone outlier.
+
+### Spec defect recorded — §2.1's "complete list" was not complete
+
+It missed `client/scripts/check_placement.mjs:27`. Root cause worth carrying
+forward: both §2.1 and gate G2 searched for the literal `mock-src/engine`, which
+**cannot match** `path.join(…, 'mock-src', 'engine.js')` — and three of the ten
+real load sites are in that form. The gate was written in the same blind spot as
+the list it was supposed to catch. Any future move REQ must search for the
+segmented form too. (CI would have caught this one — the step runs — but that is
+luck, not design.)
+
+### Carried forward, not fixed here
+
+- **e2e is not reliably green at the default 4 workers on this box.** Proven at
+  the BASE commit, so it is pre-existing and not caused by this REQ: two full runs
+  each failed a different spec, one of them a workshop gacha asserting
+  `expected 1, received 2` — a second roll arriving on a shared profile. Green was
+  reached with `E2E_PARALLEL=1`. This sits badly with REQ-0159's "CI GREEN means
+  literally green". Filed as an addendum to REQ-0222 rather than a new number.
+- **Two engine type surfaces still exist** (`shared/engine.d.ts` and
+  `client/src/engine/engine.d.ts`, now a re-export), while `engine.js`'s own header
+  still names the client one as its typed surface. Deferred by §3 non-goal 5; it
+  sits directly in REQ-0310's path and should be settled there.
+- **Rebase pressure.** This branch is based on `0918773`; master has since moved to
+  `cd9d74c` (REQ-0308 merged, api restarted 09:38 UTC — which accounts for the
+  restart the implementer flagged as not-them; it was not). ~108 worktrees will
+  conflict on rebase past this rename. §6's advice stands: merge early.
