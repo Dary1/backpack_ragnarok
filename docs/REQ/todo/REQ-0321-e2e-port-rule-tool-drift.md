@@ -63,3 +63,32 @@ This is the same failure shape REQ-0251 recorded: *"A gate that watches one half
 a rule watches none of it."* Here the gate and the rule agree with each other and
 both disagree with the documentation — which is worse, because the green tick is
 actively reassuring.
+
+---
+
+## Owner ruling (2026-07-27) — PROJECT.md wins; bring the tools up to it
+
+*「はい、それでお願いします。」* — the tools are to be corrected to the documented
+rule. This REQ is cleared to implement.
+
+## Correction to my own "Why it matters" — reason 1 was overstated
+
+The owner's response: *「3277は遠い話しです。その時がきたら、-3000した数字で展開したら
+いいだけです。」* — and that is right. The project is at REQ-0321; reaching 3277 is
+many years of work away, and if it ever arrives the remedy is arithmetic (offset the
+decade). **Reason 1 above is withdrawn as a motivation.** It describes a real
+property of the implemented formula, but it is not a reason to act now, and
+presenting it as one was an argument from urgency that the numbers do not support.
+
+The remaining case stands on its own and is enough:
+
+- **Base 5000 clears the low registered ports.** Under the implemented rule
+  REQ-0152's api lands on **1521**, Oracle's TNS listener — PROJECT.md's own
+  worked example, and a concrete collision, not a hypothetical.
+- **PROJECT.md is the user-maintained golden and the LLM may not edit it.** When
+  the documentation and the implementation disagree, the implementation is what
+  moves. That alone settles it.
+- **The failure shape is the dangerous one.** The gate (`check_e2e_ports.cjs`, ci
+  step `[0/8]`) and the rule (`e2e_ports.sh`) agree with *each other* and both
+  disagree with the document. A green tick that is actively reassuring while the
+  documented invariant is unmet is worse than a visibly missing check.
