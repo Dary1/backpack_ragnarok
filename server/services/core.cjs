@@ -8,8 +8,8 @@
 // REQ-0176 (REQ-0178 Phase-1b): getScheduleContent() is now REGISTRY-FIRST.
 // REQ-0178 made /api/content (server/lib/content.cjs) resolve
 // registry-adopted-variant -> live-file entry, but never touched THIS module --
-// the authority path (the gacha roll, the run simulation, market, warehouse,
-// forecast). That left adoption reaching the display but not the game. The same
+// the authority path (the gacha roll, the run simulation, market, warehouse).
+// That left adoption reaching the display but not the game. The same
 // resolution chain now runs here, for every registry kind, off a warm snapshot
 // so this loader stays SYNCHRONOUS (20+ consumers call it inside request paths).
 const crypto = require('crypto');
@@ -214,11 +214,13 @@ function ensureFilePayload() {
     skillDefsById[s.id] = { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
   }
 
-  // REQ-0057: skillDefsById is deliberately kept MECHANICS-ONLY (it is the
+  // REQ-0057 (feature retired by REQ-0308; the rule outlives it):
+  // skillDefsById is deliberately kept MECHANICS-ONLY (it is the
   // map handed straight to sim/lib/packs.cjs's compileEnemyPack, where
   // REQ-0121's buff_self fold mutates the objects in place -- the fewer
   // fields riding along in there, the smaller the blast radius). Display
-  // names for the forecast tooltip therefore live in a SIBLING map rather
+  // names (dex cards, via server/lib/content.cjs) therefore live in a
+  // SIBLING map rather
   // than being bolted onto the mechanics defs. skills.json carries flat
   // name_en/name_ja (schema skill/1), not the live_items.json `i18n` map,
   // so this normalises to the i18n shape every client-facing payload uses.
@@ -318,7 +320,7 @@ function registryIsEmpty(reg) {
 // MECHANICS-ONLY (sim/lib/packs.cjs's compileEnemyPack mutates these objects in
 // place, so the fewer fields riding along the better) and puts display names in
 // the sibling skillNamesById. A registry-sourced skill MUST go through the same
-// two reshapes, or the forecast tooltip and the combat fold silently disagree.
+// two reshapes, or the display names and the combat fold silently disagree.
 function skillMechanicsFrom(s) {
   return { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
 }

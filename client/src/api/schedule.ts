@@ -1,12 +1,11 @@
-// client/src/api/schedule.ts -- REQ-0145b (ca): Dungeon Schedule
-// endpoints incl. the REQ-0057 forecast read (extracted VERBATIM from
-// the old flat api.ts).
+// client/src/api/schedule.ts -- REQ-0145b (ca): the Dungeon Schedule
+// endpoints (extracted VERBATIM from the old flat api.ts). REQ-0308
+// removed the REQ-0057 forecast read that used to live here too.
 import { scheduleJSON } from './http';
 import type {
   ApiCreateRoomBody,
   ApiSortieBody,
   ApiDungeonsPayload,
-  ApiForecastPayload,
   ApiRoom,
   ApiRunView,
   ApiSealComparison,
@@ -27,17 +26,6 @@ import type {
  * after the current run finishes" rather than right away. */
 export function fetchDungeons(): Promise<ApiDungeonsPayload> {
   return scheduleJSON<ApiDungeonsPayload>('/api/schedule/dungeons');
-}
-
-/** GET /api/schedule/forecast -- REQ-0057/REQ-0185. The enemy attack profiles
- * the Ray Forecast Overlay walks for a given (dungeonId, level). `dungeonId`
- * names an authored dungeon DEF; the server rolls the SAME def the dive rolls
- * (parity by construction) and falls back to the first live def for an empty/
- * unknown id. Public/no-auth, exactly like fetchDungeons above: this is CONTENT
- * (enemy defs folded to ray profiles), not run state. */
-export function fetchForecast(dungeonId: string, level: number): Promise<ApiForecastPayload> {
-  const qs = new URLSearchParams({ dungeonId, level: String(level) });
-  return scheduleJSON<ApiForecastPayload>('/api/schedule/forecast?' + qs.toString());
 }
 
 /** POST /api/schedule/rooms -- creates a room owned by the caller. */
