@@ -11,7 +11,7 @@ A link thus becomes a conduit for cross-BP reactions.
 
 ## Model (verified against source)
 A BP's `Linker` (`BPLinker{off,dirs}`) emits `Beam{from,dir,path,to,mutual}`s
-(`shared/engine.d.ts`; `shared/engine.js` `linkerCell`/`linkerMap`). A link is
+(`shared/engine.d.ts`; `mock-src/engine.js` `linkerCell`/`linkerMap`). A link is
 directed: **origin = `Beam.from`** (the linker's own BP); **destination =
 `Beam.to`** (the BP the beam reaches; `null` if it flies off canvas).
 

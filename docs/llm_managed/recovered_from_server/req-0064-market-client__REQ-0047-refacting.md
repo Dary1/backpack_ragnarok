@@ -15,7 +15,7 @@ Scope class: internal-only. External behavior is frozen (see §2).
 
 | Area | Facts |
 |---|---|
-| client/ | Vite + React 19 + PixiJS 8 + TS, 11.6k LOC. Builds into committed `web/app/`. Playwright e2e. `BoardRenderer.ts` 1962 LOC. Hand-written `engine.d.ts` (768) shadows `shared/engine.js`. |
+| client/ | Vite + React 19 + PixiJS 8 + TS, 11.6k LOC. Builds into committed `web/app/`. Playwright e2e. `BoardRenderer.ts` 1962 LOC. Hand-written `engine.d.ts` (768) shadows `mock-src/engine.js`. |
 | server/ | Framework-free `node:http` CJS, 6.3k LOC. `api.cjs` (1031) routes on `url.pathname` in one function; `schedule.cjs` (1479) holds rooms+runs+warehouse+gacha business logic; `storage.cjs` already has a `files|pg` seam (`STORAGE_BACKEND`). Contract test `tests/api_test.cjs` (2257) runs in both backends. |
 | sim/ | `combat.cjs` — 1549 LOC single file, dependency-free, deterministic (seeded RNG, event heap, replay JSONL). `dungen.cjs` (457). Bespoke test harness (1017). Consumed by `server/schedule.cjs`. |
 | mock-src/ | `engine.js` (2211) is the REAL core engine consumed by 3 parties: client (via adapter, "never forked"), sim (read-only interop invariant), mock UI. Untyped JS. Own tests (`run.cjs`, 1725). |
@@ -31,11 +31,11 @@ The pain is not code quality — it is **foundation shape**: four god-files, thr
 3. **UI/UX**: zero behavioral or visual change; Playwright e2e green; app still served from committed `web/app/` at `/app/`, mock at `/mock`, previews at `/preview`.
 4. **Ops surface**: systemd entry commands (`server/api.cjs`), `cli_invite.cjs` CLI, ports 8801/8802, tunnel hostnames — unchanged.
 5. **Data formats**: `content/**` schemas and `data/**` file layouts unchanged. ((g) migrates the *backing store* only after separate approval; `files` mode remains functional regardless.)
-6. **Engine invariants**: `shared/engine.js` consumed unmodified; sim keeps its read-only, no-mutator, deep-copy interop rules; sim stays runtime-dependency-free.
+6. **Engine invariants**: `mock-src/engine.js` consumed unmodified; sim keeps its read-only, no-mutator, deep-copy interop rules; sim stays runtime-dependency-free.
 
 ## 3. Target architecture
 
-npm-workspaces modular monolith; TypeScript everywhere except `shared/engine.js` (kept JS by invariant, typed via checked JSDoc on exports):
+npm-workspaces modular monolith; TypeScript everywhere except `mock-src/engine.js` (kept JS by invariant, typed via checked JSDoc on exports):
 
 ```
 package.json            # workspaces + root scripts: lint / typecheck / test / ci
@@ -103,7 +103,7 @@ Each phase = one lettered commit series `REQ-0047 (x)`, ends with `tools/ci.sh` 
 Commits: `(a)` f67c8c1, `(b)` 5e0c044, `(c)` fc04c4c, `(d)` 48919a3, `(e)` bd52613, `(h)` this commit.
 
 1. **TS delivery re-scoped to strict decomposition + checkJs (affects (c)/(d)).** Server and sim were decomposed as planned, but stay `.cjs` checked by `tsc --checkJs` (`tsconfig.server.json` + `types/coded-error.d.ts`) instead of being transpiled `.ts`. Rationale: zero build step means the runtime bytes ARE the reviewed bytes (no transpile-drift risk against the determinism goldens), and the systemd entry stays `node server/api.cjs` with no toolchain on the deploy path. Full `.ts` migration remains possible later per-module behind the same facades.
-2. **(e) replaced generate-d.ts-from-JSDoc with a runtime drift detector.** The hand-written `engine.d.ts` is far richer than JSDoc inference would produce; the real risk was silent drift, now covered mechanically by `tools/check_engine_types.cjs` (49 members verified in CI). `shared/engine.js` remains byte-level unmodified except a documented `@ts-nocheck` pragma comment.
+2. **(e) replaced generate-d.ts-from-JSDoc with a runtime drift detector.** The hand-written `engine.d.ts` is far richer than JSDoc inference would produce; the real risk was silent drift, now covered mechanically by `tools/check_engine_types.cjs` (49 members verified in CI). `mock-src/engine.js` remains byte-level unmodified except a documented `@ts-nocheck` pragma comment.
 3. **(b) DTO consolidation deferred into (f).** `Api*` types are entangled with engine types; moving them before (e) would have created a `shared -> client` dependency, violating shared/'s own rule. `shared/` shipped with the runtime validator (the higher-value single-source win).
 4. **(g) was already done.** REQ-0040 flipped production storage to Postgres (supavisor pooler, `server/.env`, `pg_sync.cjs` sync bridge) before this REQ; `data/*.json` are the files-mode fixtures/legacy. (g) therefore re-scoped to: prove the reworked server against the pg backend (api_test pg mode in server-side CI) and roll out via service restart. No data migration needed or performed.
 5. **Workspaces dropped for a zero-hoisting root manifest.** Root `package.json` carries orchestration scripts + dev tooling only; `server/` and `client/` keep their own `node_modules` exactly as deployed today. Rationale: npm workspace hoisting would silently change prod module resolution for a running service — all of the orchestration value, none of the risk.
