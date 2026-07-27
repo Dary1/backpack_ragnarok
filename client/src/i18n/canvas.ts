@@ -1,4 +1,4 @@
-// client/src/i18n/canvas.ts -- REQ-0145b (ce): canvas/backpacks-page chrome -- app shell captions, canvas stagehead, squad tabs, item panel, REQ-0142 beam-trace panel, REQ-0057 forecast overlay.
+// client/src/i18n/canvas.ts -- REQ-0145b (ce): canvas/backpacks-page chrome -- app shell captions, canvas stagehead, squad tabs, item panel, REQ-0142 beam-trace panel.
 // en/ja key groups merged by ../i18n.ts (the barrel); en/ja key parity
 // is gated at the barrel (see the split-commit gate record in the REQ).
 
@@ -72,20 +72,6 @@ export const canvasEn = {
   'beam.row.noReceiver': 'No Unit stands on this ray — the beam leaves the canvas. (An intentional dud is a legitimate build.)',
   'beam.row.dirNotInSet': 'This direction is not in the Unit\'s set — no beam is fired here.',
   'beam.row.dirNotInSetWould': 'This direction is not in the Unit\'s set — no beam is fired here. {would} at {at} would receive one if it were.',
-  // REQ-0057: Ray Forecast Overlay ("weather map").
-  'forecast.toggle': 'Ray forecast',
-  'forecast.loading': 'Reading the weather...',
-  'forecast.error': 'Forecast unavailable: {msg}',
-  'forecast.typeDefault': 'Auto-Generated',
-  'forecast.typeFixed': 'Niflheim Depths (fixed)',
-  'forecast.slotLabel': 'Squad slot',
-  'forecast.slotN': 'Slot {n}',
-  'forecast.legend': 'Expected pressure',
-  'forecast.unit': 'dmg/s',
-  'forecast.dps': '{n} dmg/s',
-  'forecast.statusRate': 'status rays: {n}/s',
-  'forecast.disclaimer': 'A distribution, not a promise \u2014 entry jitter and pack composition vary every run.',
-  'forecast.slotSummaryTitle': 'Expected pressure by slot',
 } as const;
 
 export const canvasJa = {
@@ -143,18 +129,4 @@ export const canvasJa = {
   'beam.row.noReceiver': 'この光線上にユニットがいません（盤外へ抜けます）。意図的な空撃ちも正当な構成です。',
   'beam.row.dirNotInSet': 'この方向はユニットのビーム方向に含まれていません（発射されません）。',
   'beam.row.dirNotInSetWould': 'この方向はユニットのビーム方向に含まれていません（発射されません）。有効なら {would}（{at}）が受信します。',
-  // REQ-0057: Ray Forecast Overlay ("weather map").
-  'forecast.toggle': '\u5c04\u7dda\u4e88\u5831',
-  'forecast.loading': '\u5929\u5019\u3092\u8aad\u3093\u3067\u3044\u307e\u3059\u2026',
-  'forecast.error': '\u4e88\u5831\u3092\u53d6\u5f97\u3067\u304d\u307e\u305b\u3093: {msg}',
-  'forecast.typeDefault': '\u81ea\u52d5\u751f\u6210',
-  'forecast.typeFixed': '\u30cb\u30f4\u30eb\u30d8\u30a4\u30e0\u306e\u6df1\u5c64\uff08\u56fa\u5b9a\uff09',
-  'forecast.slotLabel': '\u5206\u968a\u67a0',
-  'forecast.slotN': '\u67a0{n}',
-  'forecast.legend': '\u4e88\u60f3\u88ab\u5f3e\u91cf',
-  'forecast.unit': 'dmg/\u79d2',
-  'forecast.dps': '{n} dmg/\u79d2',
-  'forecast.statusRate': '\u72b6\u614b\u5f3e: {n}/\u79d2',
-  'forecast.disclaimer': '\u3053\u308c\u306f\u5206\u5e03\u3067\u3042\u3063\u3066\u7d04\u675f\u3067\u306f\u3042\u308a\u307e\u305b\u3093\u2014\u2014\u5165\u5c04\u4f4d\u7f6e\u306e\u3086\u3089\u304e\u3068\u6575\u7fa4\u306e\u69cb\u6210\u306f\u6bce\u56de\u5909\u308f\u308a\u307e\u3059\u3002',
-  'forecast.slotSummaryTitle': '\u67a0\u5225\u306e\u4e88\u60f3\u88ab\u5f3e\u91cf',
 } as const;

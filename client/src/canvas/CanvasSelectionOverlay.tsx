@@ -3,7 +3,7 @@
 // The panel -> board half of the selection wiring: a pointer-events:none DOM
 // ring drawn over the canvas board's PLACED POs whose def id matches the
 // current CanvasSelection, positioned from the same PAD=38 / CELL=80 board
-// geometry BoardCoords / ForecastOverlay already mirror in DOM. Deliberately
+// geometry BoardCoords already mirrors in DOM. Deliberately
 // DOM, not a BoardRenderer change: REQ-0140 is "selection wiring only, no
 // BoardRenderer rework", and the sibling REQ-0126 owns the Pixi renderer --
 // an overlay ring needs neither. The engine is consumed AS-IS (cellsOf) to

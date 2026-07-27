@@ -266,7 +266,7 @@ fs.writeFileSync(path.join(batchDir, 'gimics.json'), JSON.stringify({
 // exactly what tools/promote_dungeon_batch.cjs does to the real repo.
 // REQ-0185: dungeons.json -- the AUTHORED dungeon/1 defs (identity + probability-
 // weighted references to monster_pack + gimic). The serving path (listDungeonsAnd
-// formations / startRun / forecast) rolls a dive from these. The def id matches the
+// formations / startRun) rolls a dive from these. The def id matches the
 // legacy concrete dungeon.json id ('test_dungeon') so every existing assertion on
 // dungeons[0].id === 'test_dungeon' keeps holding. References the fixture's own two
 // packs + trap/chest/door gimics.

@@ -1,6 +1,5 @@
 // client/src/sortie/LevelStepper.tsx -- REQ-0239 (design 01 sec 4): [-] n [+]
-// with a direct input; clamps >= 1. The forecast-refire debounce lives in the
-// dossier (design 01 sec 7).
+// with a direct input; clamps >= 1.
 import { t } from '../i18n';
 import type { Locale } from '../store';
 

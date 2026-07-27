@@ -2,7 +2,7 @@
 // REQ-0176 (REQ-0178 Phase-1b) gate: registry-first serving on the AUTHORITY
 // path. REQ-0178 proved it for lib/content.cjs (/api/content -- what the player
 // SEES). This proves it at the services/core.cjs chokepoint -- what the game
-// actually DOES: the gacha roll, the run simulation, market, warehouse, forecast.
+// actually DOES: the gacha roll, the run simulation, market, warehouse.
 //
 // Covers, per the REQ:
 //   - EMPTY registry -> getScheduleContent() returns the file payload OBJECT

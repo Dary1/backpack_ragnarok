@@ -1817,8 +1817,7 @@ T('dungen: a generated def only ever references enemy ids that exist in the LIVE
 // (the sim's own), shared/content_validate.cjs (the validator's, which may not
 // require() out of shared/), and client/src/contentadmin/contentShared.ts (the
 // preview's mirror, which cannot require a .cjs at all). Duplication is forced
-// by those module boundaries; SILENT duplication is not. These pin them equal,
-// the same way sim/tests/forecast_parity.cjs pins the forecast's copies.
+// by those module boundaries; SILENT duplication is not. These pin them equal.
 // =====================================================================
 T('REQ-0184 parity: shared/content_validate.cjs field dims == sim/lib/field.cjs', () => {
   const v = require('../../shared/content_validate.cjs');
