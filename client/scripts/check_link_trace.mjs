@@ -2,7 +2,7 @@
 // client/scripts/check_link_trace.mjs — REQ-0142 gate.
 //
 // Exercises the REAL production module (client/src/board/linkTrace.ts) against
-// the REAL engine (mock-src/engine.js), not a reimplementation of either.
+// the REAL engine (shared/engine.js), not a reimplementation of either.
 // linkTrace is deliberately pure (engine + state + layout in, plain data out —
 // no Pixi, no DOM, no store), so plain Node can drive it once Vite has
 // transpiled the TS. Same discipline, same vite-ssrLoadModule rig, as

@@ -296,7 +296,7 @@ function finalizeClaimingItemsForCanvas(playerId, canvas) {
   // all -- a TM-kind claim that MERGES into an existing same-id stack
   // (firstFitOrMergeTM's mergeInto path, client/src/schedule/
   // WarehouseTab.tsx) intentionally DISCARDS the claimed row's own uid
-  // (the destination stack's uid survives, see mock-src/engine.js's
+  // (the destination stack's uid survives, see shared/engine.js's
   // tmMove doc comment) -- so a pure uid-membership check like the one
   // POs/SIs/BPs use below can never finalize a merged TM claim; it would
   // sit in 'claiming' forever (and eventually lazy-revert on timeout,

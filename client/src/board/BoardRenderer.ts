@@ -30,7 +30,7 @@
 // (abort carry, no engine call) the same way.
 //
 // REQ-0030 Phase 2 generalization: this class no longer talks to
-// mock-src/engine.js's canvas-only functions directly for legality/
+// shared/engine.js's canvas-only functions directly for legality/
 // mutation -- it goes through a BoardOps instance (see board/boardOps.ts),
 // which is either canvas ops (engine.canPlacePO/movePO/... bound to the
 // top-level GameState) or inventory-page ops (engine.invCanPlacePO/

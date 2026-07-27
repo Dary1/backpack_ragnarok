@@ -6,7 +6,7 @@
 
 > Design-only pass. No code or server state was touched. This spec designs the
 > **combat half** of the game so it plugs into the existing **placement half**
-> (`mock-src/engine.js`) without contradicting it. It cites the exact vocab
+> (`shared/engine.js`) without contradicting it. It cites the exact vocab
 > (`content/vocab.json` v4) and engine functions by name where it relies on them.
 > Everything below marked **[TUNABLE]** is a constant the owner/sim can move.
 > Everything marked **[LOCKED]** is an orchestrator-decided default (user can veto async).
@@ -672,7 +672,7 @@ a formation) vs reference enemy packs using the §1–3 sim and asserts bands.
 
 - **[VX-1] BP HP field (schema — genuinely NEW).** BPs need an HP magnitude (`hpMax`,
   current `hp`). **Verified against the server:** engine BP objects carry only
-  `{id, name, shape, origin, unit}` (`mock-src/engine.js`) and no schema file defines
+  `{id, name, shape, origin, unit}` (`shared/engine.js`) and no schema file defines
   `hp` — there is **no existing hp field to confirm**. So OQ3's "confirm existing field"
   resolves to: **there is none; VX-1 is a real schema addition** on the BP/frame def.
   *Approval sought: sanction a BP-def `hpMax`.* (No new vocab entry.)

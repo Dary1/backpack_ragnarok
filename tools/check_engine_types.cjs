@@ -1,7 +1,7 @@
 'use strict';
 // tools/check_engine_types.cjs -- REQ-0047 (e): engine type-surface drift
 // detector. client/src/engine/engine.d.ts hand-declares two runtime-
-// checkable surfaces for mock-src/engine.js (consumed AS-IS by design):
+// checkable surfaces for shared/engine.js (consumed AS-IS by design):
 //   - EngineModule  (the UMD factory's 5 exports)
 //   - EngineInstance (the object Engine.create(...) returns)
 // The d.ts is deliberately partial-by-coverage but must never DRIFT:

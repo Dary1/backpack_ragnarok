@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // client/scripts/check_placement.mjs -- REQ-0273 gate. Drives the REAL
-// client/src/lib/placement.ts against the REAL mock-src/engine.js (vite
+// client/src/lib/placement.ts against the REAL shared/engine.js (vite
 // ssrLoadModule, same rig as check_bpskin.mjs) and pins the bug-2 fix:
 // claiming a rolled BP must never MOVE an unrelated free-placed PO, and the
 // resulting state must be engine-legal in every page. Pre-fix, the

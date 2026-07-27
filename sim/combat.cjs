@@ -2,7 +2,7 @@
 //
 // =====================================================================
 // INVARIANT (read this before touching engine interop):
-// This module MAY require('../mock-src/engine.js') READ-ONLY to compile
+// This module MAY require('../shared/engine.js') READ-ONLY to compile
 // static topology facts (assembly/sockets/allConnections/connectionsFrom/
 // cellsOf/bpCells/combos/traceBeams). It must NEVER call any engine
 // MUTATOR (movePO, moveBP, rotatePO, seatSI, stowSI, invMovePO, etc.) and

@@ -28,7 +28,7 @@ browser ── Cloudflare Tunnel ──> :8801  backpack-web  (static, serves we
                                         env from server/.env)
                                           │
                                           ├─ sim/ (combat simulator, in-process)
-                                          ├─ mock-src/engine.js (game engine, in-process)
+                                          ├─ shared/engine.js (game engine, in-process)
                                           └─ storage seam (STORAGE_BACKEND)
                                                ├─ 'files' → data/*.json (dev/test default)
                                                └─ 'pg'    → Supabase Postgres via
@@ -41,7 +41,7 @@ Both ports bind 127.0.0.1 only; the tunnel is the sole ingress.
 
 ## 3. The five load-bearing design rules
 
-1. **The engine is consumed AS-IS.** `mock-src/engine.js` (hand-written
+1. **The engine is consumed AS-IS.** `shared/engine.js` (hand-written
    UMD JS) is the single source of truth for game-state math. Three
    consumers, none may fork or modify it: the client (raw-source CJS shim
    in `client/src/engine/adapter.ts`), the sim (read-only interop — never
@@ -72,7 +72,7 @@ Both ports bind 127.0.0.1 only; the tunnel is the sole ingress.
 
 | Path | What it is |
 |---|---|
-| `mock-src/engine.js` | THE game engine (rule 1). `mock-src/tests/run.cjs` = its suite. |
+| `shared/engine.js` | THE game engine (rule 1). `mock-src/tests/run.cjs` = its suite. |
 | `sim/` | Combat simulator. `combat.cjs`/`dungen.cjs` facades over `sim/lib/{core,rng,heap,geometry,formation,status,compile,entry,ray,field,replay,skills,packs,encounter,dungeon}.cjs` (acyclic). Dependency-free by invariant. |
 | `server/` | Framework-free `node:http` API. `api.cjs` (entry) → `router.cjs` (load-bearing dispatch order) → `routes/{public,me,admin,profile,schedule,warehouse,workshop,market,ragnarok,dex,dismantle,art,content}.cjs` (REQ-0145a: the combined schedule module split into schedule/warehouse/workshop, dispatched consecutively in its old slot; shared caller preamble in `lib/route_auth.cjs`) → business logic behind name-for-name facades (rule 3): `schedule.cjs` over `services/{core,rooms,squads,runs,warehouse,gacha}.cjs`, `services/market.cjs` over `services/market/{lib,listings,views,trade,furnace}.cjs`, `services/ragnarok.cjs` over `services/ragnarok/{lib,seasons,einherjar,order,snapshot,devotion}.cjs` (`deployedUidSet` lives in `services/squads.cjs`, its true domain); plumbing in `lib/{content,content_files,http_util,humanize,meta,route_auth}.cjs`; persistence behind the `storage.cjs` facade (rule 4) over `storage/{lib,profiles,rooms,runs,warehouse,gacha,dismantle,market,ragnarok}.cjs` + `storage_art`/`storage_content` subsystems + `players.cjs`/`pg_sync`; auth in `admin.cjs`; operator CLI `cli_invite.cjs`. |
 | `shared/` | Cross-package contract surface: `engine.d.ts` (engine types), `dto.ts` (30 HTTP wire-shape types), `content_validate.cjs` (admin-edit validator). Dependencies point INTO shared, never out. |

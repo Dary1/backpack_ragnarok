@@ -8,7 +8,7 @@
   by a previous model) is treated as a *statement of intent only*; this design was
   derived from the source, not from that REQ.
 - **Scope of the survey**: `server/` (routes, services, storage), `shared/`,
-  `sim/`, `mock-src/engine.js`, `client/src/store`, `client/src/api`,
+  `sim/`, `shared/engine.js`, `client/src/store`, `client/src/api`,
   `docs/user_managed/*`, `docs/REQ/done/REQ-0036`.
 
 ---
@@ -97,7 +97,7 @@ the client's canvas layer. It must produce canvases that satisfy
 saves will be silently wrong.
 
 **This single fact decides the tool's language and its most important dependency:**
-the tool must run `mock-src/engine.js` — the very module the server itself loads in
+the tool must run `shared/engine.js` — the very module the server itself loads in
 `services/core.cjs` — rather than reimplementing placement. `engine.js` is a
 UMD-style CommonJS module (`module.exports=factory()`, no DOM), so Node can require
 it directly. Language: **Node.js CommonJS**, same as the server. This also
@@ -362,7 +362,7 @@ in a week.
   ---- the judgment interface (digest / verb / receipt) -------------------------
   L2  bpk session     turn loop, budgets, refusal contract, JSONL transcript
   L1  bpk tactics     DETERMINISTIC kernel: auto-build, triage, pricing, laddering
-  L0  bpk core        HTTP client + canvas layer (requires mock-src/engine.js)
+  L0  bpk core        HTTP client + canvas layer (requires shared/engine.js)
         |
       backpack-api    live, unchanged except for the co-op feature work
 ```
@@ -373,7 +373,7 @@ it is testable with plain unit tests and no API key.
 ### 4.2 Language, placement, dependencies — decided
 
 - **Language: Node.js, CommonJS.** Same as `server/*.cjs`. Forced by §1.1: the tool
-  must `require('../mock-src/engine.js')` to mutate canvases correctly, and must
+  must `require('../shared/engine.js')` to mutate canvases correctly, and must
   read `shared/constants.json`, `shared/pacing.json`, and `content/vocab.json` the
   same way the server does. Reimplementing placement in another language would
   guarantee drift from `checkUidInvariant`.

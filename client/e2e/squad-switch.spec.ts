@@ -1,6 +1,6 @@
 // REQ-0031 Phase B -- squad switch + Squad+ (E2E, input emulation).
 //
-// Squad model (mock-src/engine.js): st.{linked,bps,pos,sis} is always the
+// Squad model (shared/engine.js): st.{linked,bps,pos,sis} is always the
 // ACTIVE squad's canvas; st.presets={active,names,store} holds every
 // OTHER squad's snapshot. switchSquad() atomically swaps active<->store.
 // The client wires this via store.ts's switchActiveSquad()/

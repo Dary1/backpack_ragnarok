@@ -1,7 +1,7 @@
 // shared/forecast.d.mts -- REQ-0057: the typed surface of shared/forecast.mjs.
 //
 // Hand-written because shared/ is plain JS by the same invariant that keeps
-// mock-src/engine.js hand-written (see client/src/engine/engine.d.ts): one
+// shared/engine.js hand-written (see client/src/engine/engine.d.ts): one
 // source, consumed unforked by both the client (TS/Vite) and node
 // (sim/tests). The client resolves `../../shared/forecast.mjs` to THIS file
 // (moduleResolution: bundler maps .mjs -> .d.mts); node ignores it entirely.

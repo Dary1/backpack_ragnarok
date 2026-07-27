@@ -3,7 +3,7 @@
 This directory implements the combat simulator described by
 `combat_spec_draft.md` v0.3 (RATIFIED), sections S1-S9. It is a
 framework-free, dependency-free (beyond a read-only interop with
-`mock-src/engine.js`) CommonJS module: `sim/combat.cjs`. Tests live in
+`shared/engine.js`) CommonJS module: `sim/combat.cjs`. Tests live in
 `sim/tests/run.cjs`.
 
 ## Module layout
@@ -47,7 +47,7 @@ node sim/tests/run.cjs
 
 ## Engine interop invariant
 
-`sim/combat.cjs` requires `../mock-src/engine.js` **read-only**. It only
+`sim/combat.cjs` requires `../shared/engine.js` **read-only**. It only
 ever touches pure/static functions from engine.js (nothing is called in
 this file today beyond the module load itself — the compile pass
 re-implements the small amount of shape/rotation math it needs directly

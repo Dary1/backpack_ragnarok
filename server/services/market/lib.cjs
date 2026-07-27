@@ -78,7 +78,7 @@ function getDexNoById() {
 // IS claimable -- market still lists POs only as a v1 scope choice, not a
 // claim-path limitation. BP listings remain a later squad.
 // No "fixed starter PO" concept exists in the codebase today (grep for
-// 'starter' across mock-src/engine.js, shared/engine.d.ts and
+// 'starter' across shared/engine.js, shared/engine.d.ts and
 // server/services/ comes back empty), so there is no starter-item
 // exclusion to enforce yet -- revisit when that concept ships.
 function findInventoryPO(canvas, itemUid) {

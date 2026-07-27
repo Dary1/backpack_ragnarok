@@ -425,7 +425,7 @@ def centered_position(allowed, kern):
 def shape_to_cellset(shape):
     """shape: [[row,col], ...] -- REQ-0029: this MUST match the engine's own
     convention, which is the single source of truth for shape coordinates.
-    See mock-src/engine.js's shapeInfo()/cellsOf()/bpCells() (each destructures
+    See shared/engine.js's shapeInfo()/cellsOf()/bpCells() (each destructures
     offset tuples as `([r,c]) => ...`, i.e. first=row, second=col) and
     scenario.json placements (blade cell=[1,1], hilt cell=[3,1], stacked
     vertically one row apart at the same column -- confirmed against

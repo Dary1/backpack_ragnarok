@@ -9,7 +9,7 @@
 //
 // WHY AN ARRAY OF PORTS (not a single {tiles,tag}): the pre-migration engine
 // hard-coded per-recipe `el`/tag membership checks directly inside combos()
-// (see mock-src/engine.js combos(), REQ-0022-era code) -- e.g. flame_tablet's
+// (see shared/engine.js combos(), REQ-0022-era code) -- e.g. flame_tablet's
 // single physical `conn` (2 tiles, aimed at whatever sits beside it) backed
 // TWO separate recipes: "Ignite" (needs a Flame PO connected to an Oil PO)
 // and "Flaming Blade" (needs a Flame PO connected to a Weapon PO). A port
@@ -24,7 +24,7 @@
 // ---------------------------------------------------------------------
 // INFERENCE TABLE (old recipe/effect-text semantics -> inferred port tag)
 // ---------------------------------------------------------------------
-// content/live/live_items.json (LIVE, feeds mock-src/engine.js combos()):
+// content/live/live_items.json (LIVE, feeds shared/engine.js combos()):
 //
 //   flame_tablet (tags: Rune, Flame; conn aims at the Weapon/blade neighbor)
 //     -> TWO ports, same tiles as old conn:

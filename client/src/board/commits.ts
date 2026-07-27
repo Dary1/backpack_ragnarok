@@ -172,7 +172,7 @@ export function commitSIDrop(self: BoardRenderer, uid: string, originBoard: Boar
     // 'bond' / {po,si} (immediately seat the new reference onto that
     // socket -- derived from drop.skey, which the engine's own seatSI
     // uses in the identical '<poUid>:<siIndex>' or 'bond' string form,
-    // see mock-src/engine.js's seatSI) or the 'inv' sentinel (a bare
+    // see shared/engine.js's seatSI) or the 'inv' sentinel (a bare
     // stowed reference, not seated onto anything -- used for a 'grid' or
     // 'inv'-type drop landing on canvas; canvas has no free-placed-SI
     // concept of its own -- boardOps.ts's makeCanvasOps.canPlaceSI always

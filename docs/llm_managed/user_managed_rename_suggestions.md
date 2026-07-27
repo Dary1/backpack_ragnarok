@@ -21,7 +21,7 @@ without a Unit cannot exist.**
   "no Unit" branch.
 - `client/src/i18n/workshop.ts` `workshop.ruleUnit`: 「ユニット座(ᛖ)は鋳込時に1セルへ
   刻印される — 座は選べない。」
-- `mock-src/engine.js:92` `unitCell(bp) = bp.origin + bp.linker.off` — unconditional.
+- `shared/engine.js:92` `unitCell(bp) = bp.origin + bp.linker.off` — unconditional.
 
 `bp.linker` is a **deliberately retained serialized legacy name** (REQ-0124 ledger);
 its meaning is **Unit**. Do not read it as "Linker still exists".
@@ -53,7 +53,7 @@ a Unit that forms **no links**, not a BP with no Unit.
 > Cell — one cell of a BP. A cell provides one placement availability for layer-1.
 
 Two problems. (a) The rule that a **PO can never be placed on the Unit's cell** is
-missing — the engine rejects it explicitly: `mock-src/engine.js` `canPlaceCells()`
+missing — the engine rejects it explicitly: `shared/engine.js` `canPlaceCells()`
 returns `{ok:false, why:'Unit cell'}`. (b) BP cells supply placement for **layer-2**
 (POs), not layer-1. Suggested:
 
@@ -83,7 +83,7 @@ the terms: "a linker sends linking beams" → "a Unit emits connection rays";
 
 **The mechanics in this section are still exactly what the engine does** — 8-point
 compass dirs, ray runs to the board edge, links to the **first** Unit hit, no
-piercing, mutual links legal (`mock-src/engine.js` `traceBeams()`, `DIRS`). Do not
+piercing, mutual links legal (`shared/engine.js` `traceBeams()`, `DIRS`). Do not
 "fix" the mechanics; only the names are stale.
 
 Forward-looking note (optional, and NOT live yet): REQ-0128a registered

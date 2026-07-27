@@ -158,7 +158,7 @@ function listOwnRooms(callerId) {
 // ---------------------------------------------------------------------
 
 // squadCanvasOf(profileCanvas, idx): the SAME two-line lookup
-// mock-src/engine.js's own (internal, unexported) squadCanvasOf uses --
+// shared/engine.js's own (internal, unexported) squadCanvasOf uses --
 // idx===active reads the top-level canvas fields directly, any other
 // index reads that squad's store[] snapshot. Plain data read, no
 // engine call needed (documented in engine.js's own header comment: "a

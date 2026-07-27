@@ -5,7 +5,7 @@
 // canvas and an inventory page are structurally similar (each is a
 // {bps,pos,sis}-shaped container, per the engine's own Phase 1 design) but
 // their MUTATOR/QUERY call surfaces are genuinely different functions in
-// mock-src/engine.js (canPlacePO(st,...) vs invCanPlacePO(st,pg,...), etc)
+// shared/engine.js (canPlacePO(st,...) vs invCanPlacePO(st,pg,...), etc)
 // -- never a shared function with a mode flag. BoardOps is the seam: it
 // wraps whichever set of engine calls is correct for a given board (canvas
 // vs a specific inventory page) behind ONE interface, so BoardRenderer's
