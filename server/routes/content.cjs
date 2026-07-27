@@ -78,7 +78,7 @@ function run(res, promise) {
 //
 // REQ-0176 (Phase-1b): there are TWO warm snapshots -- lib/content.cjs (the
 // DISPLAY path, /api/content) and services/core.cjs (the AUTHORITY path: the
-// gacha roll, the run simulation, market, warehouse, forecast). Both refresh
+// gacha roll, the run simulation, market, warehouse). Both refresh
 // from THIS ONE call site, on purpose: a mutation that refreshed only one would
 // leave display and roll disagreeing, which is precisely the drift REQ-0176
 // exists to kill. If a third snapshot is ever added, it belongs here too.

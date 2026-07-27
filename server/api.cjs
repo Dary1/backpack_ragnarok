@@ -17,7 +17,6 @@
 //   PUT    /api/schedule/rooms/:id/swap
 //   GET    /api/schedule/rooms/:id/run
 //   GET    /api/schedule/dungeons                        (REQ-0036 P1-C, no auth; REQ-0043: now also lists generator `types`)
-//   GET    /api/schedule/forecast                        (REQ-0057, no auth; ?dungeonType=&level= -> enemy ray attack profiles)
 //   POST   /api/schedule/rooms/:id/dev/backdate           (REQ-0036 P1-C, dev-only)
 //   GET    /api/warehouse
 //   POST   /api/warehouse/claim

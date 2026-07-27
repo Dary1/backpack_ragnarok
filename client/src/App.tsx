@@ -89,8 +89,6 @@ import { BoardCoords, CanvasStatsChip, EmbarkDock, SaveSeal } from './CanvasChro
 import { CanvasSidePanel } from './canvas/CanvasSidePanel'; // REQ-0140
 import { CanvasSelectionOverlay } from './canvas/CanvasSelectionOverlay'; // REQ-0140
 import { CanvasEmptyState } from './canvas/CanvasEmptyState'; // REQ-0140/0141
-import { ForecastOverlay } from './forecast/ForecastOverlay'; // REQ-0057
-import { ForecastPanel } from './forecast/ForecastPanel'; // REQ-0057
 import { DexRoot } from './dex/DexRoot';
 import { ArtAdminPage } from './artadmin/ArtAdminPage'; // REQ-0151
 import { ContentAdminPage } from './contentadmin/ContentAdminPage'; // REQ-0155
@@ -227,14 +225,6 @@ function App() {
               <div className="board-gridbox">
                 <Board />
                 <BoardCoords />
-                {/* REQ-0057: the ray-forecast heat layer. A pointer-events:none
-                    DOM layer over the SAME grid geometry BoardCoords already
-                    mirrors (PAD 38 / CELL 80) -- the Pixi board underneath is
-                    untouched, so every drag/dblclick/long-press keeps working
-                    while the weather map is up (which is the whole point:
-                    "visible WHILE building"). Renders nothing when the overlay
-                    is off. */}
-                <ForecastOverlay />
                 {/* REQ-0140: panel->board selection ring (DOM overlay, no
                     BoardRenderer change) + zero-BP guidance over the board. */}
                 <CanvasSelectionOverlay />
@@ -254,9 +244,6 @@ function App() {
                   this relatively-positioned .board-wrap-canvas). */}
               <SquadTrashZone />
             </div>
-            {/* REQ-0057: the forecast's controls + legend, under the stage.
-                Renders just the toggle until the overlay is switched on. */}
-            <ForecastPanel />
           </div>
           {/* REQ-0041: render the inventory column INLINE here only when
               no slot has claimed it (see InventoryColumn's doc above) --

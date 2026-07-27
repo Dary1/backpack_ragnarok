@@ -445,7 +445,7 @@ function validatePackEntry(pack, unitIds, contentIds) {
 // exactly the box formations.json already draws player canvases in.
 // These constants are duplicated here rather than require()d from
 // sim/lib/field.cjs on purpose: shared/ may not require() out of shared/
-// (the same rule sim/tests/forecast_parity.cjs documents in its header),
+// (a standing rule of this tree),
 // so a parity test pins them equal instead of a cross-tree import.
 const FIELD_COLS = 26, FIELD_ROWS = 18;
 const PLACEABLE = { colMin: 2, rowMin: 2, colMax: FIELD_COLS - 1, rowMax: FIELD_ROWS - 1 };
