@@ -66,3 +66,54 @@ tree.
 - 2026-07-17 reserved as REQ-0236 (843c227) on branch
   req-0234-e2e-effectiveness-audit; spec written; reserved -> draft
   awaiting the owner's disposition ratification.
+
+---
+
+## Outcome — the destructive half is DONE (2026-07-27, orchestrator)
+
+The owner decision this REQ was blocked on was given in chat on 2026-07-27:
+*「108のワークツリーは、維持する必要はありません。彼らは使い捨ての一時ツリーです。
+全てGitのbranchの一時品のはずです。全てマージされているなら、全て削除しても問題ありません。」*
+— blanket policy, not tree-by-tree.
+
+The premise was checked before acting and **did not hold**: of 107 worktrees,
+**26 were UNMERGED**, twelve of them for REQs whose file does not exist on master
+at all (0148, 0180, 0181, 0190, 0215, 0242, 0247, 0248, 0250, 0251, 0252, 0274) —
+for those, the branch is plausibly the only copy of the work.
+
+That did not block the cleanup, because of a distinction this REQ's step 2 conflated:
+**removing a worktree is not deleting a branch.** A worktree is a working copy;
+while the branch ref survives, every commit stays reachable and
+`git worktree add` restores the tree in seconds. Only *uncommitted* content is
+unrecoverable. So the disposition executed was: **remove the checkouts, keep every
+branch** — presented to and confirmed by the owner.
+
+### Executed
+
+- **104 worktrees removed**, 3 kept: `design-llm-testplay-fleet` and
+  `req-0309-engine-to-shared` (in flight), and `monsters-002-style-bakeoff`
+  (untracked monster-art WIP — PROJECT.md HANDS-OFF).
+- **All 177 branch refs preserved.** The twelve no-file-on-master branches were
+  individually verified present afterwards.
+- Disk: `~/backpack_ragnarok_worktrees` **82 G → 2.5 G**; `/home` free **67 G → 147 G**.
+- **Salvage**, per this REQ's own "NEVER delete uncommitted work" rule: six trees
+  were dirty. Five held only rebuilt `web/app/assets/*` bundles and a preview
+  directory (discarded). One, `req-0073-item-icon-gen`, held a real uncommitted
+  source change — 145 lines in `tools/build_dungeon_preview.py` (a `relic` rarity
+  colour, a `shutil` import, and more). Parked at
+  `~/backpack_ragnarok_salvage/req-0073-build_dungeon_preview.patch` with a
+  manifest of the full dirty state beside it.
+
+### What remains: lift the freeze
+
+This REQ's stated end goal was *"then lift the freeze"*. The stale-tree hazard it
+describes — an orphaned pre-0217 harness re-running old ci.sh code, parking on the
+box lock and holding a port decade — **is now structurally gone: there are no stale
+trees left to run.** `backpack-e2e-freeze.service` can therefore be retired:
+
+    systemctl --user disable --now backpack-e2e-freeze
+
+Not done here. Stopping a live service needs its own fresh owner go-ahead
+(PROJECT.md, HANDS-OFF list). Moving `draft → todo`: the decision that blocked this
+REQ is discharged, the destructive work is complete and recorded, and the single
+remaining step is queued.

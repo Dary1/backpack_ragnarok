@@ -482,3 +482,27 @@ luck, not design.)
   `cd9d74c` (REQ-0308 merged, api restarted 09:38 UTC — which accounts for the
   restart the implementer flagged as not-them; it was not). ~108 worktrees will
   conflict on rebase past this rename. §6's advice stands: merge early.
+
+### Merge record (2026-07-27)
+
+Merged to master as `5dc856b` (`--no-ff`, house style). Before merging, `master`
+(`cd9d74c`, REQ-0308's ray-forecast retirement) was merged INTO the branch —
+`c2e525e` — with exactly one conflict: `shared/forecast.d.mts`, deleted on master
+and modified here. The modification was a single comment-path word from this REQ's
+own prose sweep; master deleted the whole file with the feature. Deletion accepted,
+nothing lost.
+
+Gates on the merge commit: `[0/8]`–`[6/7]` green in a full `tools/ci.sh` run;
+`[7/7]` red at the default 4 workers on `auto-save` + `bp-transfer`, both green in
+isolation, then the whole suite re-run serially — **196 passed, 1 skipped,
+exit 0**. That is the second independent observation of the 4-worker flake (the
+implementer saw it at this REQ's base on different specs); see the REQ-0222
+addendum.
+
+**Status stays `built`, not `done`.** The merge is in, but `done` means
+merged AND deployed AND accepted. No deploy step was authorised: the client bundle
+was not rebuilt (this REQ does not change it — the engine is bundled by value) and
+`backpack-api` was not restarted. The running service still holds the pre-merge
+`mock-src/engine.js` in memory; it will load `shared/engine.js` on its next
+restart, whenever that happens, and nothing is broken in the meantime. Move to
+`done` once the owner either restarts the api or accepts that no deploy is required.
