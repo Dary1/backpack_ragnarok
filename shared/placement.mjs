@@ -1,9 +1,18 @@
-// client/src/lib/placement.ts -- REQ-0145b (cb): canonical home of the
-// client-side first-fit placement helpers previously living as
-// page-local copies (firstFitPlace + firstFitOrMergeTM in warehouse/
-// WarehousePage.tsx, firstFitPlaceBp in schedule/WorkshopPage.tsx).
+// shared/placement.mjs -- REQ-0310: the client-authoritative first-fit
+// placement helpers, promoted from client/src/lib/placement.ts.
 //
-// GATHER-THEN-UNIFY VERDICT (REQ-0145b (cb), recorded per spec): the
+// Moved VERBATIM (REQ-0310 is an EXTRACTION -- the logic below is byte-for-byte
+// the REQ-0145b (cb) original with its TypeScript annotations stripped; the
+// typed surface now lives in placement.d.mts beside this file). ESM so Vite
+// imports it unforked and node can `import()` it, dependency-free, engine
+// passed in by the caller -- the same charter shared/forecast.mjs followed
+// before REQ-0308 retired it.
+//
+// Per shared/README.md this module may NOT import from server/, sim/, client/
+// or mock-src/. It imports nothing at all.
+//
+// ---------------------------------------------------------------------
+// GATHER-THEN-UNIFY VERDICT (REQ-0145b (cb), preserved verbatim): the
 // three functions were co-located verbatim and diffed. They are NOT
 // semantically identical -- each drives a different engine placement
 // API against a different record shape (firstFitPlace:
@@ -14,25 +23,13 @@
 // analogue in the other two). They therefore STAY as documented named
 // variants sharing only the page-order convention and the grid bounds
 // below. Do not force-merge them.
-import type { ApiRolledBp } from '../api';
-import type { EngineInstance, GameState } from '../engine/engine.d.ts';
 
 export const GRID_MIN = 1;
 export const GRID_MAX = 8; // matches every inventory page's fixed 8x8 layout (same bound the old server-side first-fit used)
 
-export interface PlacementResult {
-  page: number;
-  cell: [number, number];
-}
-
-export interface BpPlacementResult {
-  page: number;
-  origin: [number, number];
-}
-
 /** The shared "try the currently open page first, then every other page
  * in ascending index order" walk all three first-fit variants use. */
-function pageOrderFrom(openPage: number, pageCount: number): number[] {
+export function pageOrderFrom(openPage, pageCount) {
   return [openPage, ...Array.from({ length: pageCount }, (_, i) => i).filter((i) => i !== openPage)];
 }
 
@@ -54,18 +51,10 @@ function pageOrderFrom(openPage: number, pageCount: number): number[] {
  * (via tmCanPlace, which already implements that exact 1x1/BP-overlap/
  * occupancy rule).
  */
-export function firstFitOrMergeTM(
-  engine: EngineInstance,
-  state: GameState,
-  uid: string,
-  itemId: string,
-  qty: number,
-  openPage: number,
-  pageCount: number
-): PlacementResult | null {
+export function firstFitOrMergeTM(engine, state, uid, itemId, qty, openPage, pageCount) {
   const pageOrder = pageOrderFrom(openPage, pageCount);
   for (const pg of pageOrder) {
-    const container = state.inv!.pages[pg];
+    const container = state.inv.pages[pg];
     // Existing-stack merge check: any same-id stack on this page is a
     // legal merge target from its OWN cell (tmCanPlace's mergeInto path).
     const existingStack = container.tms.find((t) => t.id === itemId);
@@ -76,7 +65,7 @@ export function firstFitOrMergeTM(
     // No mergeable stack on this page -- first-fit a NEW stack via the
     // same row-major scan firstFitPlace's po/si branches use, just
     // against tmCanPlace/tmMove.
-    let found: [number, number] | null = null;
+    let found = null;
     for (let r = GRID_MIN; r <= GRID_MAX && !found; r++) {
       for (let c = GRID_MIN; c <= GRID_MAX && !found; c++) {
         const chk = engine.tmCanPlace(state, pg, uid, [r, c]);
@@ -103,15 +92,7 @@ export function firstFitOrMergeTM(
  * ("try the CURRENTLY OPEN/ACTIVE inventory page first... if nothing
  * fits, scan the OTHER pages in page order").
  */
-export function firstFitPlace(
-  engine: EngineInstance,
-  state: GameState,
-  kind: 'po' | 'si',
-  uid: string,
-  itemId: string,
-  openPage: number,
-  pageCount: number
-): PlacementResult | null {
+export function firstFitPlace(engine, state, kind, uid, itemId, openPage, pageCount) {
   const pageOrder = pageOrderFrom(openPage, pageCount);
   for (const pg of pageOrder) {
     if (kind === 'po') {
@@ -119,9 +100,9 @@ export function firstFitPlace(
       // (it looks up the record by uid for its shape/rot) -- push a
       // placeholder record first, same push-check-rollback pattern the
       // OLD server-side claimWarehouseItem used.
-      const container = state.inv!.pages[pg];
+      const container = state.inv.pages[pg];
       container.pos.push({ uid, id: itemId, loc: 'grid', cell: [1, 1], rot: 0 });
-      let found: [number, number] | null = null;
+      let found = null;
       for (let r = GRID_MIN; r <= GRID_MAX && !found; r++) {
         for (let c = GRID_MIN; c <= GRID_MAX && !found; c++) {
           const chk = engine.invCanPlacePO(state, pg, uid, 0, [r, c]);
@@ -139,9 +120,9 @@ export function firstFitPlace(
       // own contract (the record must exist before invMoveSI can update
       // its host, so it is created first with a placeholder host, same
       // idea as the PO branch, then moved into its real cell).
-      const container = state.inv!.pages[pg];
+      const container = state.inv.pages[pg];
       container.sis.push({ uid, id: itemId, host: 'inv' });
-      let found: [number, number] | null = null;
+      let found = null;
       for (let r = GRID_MIN; r <= GRID_MAX && !found; r++) {
         for (let c = GRID_MIN; c <= GRID_MAX && !found; c++) {
           const chk = engine.invCanPlaceSI(state, pg, uid, [r, c], [uid]);
@@ -165,16 +146,10 @@ export function firstFitPlace(
  * just id/loc/cell/rot). Tries `openPage` first, then every other page
  * in ascending order -- same page-order convention as the other two
  * variants above. */
-export function firstFitPlaceBp(
-  engine: EngineInstance,
-  state: GameState,
-  rolled: ApiRolledBp,
-  openPage: number,
-  pageCount: number
-): BpPlacementResult | null {
+export function firstFitPlaceBp(engine, state, rolled, openPage, pageCount) {
   const pageOrder = pageOrderFrom(openPage, pageCount);
   for (const pg of pageOrder) {
-    const container = state.inv!.pages[pg];
+    const container = state.inv.pages[pg];
     container.bps.push({
       id: rolled.uid,
       // REQ-0170: the BP is named after the Unit it carries -- because that is what
@@ -197,7 +172,7 @@ export function firstFitPlaceBp(
       unit: rolled.unit,
       hpMax: rolled.hpMax,
     });
-    let found: [number, number] | null = null;
+    let found = null;
     for (let r = GRID_MIN; r <= GRID_MAX && !found; r++) {
       for (let c = GRID_MIN; c <= GRID_MAX && !found; c++) {
         const chk = engine.invCanPlaceBP(state, pg, rolled.uid, [r, c]);

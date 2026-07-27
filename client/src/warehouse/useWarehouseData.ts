@@ -21,9 +21,7 @@ import {
 import { getInventoryRenderer } from '../board/inventoryRenderer';
 import { t } from '../i18n';
 import { cachedFetchContent } from '../lib/contentCache';
-import { itemKindOf } from '../lib/itemContent';
-import type { ApiRolledBp } from '../api';
-import { firstFitOrMergeTM, firstFitPlace, firstFitPlaceBp, type BpPlacementResult, type PlacementResult } from '../lib/placement';
+import { applyWarehouseClaim } from '../../../shared/player_actions.mjs'; // REQ-0310
 import { pulseTab } from '../lib/tabPulse';
 import { usePolledResource } from '../lib/usePolledResource';
 import { friendlyScheduleError, isApiErrorStatus } from '../schedule/errors';
@@ -159,33 +157,19 @@ export function useWarehouseData(locale: Locale) {
         throw new Error('inventory not ready');
       }
 
-      // Phase 2 (THIS client): engine first-fit placement, reusing the
-      // warehouse row's OWN itemUid as the new PO/SI's uid (see
-      // server/schedule.cjs's claimWarehouseItem doc for why this is
-      // what makes server-side finalization on the next profile save
-      // exact rather than a fuzzy itemId-based heuristic).
-      // REQ-0042: a TM-kind row (claimed.kind==='tm', e.g. an LRDST
-      // reward/grant) takes a DIFFERENT placement path -- merge into an
-      // existing matching-id stack if one exists, otherwise first-fit a
-      // new stack (see firstFitOrMergeTM's own doc above) -- rather than
-      // firstFitPlace's plain po/si first-fit (which has no merge
-      // concept at all).
-      const kind = claimed.kind === 'tm' ? 'tm' : claimed.kind === 'bp' ? 'bp' : itemKindOf(content, claimed.itemId);
+      // Phase 2 (THIS client): the whole STATE transition -- the kind
+      // dispatch, the first-fit placement that REUSES the warehouse row's own
+      // itemUid (which is what makes server-side finalization on the next
+      // profile save exact rather than a fuzzy itemId heuristic), and
+      // REQ-0195d's verbatim-BP field restore -- lives in
+      // shared/player_actions.mjs since REQ-0310, so the headless player
+      // (REQ-0314) runs the SAME code this hook does instead of
+      // reimplementing item-losing logic. What stays here is UI: the
+      // no-space toast/error, the cell pulse and the tab pulse.
       const openPage = snapshot.activeInvPage;
-      // REQ-0195d: a bought unit (BP) row places via firstFitPlaceBp (the
-      // Workshop's own claim path), reconstructing an ApiRolledBp from the
-      // verbatim payload; the remaining instance fields are merged back below.
-      const bpPayload = claimed.bp;
-      const rolled: ApiRolledBp | null = kind === 'bp' && bpPayload
-        ? { uid: claimed.itemUid, shape: bpPayload.shape, unit: bpPayload.unit, hpMax: bpPayload.hpMax, cellCount: bpPayload.cellCount ?? bpPayload.shape.length, bonuses: bpPayload.bonuses as ApiRolledBp['bonuses'] }
-        : null;
-      const placed: PlacementResult | BpPlacementResult | null = kind === 'tm'
-        ? firstFitOrMergeTM(engine, state, claimed.itemUid, claimed.itemId, claimed.qty ?? 1, openPage, engine.PAGE_COUNT)
-        : kind === 'bp'
-          ? (rolled ? firstFitPlaceBp(engine, state, rolled, openPage, engine.PAGE_COUNT) : null)
-          : firstFitPlace(engine, state, kind, claimed.itemUid, claimed.itemId, openPage, engine.PAGE_COUNT);
+      const res = applyWarehouseClaim(engine, state, claimed, content, openPage);
 
-      if (!placed) {
+      if (!res.ok) {
         // No space anywhere -- per the REQ's own accepted design, leave
         // the row 'claiming' server-side; it lazily reverts to
         // 'claimable' after the server's own timeout (no explicit
@@ -202,27 +186,6 @@ export function useWarehouseData(locale: Locale) {
       // renderer this tab's embedded board IS (see board/
       // inventoryRenderer.ts's doc for why a module-level accessor is
       // the seam here, per the REQ-0041 Pixi-instance reuse decision).
-      // REQ-0195d: firstFitPlaceBp sets only id/name/color/shape/origin/
-      // unit/hpMax -- restore the rest of the verbatim BP instance so the
-      // bought unit stays byte-faithful (never re-rolled).
-      if (kind === 'bp' && bpPayload) {
-        const placedBp = state.inv.pages[(placed as BpPlacementResult).page].bps.find((b) => b.id === claimed.itemUid) as Record<string, unknown> | undefined;
-        if (placedBp) {
-          if (bpPayload.name != null) placedBp.name = bpPayload.name;
-          if (bpPayload.color != null) placedBp.color = bpPayload.color;
-          if (bpPayload.cellCount != null) placedBp.cellCount = bpPayload.cellCount;
-          if (bpPayload.bonuses != null) placedBp.bonuses = bpPayload.bonuses;
-          if (bpPayload.roll != null) placedBp.roll = bpPayload.roll;
-        }
-      }
-      const renderer = getInventoryRenderer();
-      const cells = kind === 'po'
-        ? engine.cellsOfIn(state.inv.pages[placed.page].pos.find((p) => p.uid === claimed.itemUid)!)
-        : kind === 'bp'
-          ? engine.bpCells({ shape: (rolled as ApiRolledBp).shape, origin: (placed as BpPlacementResult).origin } as Parameters<typeof engine.bpCells>[0])
-          : [(placed as PlacementResult).cell];
-      // (kind 'si' and 'tm' both fall through to the [placed.cell]
-      // branch above -- both are always exactly 1x1, same as an SI.)
       // Only pulse if the placement landed on the CURRENTLY-DISPLAYED
       // page -- pulseCellsSuccess draws into gTarget, which always
       // reflects whatever page InventoryBoard.tsx's own ops-swap effect
@@ -232,10 +195,11 @@ export function useWarehouseData(locale: Locale) {
       // the tab-pulse notification below is the correct cue for that
       // case instead, exactly per the REQ's own spec ("auto-place into
       // another page and pulse-highlight THAT page's tab").
-      if (placed.page === openPage) {
-        renderer?.pulseCellsSuccess(cells);
+      const renderer = getInventoryRenderer();
+      if (res.page === openPage) {
+        renderer?.pulseCellsSuccess(res.cells);
       } else {
-        pulseTab(placed.page);
+        pulseTab(res.page);
       }
 
       // Let the EXISTING auto-save choke point run naturally -- do NOT
@@ -246,9 +210,9 @@ export function useWarehouseData(locale: Locale) {
       notifyStateChanged();
 
       setToast(
-        placed.page === openPage
+        res.page === openPage
           ? t(locale, 'schedule.warehouse.claimedToast')
-          : t(locale, 'schedule.warehouse.claimedOnOtherPage', { page: placed.page + 1 })
+          : t(locale, 'schedule.warehouse.claimedOnOtherPage', { page: res.page + 1 })
       );
       await reload();
       return 'claimed';
