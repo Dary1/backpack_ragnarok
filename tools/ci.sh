@@ -125,7 +125,7 @@ echo "==== [2.95/7] REQ-0269 balance sim harness (determinism / fixture matchup 
 node sim/tests/balance_sim_test.cjs
 echo "==== [2.96/7] REQ-0272 candidate one-door gate (validate/static/dynamic; known-good pass, over-band static flag, in-band sim flag, junk validate) ===="
 node sim/tests/candidate_gate_test.cjs
-echo "==== [3/7] mock-src engine tests ===="
+echo "==== [3/7] shared engine tests ===="
 node mock-src/tests/run.cjs
 echo "==== [3.5/7] typecheck (server modules + shared, checkJs) ===="
 if [ -x node_modules/.bin/tsc ]; then

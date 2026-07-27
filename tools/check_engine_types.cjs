@@ -10,7 +10,7 @@
 // re-reading; this makes the re-read mechanical, in CI).
 const fs = require('fs');
 const path = require('path');
-const Engine = require(path.join(__dirname, '..', 'mock-src', 'engine.js'));
+const Engine = require(path.join(__dirname, '..', 'shared', 'engine.js'));
 const src = fs.readFileSync(path.join(__dirname, '..', 'shared', 'engine.d.ts'), 'utf8');
 
 function interfaceBody(name) {

@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT_ROOT = path.resolve(__dirname, '..');
 const require = createRequire(import.meta.url);
-const EngineFactory = require(path.resolve(CLIENT_ROOT, '..', 'mock-src', 'engine.js'));
+const EngineFactory = require(path.resolve(CLIENT_ROOT, '..', 'shared', 'engine.js'));
 
 async function loadLinkTrace() {
   const server = await createServer({

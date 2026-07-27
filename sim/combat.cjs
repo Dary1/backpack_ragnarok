@@ -44,7 +44,7 @@
 // working unchanged. Determinism proof: sim/tests/goldens.cjs.
 'use strict';
 const path = require('path');
-const engine = require(path.join(__dirname, '..', 'mock-src', 'engine.js'));
+const engine = require(path.join(__dirname, '..', 'shared', 'engine.js'));
 const core = require('./lib/core.cjs');
 const rng = require('./lib/rng.cjs');
 const geometry = require('./lib/geometry.cjs');

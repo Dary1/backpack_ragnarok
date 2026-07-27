@@ -1639,7 +1639,7 @@ T('dungen: a generated def only ever references enemy ids that exist in the LIVE
 // engine.js traceBeams on a shared fixture (sim runtime stays engine-free;
 // only this TEST loads the engine, per REQ-0047 contract #6 + REQ-0048).
 (function () {
-  const Engine = require(path.join(REPO_ROOT, 'mock-src', 'engine.js'));
+  const Engine = require(path.join(REPO_ROOT, 'shared', 'engine.js'));
   const Data = require(path.join(REPO_ROOT, 'mock-src', 'data.js'));
   const norm = (edges) => edges.map(e => e.from + '>' + e.to + '@' + e.dir).sort();
   T('REQ-0048 parity: sim linkEdges == engine.js traceBeams (established links, live fixture)', () => {

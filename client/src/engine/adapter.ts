@@ -22,7 +22,7 @@
 //      two injected parameters; no access to this module's closure.
 // Any future engine.js change (new export, bugfix) is picked up automatically
 // on next build with zero adapter changes, since the source is read fresh.
-import engineSource from '../../../mock-src/engine.js?raw';
+import engineSource from '../../../shared/engine.js?raw';
 import type { EngineModule } from './engine.d.ts';
 
 function loadEngineModule(): EngineModule {

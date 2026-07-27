@@ -18,7 +18,7 @@ const path = require('path');
 const combat = require('../../sim/combat.cjs');
 const dungen = require('../../sim/dungen.cjs');
 const dungeonRoll = require('../../sim/dungeon_roll.cjs'); // REQ-0185: the dive roller (also serves the authored encounter summary)
-const Engine = require('../../mock-src/engine.js');
+const Engine = require('../../shared/engine.js');
 
 
 // REQ-0145a (sc): content paths resolve through the ONE content-file
