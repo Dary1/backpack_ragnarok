@@ -30,7 +30,7 @@ import type { ApiConnShape } from '../../../shared/dto';
 import { getInventoryRenderer } from '../board/inventoryRenderer';
 import { resolveUnitArtUrl } from '../dex/unitArt'; // REQ-0266
 import { dirsLabel, shapeLabel } from '../lib/connShapeLabel'; // REQ-0208: lifted from this file
-import { firstFitPlace, firstFitOrMergeTM, firstFitPlaceBp } from '../lib/placement';
+import { firstFitPlace, firstFitOrMergeTM, firstFitPlaceBp } from '../../../shared/placement.mjs'; // REQ-0310
 import { pulseTab } from '../lib/tabPulse';
 import { BpDiagram } from '../dex/BpDiagram';
 import { DismantlePanel } from './DismantlePanel';

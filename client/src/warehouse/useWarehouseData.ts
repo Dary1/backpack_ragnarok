@@ -23,7 +23,7 @@ import { t } from '../i18n';
 import { cachedFetchContent } from '../lib/contentCache';
 import { itemKindOf } from '../lib/itemContent';
 import type { ApiRolledBp } from '../api';
-import { firstFitOrMergeTM, firstFitPlace, firstFitPlaceBp, type BpPlacementResult, type PlacementResult } from '../lib/placement';
+import { firstFitOrMergeTM, firstFitPlace, firstFitPlaceBp, type BpPlacementResult, type PlacementResult } from '../../../shared/placement.mjs'; // REQ-0310
 import { pulseTab } from '../lib/tabPulse';
 import { usePolledResource } from '../lib/usePolledResource';
 import { friendlyScheduleError, isApiErrorStatus } from '../schedule/errors';
