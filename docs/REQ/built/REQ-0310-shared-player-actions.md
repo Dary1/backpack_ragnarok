@@ -428,3 +428,28 @@ so this REQ's ports are correct-by-construction either way.
 - `web/app` deliberately not rebuilt: the house convention is a dedicated
   `build(web): rebuild app bundle on merged tree` commit at integration. Correct,
   and it is the orchestrator's to do.
+
+### Deploy + acceptance (2026-07-27)
+
+`pnpm build` on the merged tree; bundle committed as `0ebd5fb`
+(`build(web): rebuild app bundle on merged tree for REQ-0310`), house convention
+(cf. `e5dc23f`, `5edbf25`). `backpack-web` serves `web/` statically via
+`python3 -m http.server`, so no service restart is involved; the api was already
+restarted for REQ-0309 and is untouched here.
+
+Live-verified: `http://127.0.0.1:8801/app/` references `assets/index-D-R9mjKI.js`,
+that asset returns 200, `/api/health` 200.
+
+**The gacha refund fix (`f4e6cae`) is now live.** A failed roll can no longer
+destroy the LRDST it just spent.
+
+Orchestrator error worth recording, because it is a trap this repo sets: the first
+attempt committed the doc edit with `git commit -am`, which swept the freshly-built
+bundle (a modified `web/app/index.html` and four deleted asset blobs) into a REQ
+documentation commit. Caught by inspecting the commit's own `--stat` rather than
+trusting the message, then split into `2b6b6bb` (doc) + `0ebd5fb` (bundle). **Never
+use `-a` in this tree**: `web/app` holds tracked build output that any client build
+silently modifies, so `-a` will attach it to whatever commit happens to be next.
+
+`built → done`: merged (`ccbf06b`), deployed (bundle rebuilt and live-verified),
+accepted.
