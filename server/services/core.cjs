@@ -18,7 +18,21 @@ const path = require('path');
 const combat = require('../../sim/combat.cjs');
 const dungen = require('../../sim/dungen.cjs');
 const dungeonRoll = require('../../sim/dungeon_roll.cjs'); // REQ-0185: the dive roller (also serves the authored encounter summary)
-const Engine = require('../../shared/engine.js');
+// REQ-0309: shared/engine.d.ts now sits BESIDE shared/engine.js, and a .d.ts
+// always shadows a same-basename .js in TS module resolution. Nothing like it
+// ever sat beside the engine at its old mock-src/ path, so before the move TS
+// inferred this module's shape from the UMD factory itself. engine.d.ts is a
+// type LIBRARY: it exports EngineModule (the shape of engine.js's
+// module.exports) but never declares that the module IS one, so post-move the
+// namespace has no value members at all and Engine.create stops resolving.
+// Bind the value to the interface the project already hand-wrote for exactly
+// this module. A JSDoc cast: erased at runtime, zero behaviour change. It is
+// CHECKED, not asserted on faith -- tools/check_engine_types.cjs (ci.sh
+// [3.6/7]) pins all 49 EngineModule/EngineInstance members against the live
+// runtime object.
+const Engine = /** @type {import('../../shared/engine.js').EngineModule} */ (
+  /** @type {unknown} */ (require('../../shared/engine.js'))
+);
 
 
 // REQ-0145a (sc): content paths resolve through the ONE content-file
@@ -489,7 +503,13 @@ function resolveRewardItemId(rollId) {
 // and safest against itemDefsById changing between calls (content hot-
 // reload, same mtime-cache convention as api.cjs's own content path).
 function makeEngine(itemDefsById, unitDefsById, connShapes) {
-  return Engine.create(itemDefsById, {}, { ROWS: 8, COLS: 8 }, { po_tags: {}, socket_tags: {} }, unitDefsById, connShapes);
+  // REQ-0309: keys are `po`/`socket`, NOT `po_tags`/`socket_tags`. engine.js's
+  // create() reads `(trees&&trees.po)||{}` and `(trees&&trees.socket)||{}`, so the
+  // old keys were silently ignored and fell through to {}. Provably a no-op TODAY --
+  // the values passed are empty either way -- but it is a live trap the moment any
+  // caller passes REAL trees, and it typechecked only while this module was untyped.
+  // tools/tool_gen_data.cjs:184 always emitted the correct {po, socket} shape.
+  return Engine.create(itemDefsById, {}, { ROWS: 8, COLS: 8 }, { po: {}, socket: {} }, unitDefsById, connShapes);
 }
 
 // ---------------------------------------------------------------------
