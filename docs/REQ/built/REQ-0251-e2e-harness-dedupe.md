@@ -374,3 +374,150 @@ user either way. Recorded so the choice is made on the numbers.
 This REQ is `built/`, not merged. Nothing above changes that. The audit's
 recommended merge order and the decisions that remain with the user are reported
 in the session that appended this section.
+
+---
+
+# Rebase record — 2026-07-28
+
+Rebased onto master `30cc99a`; branch HEAD `3968328`. Re-verified end to end by a
+separate agent on today's master. **No design change, no code change** — the
+harness extraction shipped here is untouched.
+
+## The rebase, and the conflict resolution
+
+Three conflicts, all in harness `.sh` files. Master's side of every one of them
+was `f25ea54` (REQ-0321), and its entire contribution to these files is **two
+comment lines each, in three files** — the decade text in the "ports are DERIVED"
+header block:
+
+    art_inspect_e2e.sh   1520..1529 -> 6520..6529
+    artadmin_e2e.sh      1560..1569 -> 6560..6569
+    content_admin_e2e.sh 1570..1579 -> 6570..6579
+
+Nothing executable. `registry_first_e2e.sh` was not in `f25ea54` at all, which is
+why there were three conflicts and not four. Resolution: **took this branch's
+rewrite wholesale**, which is correct and loses nothing — the rewrite *deletes*
+the very comment blocks REQ-0321 was correcting, and re-states the rule once, in
+`tools/e2e_harness.sh`, with no decade literal in it. The doc fix is subsumed
+rather than reverted.
+
+`git log master -- <the four harnesses>` confirms `f25ea54` is the **only** master
+commit to touch them since this branch was authored, so there is no other
+540-commit drift to reconcile in these files.
+
+## No-op claim, re-verified
+
+The port-rule half of this REQ was merged separately as REQ-0321, taken verbatim
+from this branch. After the rebase that half must contribute nothing. Checked two
+independent ways — `git diff master HEAD` (empty) and `git hash-object` against
+the master blob:
+
+| file | vs master |
+|---|---|
+| `tools/e2e_ports.sh` | IDENTICAL `0b6a0b9` |
+| `tools/check_e2e_ports.cjs` | IDENTICAL `ab42970` |
+| `client/e2e/artadmin.config.ts` | IDENTICAL `edcab0a` |
+| `client/e2e/artinspect.config.ts` | IDENTICAL `a999928` |
+| `client/e2e/contentadmin.config.ts` | IDENTICAL `c8063a4` |
+| `client/e2e/registry.config.ts` | IDENTICAL `4749cca` |
+
+Re-checked after the gate run: still identical. The branch's whole diff against
+master is now 6 files — the REQ doc, the new `tools/e2e_harness.sh`, and the four
+harnesses rewritten onto it.
+
+## Ports: derived, and actually bound
+
+No port literal survives in any of the five files (`grep` for 4-digit numbers
+returns only REQ numbers, `ART_MOCK_DELAY_MS=1500`, and one `8810` inside an
+explanatory comment). No `15xx`, no `89xx`.
+
+Reading the script is the weak form of that claim, so `ss -lnt` was sampled once a
+second for the duration of both gate runs. Every socket observed, and nothing else:
+
+| harness | REQ | decade | bound at runtime |
+|---|---|---|---|
+| art_inspect | 0152 | 6520-6529 | 6521 api, 6522 proxy |
+| artadmin | 0156 | 6560-6569 | 6561 api, 6562 proxy |
+| content_admin | 0157 | 6570-6579 | 6571 api, 6572 proxy |
+| registry_first | 0221 | 7210-7219 | 7211 api, 7212 proxy |
+| ci.sh `[7/7]` scoped | 0251 | 7510-7519 | 7512 proxy, 7514-7517 fleet |
+
+`STATICPORT` (`6520/6560/6570/7210`) is derived and preflighted but never bound —
+correct: REQ-0234 (F7) dropped the vestigial static server and the local proxy
+serves `/app` from the worktree.
+
+## Gate results
+
+`tools/ci.sh` from this worktree, `DATABASE_URL` sourced read-only from the main
+checkout's `server/.env`:
+
+    CI GREEN     (exit 0)
+
+- `[0/8]` `check_e2e_ports: 4 harnesses + 4 configs, all ports derived from their
+  REQ number (base 5000), no collisions`
+- `[6.5/8]` artadmin **8 passed** (1.7m) · art_inspect **1 passed** (20.1s) ·
+  content_admin **28 passed** (41.5s)
+- `[6.6/8]` registry_first **4 passed** (8.7s), `registry serves 1 item(s)`,
+  `--no-skip` armed and not tripped
+- `[7/7]` **196 passed, 1 skipped** (8.6m)
+
+41 specs across `[6.5]`+`[6.6]`, run twice, green both times. Behaviour that had
+to survive the extraction still does: artadmin's cancel spec still observes a
+PENDING job (so `ART_MOCK_DELAY_MS=1500` reaches the api through
+`e2e_harness_api_env`), content_admin's `e2e_h_after_ready` seeded 39 artworks,
+and registry_first's `e2e_h_seed_preboot` seeded a registry the api then served.
+
+The one `[7/7]` skip is `dex-admin.spec.ts:102` — the REQ-0182b 409 guard, which
+is *expected* to skip in files-mode `[7/7]` and is exactly what `[6.6]` covers
+with `--no-skip`. The serving-mode coverage map holds.
+
+Spec counts have grown since this REQ was built (artadmin 7 -> 8, backfill
+19 -> 39 artworks, `[7/7]` 196 -> 197 tests). Growth in the suite, not drift in
+the harness.
+
+## The `[7/7]` flake, reproduced and cleared
+
+First full run failed `[7/7]`: **195 passed / 1 failed / 1 skipped**, the failure
+`workshop.spec.ts:121` gacha roll — `expect(newBpIds.size).toBe(1)` received `2`,
+i.e. a second freshly-minted BP appeared inside one roll's window. That is the
+known parallel-worker flake (different spec each time, four prior observations).
+Handled by the documented procedure, not chased:
+
+1. that spec alone at `E2E_PARALLEL=1` -> **1 passed** (6.6s);
+2. the whole e2e suite at `E2E_PARALLEL=1` -> **196 passed, 1 skipped** (8.6m);
+3. the whole of `tools/ci.sh` re-run at `E2E_PARALLEL=1` -> **CI GREEN**, exit 0.
+
+The failure signature (an extra BP, not a timeout) is worth recording: it points
+at shared dev-player state across workers rather than at a port or a timing
+problem, which is a different mechanism from the `page.reload()`/fonts flake
+recorded earlier in this file.
+
+## Two earlier observations in this file no longer hold
+
+- **`[5.1/7]` is green now.** G4 above records ci.sh RED at `[5.1] server artwork
+  registry tests` (`render seed 1 did not finish in time`, `No module named
+  'numpy'`), diagnosed as environmental. On today's master `[5.1]` reports
+  `2 passed, 0 failed`. The step this branch could not reach now passes, so G4 is
+  green on its own terms.
+- **The committed `web/app` bundle is no longer stale.** "Also observed" records
+  that a clean `pnpm run build` produced different asset hashes than the committed
+  bundle. `[6/7]` rebuilt `web/app` in this worktree (mtimes confirm the write) and
+  `git status` stayed **completely clean** — the committed bundle now reproduces
+  byte-for-byte. Nothing was committed from `web/`; this REQ's commit is one
+  explicit path.
+
+## What had to be changed to get here
+
+Nothing in the branch. One provisioning gap: the worktree was recreated today and
+`tools/provision_worktree_env.sh .` plus `cd client && pnpm install
+--frozen-lockfile` is not sufficient — this repo has **three** package.json roots
+(`.`, `client/`, `server/`). Without the root install, ci.sh dies at `[3.5/7]`
+with `typescript missing -- run: pnpm install --frozen-lockfile`. Provisioning a
+fresh worktree means all three (PROJECT.md already says "repeat in any other dir
+that has its own package.json"; the root one is easy to miss because the
+tooling advice names only `client/`).
+
+## Status
+
+Unchanged: `built/`, not merged, not deployed. Acceptance remains the owner's.
+This section records verification only.
