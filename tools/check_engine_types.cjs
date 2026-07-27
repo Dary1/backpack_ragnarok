@@ -70,7 +70,7 @@ for (const mm of members(interfaceBody('EngineModule'))) {
 }
 // 2) EngineInstance vs a real created instance (same call shape as
 // server/services/core.cjs makeEngine()).
-const inst = Engine.create({}, {}, { ROWS: 8, COLS: 8 }, { po_tags: {}, socket_tags: {} });
+const inst = Engine.create({}, {}, { ROWS: 8, COLS: 8 }, { po: {}, socket: {} });
 for (const mm of members(interfaceBody('EngineInstance'))) {
   const rt = inst[mm.name];
   if (rt === undefined && !mm.optional) { problems.push('EngineInstance.' + mm.name + ' missing from created instance'); continue; }
