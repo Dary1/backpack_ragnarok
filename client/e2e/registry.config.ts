@@ -6,7 +6,7 @@
 // the files-backed default fleet can never exercise them (REQ-0234 F1), and
 // the harness fails the stage if anything skips.
 import { defineConfig, devices } from '@playwright/test';
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:2212';
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:7212';
 export default defineConfig({
   testDir: '.',
   testMatch: '**/dex-admin.spec.ts',

@@ -18,13 +18,17 @@
 Preferred — SCOPED run (shares nothing box-global; safe to run while other
 sessions work; skips the box lock):
 
-    E2E_FLEET_ROOT=/tmp/bp_e2e_workers_<reqNNNN> \
-    E2E_PROXY_PORT=<NNNN>2 E2E_FLEET_BASE_PORT=<NNNN>4 \
-    PLAYWRIGHT_BASE_URL=http://127.0.0.1:<NNNN>2 \
+    source tools/e2e_ports.sh 0NNN     # -> PROXYPORT, E2E_PORT_BASE, ...
+    E2E_FLEET_ROOT=/tmp/bp_e2e_workers_req0NNN \
+    E2E_PROXY_PORT=$PROXYPORT E2E_FLEET_BASE_PORT=$((E2E_PORT_BASE + 4)) \
+    PLAYWRIGHT_BASE_URL=http://127.0.0.1:$PROXYPORT \
     E2E_PARALLEL=4 pnpm exec playwright test        # from client/
 
-Ports follow the REQ-decade rule (tools/e2e_ports.sh): index 2 = proxy,
-indexes 4..(4+workers-1) = fleet apis, so E2E_PARALLEL<=6 fits a decade.
+Ports follow the REQ-decade rule (tools/e2e_ports.sh): PORT = 5000 + REQ*10 +
+index since REQ-0321, so index 2 = proxy and indexes 4..(4+workers-1) = fleet
+apis, and E2E_PARALLEL<=6 fits a decade. DERIVE them by sourcing the helper --
+never hand-type a port, and never concatenate the REQ number (that was the
+pre-REQ-0321 rule, and it now names a different, unowned port).
 
 Legacy — `pnpm run e2e` (tools/e2e_run.sh): shared proxy 8803 + fleet
 8810+, serialized by the box lock. Works, but queues against every other
@@ -72,8 +76,8 @@ freeze README) IMMEDIATELY instead of stalling silently for E2E_LOCK_WAIT.
 
 ## Rules that stay
 - Box lock (REQ-0117) still guards the LEGACY shared-port path.
-- Port decades (REQ-0172) unchanged; scoped runs live inside their REQ's
-  own decade.
+- Port decades (REQ-0172), rebased onto the 5000 base by REQ-0321 to match
+  PROJECT.md; scoped runs live inside their REQ's own decade.
 - Admin harnesses (artadmin/artinspect/contentadmin) keep their own
   isolated HOME-remap rigs (REQ-0159); since REQ-0234 they drive the
   post-0217 proxy via E2E_FLEET_BASE_PORT=<their api port> (the proxy's old
