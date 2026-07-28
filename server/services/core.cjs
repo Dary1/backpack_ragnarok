@@ -559,6 +559,27 @@ function genId(prefix) {
 // preserves every existing caller's observed behavior byte-for-byte);
 // any other/absent dungeonId defaults to 'default' (the generator).
 
+// ---------------------------------------------------------------------
+// REQ-0324: room slot shape helpers (shared by the deploy gate + the
+// co-operative Troop views). A slot is EMPTY (null, or the legacy solo
+// shape { squadIndex: null }) or FILLED. A filled co-op/troop slot is
+// { ownerId, squadIndex, joinedAt }; a filled LEGACY solo slot is
+// { squadIndex: n } with NO owner field. normalizeSlot reads BOTH shapes,
+// migrating a legacy solo room ON READ: an ownerless filled slot is
+// attributed to the room's ownerId (the solo player who filled it),
+// exactly as REQ-0324's data-model section specifies. Pure, no I/O.
+// ---------------------------------------------------------------------
+function slotIsFilled(slot) {
+  return !!slot && slot.squadIndex !== null && slot.squadIndex !== undefined;
+}
+function normalizeSlot(slot, room) {
+  if (!slotIsFilled(slot)) return null;
+  const ownerId = (slot.ownerId !== null && slot.ownerId !== undefined)
+    ? slot.ownerId
+    : (room ? room.ownerId : null);
+  return { ownerId, squadIndex: slot.squadIndex, joinedAt: slot.joinedAt || null };
+}
+
 module.exports = {
   REPO_ROOT,
   CONTENT_DIR,
@@ -594,4 +615,6 @@ module.exports = {
   resolveRewardItemId,
   makeEngine,
   genId,
+  slotIsFilled, // REQ-0324
+  normalizeSlot, // REQ-0324
 };
