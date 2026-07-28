@@ -4,7 +4,7 @@
 // services/market.cjs (origin lines 171-202, 364-495 @ commit 6eafed8).
 'use strict';
 const storage = require('../../storage.cjs');
-const { getScheduleContent, genId } = require('../core.cjs');
+const { getScheduleContent, genId, WAREHOUSE_TTL_MS } = require('../core.cjs');
 const { deployedUidSet, referencedUidSet } = require('../squads.cjs');
 const {
   MARKET_TM_ID, MARKET_PRICE_MIN, MARKET_PRICE_MAX, MARKET_LISTING_TTL_MS,
@@ -32,6 +32,11 @@ function normalizeListing(listing, nowMs) {
   if (listing.state === 'active' && Date.parse(listing.expiresAt) <= now) {
     listing.state = 'expired';
     listing.expiredAt = new Date(now).toISOString();
+    // REQ-0328: a warehouse-sourced listing escrows its item ON the listing,
+    // so expiry must hand the item back to the SELLER's warehouse (never
+    // silently lost) -- same invariant a canvas-sourced listing gets for
+    // free (its item never left the seller's canvas).
+    if (listing.source === 'warehouse') returnEscrowToWarehouse(listing, now);
     storage.writeMarketListing(listing.id, listing);
   }
   return listing;
@@ -222,6 +227,117 @@ function createUnitListing(sellerId, body, price, canvas, idemKey) {
   return { listing, replayed: false };
 }
 
+// createListingFromWarehouse (REQ-0328): POST /api/market/listings/from-
+// warehouse {warehouseRowId, price}. The DIRECT warehouse->market path --
+// a CLAIMABLE warehouse row (an unclaimed dungeon drop / market delivery)
+// becomes an active listing WITHOUT ever routing through the seller's
+// canvas/inventory. Contrast createListing above, whose provenance is a
+// canvas cell the item keeps LIVING IN while listed: here the item is
+// ESCROWED on the listing itself. The warehouse row is consumed (deleted)
+// here; its content travels on the listing (kind/itemId + q for a po/si,
+// bp for a unit); settlement (trade.cjs) delivers it to the buyer's
+// warehouse, and withdraw/expiry (returnEscrowToWarehouse below) hands it
+// back to the seller's warehouse -- so the item is never silently lost.
+// Reuses createListing's exact price validation + Idempotency-Key replay +
+// 7-day TTL; reuses warehouse.cjs's peekClaimableRow for the row lookup.
+// A tm/currency row is not a drop and has no direct-sell path (a tm
+// listing needs a DIFFERENT price TM + tmQty -- see createTmListing), so it
+// is rejected plainly (400 unsellable_kind) and the fleet (REQ-0330) simply
+// skips currency rows.
+function createListingFromWarehouse(sellerId, body, idemKey) {
+  if (idemKey) {
+    for (const raw of storage.listMarketListings()) {
+      if (raw.sellerId === sellerId && raw.idemKey === idemKey) {
+        return { listing: normalizeListing(raw, Date.now()), replayed: true };
+      }
+    }
+  }
+  const price = body && body.price;
+  if (!price || typeof price.tm !== 'string' || !isLiveTm(price.tm)) {
+    const err = new Error('price.tm must be a live TM registry id (content/live/live_tms.json)'); err.code = 'BAD_REQUEST'; throw err;
+  }
+  if (!Number.isInteger(price.qty) || price.qty < MARKET_PRICE_MIN || price.qty > MARKET_PRICE_MAX) {
+    const err = new Error('price.qty must be an integer between ' + MARKET_PRICE_MIN + ' and ' + MARKET_PRICE_MAX); err.code = 'BAD_REQUEST'; throw err;
+  }
+  const warehouseRowId = body && body.warehouseRowId;
+  if (typeof warehouseRowId !== 'string' || !warehouseRowId) {
+    const err = new Error('warehouseRowId is required'); err.code = 'BAD_REQUEST'; throw err;
+  }
+  const warehouse = require('../warehouse.cjs'); // lazy: avoids a load-time cycle
+  // Peek + validate BEFORE consuming so a content/kind rejection never
+  // deletes the row -- 404 (missing/expired) / 409 (being claimed).
+  const row = warehouse.peekClaimableRow(sellerId, warehouseRowId);
+  const { itemDefsById, siDefsById, unitDefsById } = getScheduleContent();
+  let kind;
+  let bp = null;
+  if (row.kind === 'tm') {
+    const err = new Error('a currency (TM) warehouse row cannot be direct-sold'); err.code = 'BAD_REQUEST'; err.reason = 'unsellable_kind'; throw err;
+  } else if (row.kind === 'bp') {
+    const unitId = row.bp && row.bp.unit && row.bp.unit.id;
+    if (!unitId || !unitDefsById[unitId]) {
+      const err = new Error('warehouse BP row references an unknown unit id: ' + unitId); err.code = 'BAD_REQUEST'; throw err;
+    }
+    kind = 'unit';
+    bp = JSON.parse(JSON.stringify(row.bp)); // verbatim BP, never re-rolled (REQ-0195d shape)
+  } else {
+    // Plain po/si row -- disambiguate by content registry (same posture as
+    // warehouse.cjs claimWarehouseItem's itemDefsById || siDefsById check).
+    if (itemDefsById[row.itemId]) kind = 'po';
+    else if (siDefsById[row.itemId]) kind = 'si';
+    else { const err = new Error('warehouse row references an unknown content id: ' + row.itemId); err.code = 'BAD_REQUEST'; throw err; }
+  }
+  // Consume the row -- atomic first-wins. All validation has passed, so no
+  // late failure can strand the item.
+  storage.deleteWarehouseItem(sellerId, warehouseRowId);
+  const now = Date.now();
+  const listing = {
+    id: genId('mkt'),
+    sellerId,
+    kind,
+    source: 'warehouse', // REQ-0328: provenance is the warehouse row, not a canvas cell
+    itemUid: row.itemUid, // the consumed row's uid, kept for display/dedup
+    itemId: kind === 'unit' ? bp.unit.id : row.itemId,
+    price: { tm: price.tm, qty: price.qty },
+    createdAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + MARKET_LISTING_TTL_MS).toISOString(),
+    state: 'active',
+    idemKey: idemKey || null,
+  };
+  if (kind === 'unit') listing.bp = bp; // the escrowed BP instance
+  else if (typeof row.q === 'number') listing.q = row.q; // escrowed instance quality (REQ-0063)
+  storage.writeMarketListing(listing.id, listing);
+  return { listing, replayed: false };
+}
+
+// returnEscrowToWarehouse (REQ-0328): a warehouse-sourced listing escrows
+// its item ON the listing (createListingFromWarehouse). When such a listing
+// leaves the market by WITHDRAWAL or EXPIRY (never by settlement -- that
+// delivers to the BUYER), the item returns to the SELLER's warehouse as a
+// fresh claimable row (fresh uid + fresh TTL; sourceListingId set for the
+// market provenance chip). CAP-EXEMPT deliberately -- written straight
+// through the storage chokepoint, bypassing addToWarehouse's 200-row cap
+// refusal, exactly the reasoning trade.cjs documents for seller proceeds:
+// a full warehouse must never vaporize an item the player still owns.
+// Called once per listing, guarded by the terminal state transition that
+// invokes it (active->withdrawn / active->expired each happen once).
+function returnEscrowToWarehouse(listing, nowMs) {
+  const now = nowMs != null ? nowMs : Date.now();
+  const kind = listing.kind || 'po';
+  const itemUid = genId('wh');
+  const row = {
+    itemUid, playerId: listing.sellerId, itemId: listing.itemId,
+    harvestedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + WAREHOUSE_TTL_MS).toISOString(),
+    sourceRoomId: null, sourceRunId: null, sourceListingId: listing.id,
+    status: 'claimable',
+  };
+  if (kind === 'unit') { row.kind = 'bp'; row.bp = JSON.parse(JSON.stringify(listing.bp)); }
+  else if (typeof listing.q === 'number') row.q = listing.q;
+  storage.writeWarehouseItem(listing.sellerId, itemUid, row);
+  listing.returnedWhUid = itemUid; // provenance of the returned row
+  return itemUid;
+}
+
 // getOwnListingOr404: no-leak ownership check, mirroring services/
 // rooms.cjs's getOwnRoomOr404 -- a listing that exists but belongs to
 // someone else answers with the SAME 404 as one that does not exist.
@@ -250,6 +366,10 @@ function withdrawListing(callerId, listingId, idemKey) {
   }
   listing.state = 'withdrawn';
   listing.withdrawal = { t: new Date().toISOString(), reason: 'owner', idemKey: idemKey || null };
+  // REQ-0328: warehouse-sourced -> return the escrowed item to the seller's
+  // warehouse (a canvas-sourced withdrawal has nothing to return -- its item
+  // stayed in the seller's inventory the whole time).
+  if (listing.source === 'warehouse') returnEscrowToWarehouse(listing, Date.now());
   storage.writeMarketListing(listing.id, listing);
   return { listing, replayed: false };
 }
@@ -277,6 +397,7 @@ function devClearAllListings(nowMs) {
     if (raw.state !== 'active') continue;
     raw.state = 'withdrawn';
     raw.withdrawal = { t: new Date(now).toISOString(), reason: 'e2e_dev_reset', idemKey: null };
+    if (raw.source === 'warehouse') returnEscrowToWarehouse(raw, now); // REQ-0328: never lose an escrowed item
     storage.writeMarketListing(raw.id, raw);
     cleared += 1;
   }
@@ -287,6 +408,7 @@ module.exports = {
   normalizeListing,
   autoWithdrawItemGone,
   createListing,
+  createListingFromWarehouse,
   getOwnListingOr404,
   withdrawListing,
   devClearAllListings,

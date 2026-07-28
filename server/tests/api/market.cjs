@@ -886,6 +886,174 @@ module.exports.run = async function run(h) {
     }
   });
 
+  // ==================================================================
+  // REQ-0328: DIRECT warehouse -> market sell (POST /api/market/listings/
+  // from-warehouse). A claimable warehouse row (an unclaimed drop) becomes
+  // an active listing WITHOUT ever occupying a cell in the seller's canvas
+  // -- the item is escrowed on the listing; withdraw/expiry returns it to
+  // the warehouse, settlement delivers it to the buyer's warehouse.
+  // ==================================================================
+  function seedWhRow(playerId, itemUid, extra) {
+    const doc = Object.assign({
+      itemUid, playerId, itemId: 'blade',
+      harvestedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + schedule.WAREHOUSE_TTL_MS).toISOString(),
+    }, extra || {});
+    schedule.addToWarehouse(playerId, doc);
+    return itemUid;
+  }
+
+  await AT('market REQ-0328: from-warehouse -- a claimable row becomes an active listing; row consumed; NO canvas/inventory mutation', async () => {
+    const whId = seedWhRow(mktSeller.playerId, 'wh_fw_ok_' + Date.now(), { itemId: 'blade', q: 0.5 });
+    const canvasBefore = JSON.parse(JSON.stringify(scheduleStorage.readProfile(mktSeller.playerId).canvas));
+    const res = await marketReq('POST', '/api/market/listings/from-warehouse', mktSeller.token, { warehouseRowId: whId, price: { tm: 'lrdst', qty: 20 } });
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    assert.strictEqual(res.body.ok, true);
+    assert.strictEqual(res.body.replayed, false);
+    const l = res.body.listing;
+    assert.strictEqual(l.state, 'active');
+    assert.strictEqual(l.suspended, false);
+    assert.strictEqual(l.kind, 'po');
+    assert.strictEqual(l.itemId, 'blade');
+    assert.deepStrictEqual(l.price, { tm: 'lrdst', qty: 20 });
+    assert.strictEqual(l.burn, 2, 'ceil(20*0.08)=2');
+    assert.strictEqual(l.rollPct, 0.5, 'the escrowed instance quality travels on the listing');
+    const raw = scheduleStorage.readMarketListing(l.id);
+    assert.strictEqual(raw.source, 'warehouse', 'provenance is the warehouse row, not a canvas cell');
+    assert.strictEqual(raw.itemUid, whId, 'the consumed row uid is kept on the listing');
+    assert.strictEqual(raw.q, 0.5);
+    assert.strictEqual(scheduleStorage.readWarehouseItem(mktSeller.playerId, whId), null, 'the warehouse row is consumed (gone)');
+    const canvasAfter = scheduleStorage.readProfile(mktSeller.playerId).canvas;
+    assert.deepStrictEqual(canvasAfter, canvasBefore, 'seller canvas is byte-identical -- no cell occupied, no inventory used');
+    const mine = await marketReq('GET', '/api/market/listings?filter=mine', mktSeller.token);
+    assert.ok(mine.body.listings.some((x) => x.id === l.id && x.state === 'active'), 'listing shows under My Listings');
+    const browse = await marketReq('GET', '/api/market/listings', mktBuyer.token);
+    assert.ok(browse.body.listings.some((x) => x.id === l.id), 'warehouse-sourced listing is browsable market-wide');
+    // leave the shared market clean (withdraw returns the escrow -> sweep it)
+    await marketReq('POST', '/api/market/listings/' + l.id + '/withdraw', mktSeller.token);
+    const wRaw = scheduleStorage.readMarketListing(l.id);
+    if (wRaw && wRaw.returnedWhUid) scheduleStorage.deleteWarehouseItem(mktSeller.playerId, wRaw.returnedWhUid);
+  });
+
+  await AT('market REQ-0328: from-warehouse validation -- unknown/foreign row 404 (no-leak), bad price 400, tm row 400 unsellable_kind, claiming row 409; a rejected attempt never consumes the row', async () => {
+    const noSuch = await marketReq('POST', '/api/market/listings/from-warehouse', mktSeller.token, { warehouseRowId: 'no_such_wh', price: { tm: 'lrdst', qty: 5 } });
+    assert.strictEqual(noSuch.status, 404, JSON.stringify(noSuch.body));
+    const whId = seedWhRow(mktSeller.playerId, 'wh_fw_val_' + Date.now());
+    // Another player naming the seller's real row id 404s identically (peek
+    // only ever reads the caller's OWN warehouse): no-leak.
+    const foreign = await marketReq('POST', '/api/market/listings/from-warehouse', mktBuyer.token, { warehouseRowId: whId, price: { tm: 'lrdst', qty: 5 } });
+    assert.strictEqual(foreign.status, 404, 'foreign row must 404 identically: ' + JSON.stringify(foreign.body));
+    for (const badPrice of [{ tm: 'lrdst', qty: 0 }, { tm: 'lrdst', qty: 1000 }, { tm: 'lrdst', qty: 4.5 }, { tm: 'gold', qty: 10 }, undefined]) {
+      const bad = await marketReq('POST', '/api/market/listings/from-warehouse', mktSeller.token, { warehouseRowId: whId, price: badPrice });
+      assert.strictEqual(bad.status, 400, 'bad price ' + JSON.stringify(badPrice) + ' -> 400: ' + JSON.stringify(bad.body));
+    }
+    assert.ok(scheduleStorage.readWarehouseItem(mktSeller.playerId, whId), 'the row survives every rejected attempt (never lost)');
+    // A tm/currency row is not a drop -- rejected without consuming it.
+    const tmWhId = 'wh_fw_tm_' + Date.now();
+    scheduleStorage.writeWarehouseItem(mktSeller.playerId, tmWhId, { itemUid: tmWhId, playerId: mktSeller.playerId, itemId: 'lrdst', qty: 7, kind: 'tm', harvestedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + schedule.WAREHOUSE_TTL_MS).toISOString(), status: 'claimable' });
+    const tmRes = await marketReq('POST', '/api/market/listings/from-warehouse', mktSeller.token, { warehouseRowId: tmWhId, price: { tm: 'lrdst', qty: 5 } });
+    assert.strictEqual(tmRes.status, 400, JSON.stringify(tmRes.body));
+    assert.strictEqual(tmRes.body.reason, 'unsellable_kind');
+    assert.ok(scheduleStorage.readWarehouseItem(mktSeller.playerId, tmWhId), 'the tm row is not consumed by the rejection');
+    // A row currently being claimed -> 409 claiming.
+    const claimingRow = scheduleStorage.readWarehouseItem(mktSeller.playerId, whId);
+    claimingRow.status = 'claiming'; claimingRow.claimedAt = new Date().toISOString();
+    scheduleStorage.writeWarehouseItem(mktSeller.playerId, whId, claimingRow);
+    const claimingRes = await marketReq('POST', '/api/market/listings/from-warehouse', mktSeller.token, { warehouseRowId: whId, price: { tm: 'lrdst', qty: 5 } });
+    assert.strictEqual(claimingRes.status, 409, JSON.stringify(claimingRes.body));
+    assert.strictEqual(claimingRes.body.reason, 'claiming');
+    scheduleStorage.deleteWarehouseItem(mktSeller.playerId, whId);
+    scheduleStorage.deleteWarehouseItem(mktSeller.playerId, tmWhId);
+  });
+
+  await AT('market REQ-0328: withdraw of a warehouse-sourced listing returns the item to the seller warehouse (never lost)', async () => {
+    const whId = seedWhRow(mktSeller.playerId, 'wh_fw_wd_' + Date.now(), { q: 0.3 });
+    const created = await marketReq('POST', '/api/market/listings/from-warehouse', mktSeller.token, { warehouseRowId: whId, price: { tm: 'lrdst', qty: 10 } });
+    assert.strictEqual(created.status, 200, JSON.stringify(created.body));
+    const id = created.body.listing.id;
+    assert.strictEqual(scheduleStorage.readWarehouseItem(mktSeller.playerId, whId), null, 'the original row was consumed at listing time');
+    const whBefore = schedule.listWarehouse(mktSeller.playerId).length;
+    const wd = await marketReq('POST', '/api/market/listings/' + id + '/withdraw', mktSeller.token);
+    assert.strictEqual(wd.status, 200, JSON.stringify(wd.body));
+    assert.strictEqual(wd.body.listing.state, 'withdrawn');
+    const raw = scheduleStorage.readMarketListing(id);
+    assert.ok(raw.returnedWhUid, 'the returned warehouse uid is recorded on the listing');
+    const returned = scheduleStorage.readWarehouseItem(mktSeller.playerId, raw.returnedWhUid);
+    assert.ok(returned, 'item is back in the warehouse');
+    assert.strictEqual(returned.itemId, 'blade');
+    assert.strictEqual(returned.q, 0.3, 'the escrowed quality is preserved on return');
+    assert.strictEqual(returned.status, 'claimable');
+    assert.strictEqual(returned.sourceListingId, id, 'provenance points back at the listing');
+    assert.strictEqual(schedule.listWarehouse(mktSeller.playerId).length, whBefore + 1, 'exactly one item returned');
+    scheduleStorage.deleteWarehouseItem(mktSeller.playerId, raw.returnedWhUid);
+  });
+
+  await AT('market REQ-0328: from-warehouse Idempotency-Key replays the same listing without double-consuming', async () => {
+    const whId = seedWhRow(mktSeller.playerId, 'wh_fw_idem_' + Date.now());
+    const idem = { 'idempotency-key': 'fw-idem-' + Date.now() };
+    const c1 = await marketReq('POST', '/api/market/listings/from-warehouse', mktSeller.token, { warehouseRowId: whId, price: { tm: 'lrdst', qty: 15 } }, idem);
+    assert.strictEqual(c1.status, 200, JSON.stringify(c1.body));
+    assert.strictEqual(c1.body.replayed, false);
+    const c2 = await marketReq('POST', '/api/market/listings/from-warehouse', mktSeller.token, { warehouseRowId: whId, price: { tm: 'lrdst', qty: 15 } }, idem);
+    assert.strictEqual(c2.status, 200, JSON.stringify(c2.body));
+    assert.strictEqual(c2.body.replayed, true, 'a replay returns the original outcome');
+    assert.strictEqual(c2.body.listing.id, c1.body.listing.id, 'same listing id on replay');
+    const all = scheduleStorage.listMarketListings().filter((x) => x.source === 'warehouse' && x.itemUid === whId);
+    assert.strictEqual(all.length, 1, 'no double-listing on replay');
+    await marketReq('POST', '/api/market/listings/' + c1.body.listing.id + '/withdraw', mktSeller.token);
+    const raw = scheduleStorage.readMarketListing(c1.body.listing.id);
+    if (raw && raw.returnedWhUid) scheduleStorage.deleteWarehouseItem(mktSeller.playerId, raw.returnedWhUid);
+  });
+
+  await AT('market REQ-0328: buying a warehouse-sourced listing delivers to the buyer warehouse + seller proceeds, with NO seller-canvas mutation', async () => {
+    const fwBuyer = playersFixture.createPlayer('MarketFwBuyer', []);
+    scheduleStorage.writeProfile(fwBuyer.playerId, mkCanvas(
+      [invPage([], [{ uid: 'fwb_tm', id: 'lrdst', qty: 100, cell: [1, 1] }]), invPage(), invPage(), invPage(), invPage()],
+      [null, null, null, null, null]));
+    const whId = seedWhRow(mktSeller.playerId, 'wh_fw_buy_' + Date.now(), { q: 0.7 });
+    const created = await marketReq('POST', '/api/market/listings/from-warehouse', mktSeller.token, { warehouseRowId: whId, price: { tm: 'lrdst', qty: 50 } });
+    assert.strictEqual(created.status, 200, JSON.stringify(created.body));
+    const id = created.body.listing.id;
+    const sellerCanvasBefore = JSON.parse(JSON.stringify(scheduleStorage.readProfile(mktSeller.playerId).canvas));
+    const buyerBalBefore = mktBalance(fwBuyer.playerId);
+    const buy = await marketReq('POST', '/api/market/listings/' + id + '/buy', fwBuyer.token);
+    assert.strictEqual(buy.status, 200, JSON.stringify(buy.body));
+    assert.strictEqual(buy.body.listing.state, 'settled');
+    const burn = market.burnOf(50);
+    assert.strictEqual(buy.body.receipt.burn, burn);
+    assert.strictEqual(buy.body.receipt.sellerReceives, 50 - burn);
+    const delivered = schedule.listWarehouse(fwBuyer.playerId).find((r) => r.sourceListingId === id && r.itemId === 'blade');
+    assert.ok(delivered, 'buyer receives the item as a claimable warehouse row');
+    assert.strictEqual(delivered.q, 0.7, 'the escrowed quality travels to the buyer');
+    assert.strictEqual(delivered.status, 'claimable');
+    const proceeds = schedule.listWarehouse(mktSeller.playerId).find((r) => r.kind === 'tm' && r.sourceListingId === id);
+    assert.ok(proceeds, 'seller receives proceeds as a tm warehouse row');
+    assert.strictEqual(proceeds.qty, 50 - burn);
+    const sellerCanvasAfter = scheduleStorage.readProfile(mktSeller.playerId).canvas;
+    assert.deepStrictEqual(sellerCanvasAfter, sellerCanvasBefore, 'seller canvas untouched by the settle (the direct path never routes through it)');
+    assert.strictEqual(mktBalance(fwBuyer.playerId), buyerBalBefore - 50, 'buyer debited the full price server-side');
+    scheduleStorage.deleteWarehouseItem(fwBuyer.playerId, delivered.itemUid);
+    scheduleStorage.deleteWarehouseItem(mktSeller.playerId, proceeds.itemUid);
+  });
+
+  await AT('market REQ-0328: expiry of a warehouse-sourced listing returns the item to the seller warehouse', async () => {
+    const whId = seedWhRow(mktSeller.playerId, 'wh_fw_exp_' + Date.now(), { q: 0.9 });
+    const created = await marketReq('POST', '/api/market/listings/from-warehouse', mktSeller.token, { warehouseRowId: whId, price: { tm: 'lrdst', qty: 8 } });
+    assert.strictEqual(created.status, 200, JSON.stringify(created.body));
+    const id = created.body.listing.id;
+    const raw = scheduleStorage.readMarketListing(id);
+    raw.expiresAt = new Date(Date.now() - 1000).toISOString();
+    scheduleStorage.writeMarketListing(id, raw);
+    const mine = await marketReq('GET', '/api/market/listings?filter=mine', mktSeller.token);
+    const seen = mine.body.listings.find((x) => x.id === id);
+    assert.strictEqual(seen.state, 'expired', 'lazy TTL expiry persisted on read');
+    const after = scheduleStorage.readMarketListing(id);
+    assert.ok(after.returnedWhUid, 'expiry returned the escrow to the warehouse');
+    const returned = scheduleStorage.readWarehouseItem(mktSeller.playerId, after.returnedWhUid);
+    assert.ok(returned && returned.itemId === 'blade' && returned.q === 0.9, 'the item is back with its quality preserved');
+    scheduleStorage.deleteWarehouseItem(mktSeller.playerId, after.returnedWhUid);
+  });
+
   // REQ-0145a (sf): publish this group's shared fixtures for the later suites.
   Object.assign(h, { market, invPage, mkCanvas, marketReq });
 };

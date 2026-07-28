@@ -36,10 +36,12 @@ const MARKET_LISTING_WITHDRAW_RE = /^\/api\/market\/listings\/([^/]+)\/withdraw$
 const MARKET_LISTING_BUY_RE = /^\/api\/market\/listings\/([^/]+)\/buy$/;
 const MARKET_FURNACE_RE = /^\/api\/market\/furnace$/;
 const MARKET_LISTINGS_DEV_CLEAR_RE = /^\/api\/market\/listings\/dev\/clear-all$/;
+const MARKET_LISTINGS_FROM_WAREHOUSE_RE = /^\/api\/market\/listings\/from-warehouse$/; // REQ-0328
 
 function tryMarketRoutes(req, res, url, p) {
   const marketMatch = p.match(MARKET_LISTINGS_RE) || p.match(MARKET_LISTING_WITHDRAW_RE) ||
-    p.match(MARKET_LISTING_BUY_RE) || p.match(MARKET_FURNACE_RE) || p.match(MARKET_LISTINGS_DEV_CLEAR_RE);
+    p.match(MARKET_LISTING_BUY_RE) || p.match(MARKET_FURNACE_RE) || p.match(MARKET_LISTINGS_DEV_CLEAR_RE) ||
+    p.match(MARKET_LISTINGS_FROM_WAREHOUSE_RE);
   if (!marketMatch) return false;
 
   // REQ-0199: resolve the caller EXACTLY like schedule/warehouse
@@ -108,6 +110,28 @@ function tryMarketRoutes(req, res, url, p) {
       const cleared = market.devClearAllListings();
       sendJSON(res, 200, { ok: true, cleared });
     } catch (e) { sendMarketError(e); }
+    return;
+  }
+
+  // ---- POST /api/market/listings/from-warehouse (REQ-0328) ----
+  // The DIRECT warehouse->market sell. Consumes a CLAIMABLE warehouse row
+  // and creates an active listing WITHOUT routing through the seller's
+  // canvas/inventory (the item is escrowed on the listing; withdraw/expiry
+  // returns it to the warehouse, settlement delivers it to the buyer). Body:
+  // {warehouseRowId, price:{tm,qty}}. Same Idempotency-Key posture as
+  // POST /api/market/listings above.
+  if (p.match(MARKET_LISTINGS_FROM_WAREHOUSE_RE)) {
+    if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+    readBody(req, (err, bodyStr) => {
+      if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
+      let body;
+      try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+      try {
+        const { listing, replayed } = market.createListingFromWarehouse(callerId, body, idemKey);
+        const view = market.deriveView(listing, market.sellerViewContext(callerId), Date.now());
+        sendJSON(res, 200, { ok: true, dtoVersion: market.MARKET_DTO_VERSION, replayed, listing: market.toListingDto(listing, view, null) });
+      } catch (e) { sendMarketError(e); }
+    });
     return;
   }
 

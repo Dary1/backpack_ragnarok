@@ -1001,6 +1001,18 @@ export interface ApiMarketCreateListingRequest {
   price: ApiMarketPrice;
 }
 
+/** REQ-0328: POST /api/market/listings/from-warehouse request body -- the
+ * DIRECT warehouse->market sell. Consumes the CLAIMABLE warehouse row named
+ * by `warehouseRowId` and creates an active listing WITHOUT routing through
+ * the seller's canvas/inventory (the item is escrowed on the listing;
+ * withdraw/expiry returns it to the warehouse, settlement delivers it to the
+ * buyer). `price.tm` must be a live TM id; qty an integer in [1,999].
+ * Optional Idempotency-Key HEADER dedupes retries (replayed:true on replay). */
+export interface ApiMarketSellFromWarehouseRequest {
+  warehouseRowId: string;
+  price: ApiMarketPrice;
+}
+
 /** POST /api/market/listings and .../:id/withdraw response. */
 export interface ApiMarketListingResponse {
   ok: true;

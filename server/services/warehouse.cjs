@@ -378,6 +378,30 @@ function devBackdateClaimedWarehouseItem(playerId, itemUid, extraSecsIntoPast) {
   return item;
 }
 
+// peekClaimableRow (REQ-0328): the warehouse->market DIRECT-SELL seam.
+// Validates that `itemUid` names a CLAIMABLE (never 'claiming') warehouse
+// row for `playerId` and returns it WITHOUT mutating anything -- purging
+// expired rows + reverting stale 'claiming' rows first, exactly like
+// claimWarehouseItem's own preamble. The market's createListingFromWarehouse
+// (services/market/listings.cjs) peeks, validates the row's content id +
+// kind (a tm/currency row is not directly sellable), and only THEN deletes
+// it (storage.deleteWarehouseItem) as the atomic consume step -- so a
+// validation failure never loses the row. First-wins is automatic: the
+// whole create runs synchronously on the single-threaded server, so a
+// second concurrent from-warehouse call for the same row finds it already
+// gone (404). No inventory/canvas is ever touched (the sold item's home
+// becomes the listing's escrow, not a canvas cell -- see
+// createListingFromWarehouse's doc).
+function peekClaimableRow(playerId, itemUid) {
+  purgeExpiredWarehouseItems(playerId); // also reverts stale 'claiming' rows (normalizeWarehouseStatus)
+  const item = storage.readWarehouseItem(playerId, itemUid);
+  if (!item) { const err = new Error('warehouse item not found (or expired)'); err.code = 'NOT_FOUND'; throw err; }
+  if (item.status && item.status !== 'claimable') {
+    const err = new Error('warehouse item is currently being claimed'); err.code = 'CONFLICT'; err.reason = 'claiming'; throw err;
+  }
+  return item;
+}
+
 // devClearWarehouse (fix: e2e pg teardown): bulk-deletes EVERY warehouse
 // row belonging to `playerId` (any status, expired or not) and returns
 // the number of rows removed. Exists for exactly one caller: the
@@ -405,6 +429,7 @@ module.exports = {
   grantWarehouseItem,
   grantTmQty,
   listWarehouse,
+  peekClaimableRow,
   claimWarehouseItem,
   finalizeClaimingItemsForCanvas,
   devBackdateClaimedWarehouseItem,
