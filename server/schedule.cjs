@@ -83,6 +83,7 @@ module.exports = {
   joinTroop: troops.joinTroop,
   leaveTroop: troops.leaveTroop,
   getTroopOr404: troops.getTroopOr404,
+  settleTroopIfDue: troops.settleTroopIfDue, // REQ-0325
   listRecruitingTroops: troops.listRecruitingTroops,
   lastRunSummary: runs.lastRunSummary, // REQ-0239 (B1): compact run window for the board
   listDungeonsAndFormations: core.listDungeonsAndFormations,
