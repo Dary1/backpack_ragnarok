@@ -16,6 +16,7 @@ const storage = require("../storage.cjs");
 const { SQUAD_SLOTS, normalizeSlot, slotIsFilled } = require("./core.cjs");
 const rooms = require("./rooms.cjs");
 const squads = require("./squads.cjs");
+const runs = require("./runs.cjs"); // REQ-0325: shared run engine (auto-depart start + settle)
 
 // A Troop is a room with visibility:'public'. loadTroopRaw returns the RAW
 // stored doc (slots in whatever shape they were persisted) or 404s. A solo
@@ -110,7 +111,37 @@ function joinTroop(roomId, callerId, squadIndex, profileCanvas, itemDefsById) {
     const err = new Error("troop is full"); err.code = "CONFLICT"; throw err;
   }
   seatMember(room, callerId, seat, squadIndex, profileCanvas, itemDefsById);
+  // REQ-0325: filling the LAST free seat AUTO-DEPARTS the Troop -- transition
+  // recruiting -> active and start the first run immediately, atomic with this
+  // join (no separate client action). The other three seats' snapshots are
+  // re-read from storage inside the run engine, so this join's caller need only
+  // supply their OWN canvas.
+  if (freeSeatCount(room) === 0) departTroop(room);
   return troopView(room);
+}
+
+// departTroop: REQ-0325. The Troop is full -- flip its troop-level lifecycle to
+// 'active' (departed) and start its first run through the SHARED run engine
+// (services/runs.cjs), which snapshots all four seats' owners and fans rewards
+// uniformly. startRun mutates+persists `room` (status:'active', lastRunId), so
+// troopView(room) after this reflects the departed, in-flight Troop. If startRun
+// throws (defensive -- every seat passed the deploy gate at join, so this is a
+// last-resort guard), the Troop is reverted to a consistent recruiting-full
+// state rather than left half-departed.
+function departTroop(room) {
+  const prevState = room.state;
+  const prevStatus = room.status;
+  room.state = "active";
+  try {
+    runs.startRun(room, null); // troop path re-reads each owner's canvas from storage; profileCanvas unused
+  } catch (e) {
+    room.state = prevState;
+    room.status = prevStatus;
+    room.updatedAt = new Date().toISOString();
+    try { storage.writeRoom(room.id, room); } catch (_) { /* best-effort revert */ }
+    throw e;
+  }
+  return room;
 }
 
 // leaveTroop: free the caller's seat(s) before departure. Any seated member
@@ -133,6 +164,19 @@ function leaveTroop(roomId, callerId) {
   room.updatedAt = new Date().toISOString();
   storage.writeRoom(room.id, room);
   return troopView(room);
+}
+
+// settleTroopIfDue: REQ-0325. The poll-driven settle/auto-restart entry point
+// for a Troop, mirroring the solo scheduler's settleRoomIfDue: load the RAW
+// troop room and hand it to the shared run engine, which (for a DEPARTED troop
+// with an elapsed run) applies rewards, drops the troop level on a wipe, then
+// auto-starts the next run once the cooldown clears. A still-recruiting troop is
+// inert here (its status is off the run lanes) so this is a safe no-op poll. The
+// per-owner canvases are re-read inside runs.cjs, so no caller canvas is needed.
+function settleTroopIfDue(roomId, itemDefsById) {
+  const room = loadTroopRaw(roomId);
+  const settled = runs.settleRoomIfDue(room, null, itemDefsById);
+  return troopView(settled);
 }
 
 // getTroopOr404: full troop state (slots normalized, migration on read).
@@ -173,5 +217,6 @@ module.exports = {
   joinTroop,
   leaveTroop,
   getTroopOr404,
+  settleTroopIfDue, // REQ-0325: poll-driven departed-troop settle/auto-restart
   listRecruitingTroops,
 };

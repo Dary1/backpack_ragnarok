@@ -329,6 +329,22 @@ function deployedUidSet(playerId, canvas) {
   const out = new Set();
   if (!canvas) return out;
   for (const room of storage.listRooms()) {
+    // REQ-0325: a DEPARTED co-op Troop (visibility:'public', state:'active')
+    // freezes EVERY seat owner's squad uids for the whole dive -- including a
+    // JOINER's seat in a troop they do NOT own -- so a seated uid can never be
+    // sold out from under an in-flight (or between-runs cooling-down) troop run.
+    // Keyed on the seat's OWNER, not room ownership. A still-RECRUITING troop is
+    // NOT frozen here (a seat can still be released via leave before departure;
+    // REQ-0324's recruiting-phase market lock remains a documented follow-up).
+    if (room.visibility === 'public') {
+      if (room.state !== 'active') continue;
+      for (const rawSlot of room.slots || []) {
+        const slot = normalizeSlot(rawSlot, room);
+        if (!slot || slot.ownerId !== playerId) continue;
+        for (const uid of squadUidSet(squadCanvasOf(canvas, slot.squadIndex))) out.add(uid);
+      }
+      continue;
+    }
     if (room.ownerId !== playerId) continue;
     if (room.status !== 'open' && room.status !== 'active') continue;
     for (const slot of room.slots || []) {

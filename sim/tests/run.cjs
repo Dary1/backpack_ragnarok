@@ -1051,6 +1051,25 @@ T('rewards: uniform distribution statistical smoke test (fixed seed, documented 
   ok(assignments.every(a => a.destination === 'warehouse'), 'every reward should be modeled as landing in the warehouse');
 });
 
+// REQ-0325: DETERMINISTIC reward fan-out golden. Unlike the statistical smoke
+// test above, this pins the EXACT per-item owner sequence a fixed seed produces
+// over four distinct participants -- the seeded-rng contract the co-op Troop
+// reward fan-out (services/runs.cjs -> distributeRewardsUniform) rests on. A
+// change to this frozen array means the 'rewards/distribute' RNG stream moved:
+// a determinism break to investigate, exactly like the replay-hash goldens.
+T('REQ-0325 reward fan-out: distributeRewardsUniform is a deterministic uniform draw over 4 participants (seeded-rng golden)', () => {
+  const participants = ['owA', 'owB', 'owC', 'owD'];
+  const items = ['i0', 'i1', 'i2', 'i3', 'i4', 'i5', 'i6', 'i7'];
+  const assignments = combat.distributeRewardsUniform(items, participants, combat.makeRng('req0325-fanout-golden'));
+  eq(assignments.map(a => a.owner), ['owB', 'owB', 'owC', 'owC', 'owA', 'owA', 'owB', 'owB'], 'exact per-item owner assignment under the fixed seed (frozen golden)');
+  eq(assignments.map(a => a.item), items, 'each assignment preserves its own item, in input order');
+  ok(assignments.every(a => participants.includes(a.owner)), 'every fanned owner is one of the four participants (never leaks outside the troop)');
+  // The draw is genuinely RANDOM, not round-robin: this seed happens to skip
+  // owD entirely and repeat owB -- proof the fan-out is uniform-random, not a
+  // fair rotation (golden p: "distribution fully RANDOM").
+  ok(!assignments.some(a => a.owner === 'owD'), 'this seed demonstrably does not fair-rotate (owD gets nothing) -- the draw is random, not round-robin');
+});
+
 // =====================================================================
 // 9. Attrition: BP hp carries across encounters within a run
 // =====================================================================

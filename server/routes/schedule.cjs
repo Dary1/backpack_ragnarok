@@ -529,7 +529,12 @@ function tryScheduleRoutes(req, res, url, p) {
       const roomId = decodeURIComponent(troopMatch[1]);
       if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
       try {
-        const troop = schedule.getTroopOr404(roomId);
+        // REQ-0325: settle + lazily auto-restart a DEPARTED troop on read
+        // (poll-driven, like the solo /rooms scheduler). Per-owner canvases are
+        // re-read inside the run engine, so no caller canvas is threaded here; a
+        // still-recruiting troop settles to a no-op and returns its current view.
+        const { itemDefsById } = schedule.getScheduleContent();
+        const troop = schedule.settleTroopIfDue(roomId, itemDefsById);
         sendJSON(res, 200, { ok: true, troop });
       } catch (e) { sendScheduleError(res, e); }
       return;
