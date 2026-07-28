@@ -4,8 +4,8 @@
 const Engine=require('./engine.js');
 const Data=require('./data.js');
 let pass=0,fail=0;
-function T(name,fn){
-  try{fn();console.log('PASS  '+name);pass++;}
+function T(name,fn){ const __t0 = Date.now();
+  try{fn();console.log('PASS  '+name+clk(name,__t0));pass++;}
   catch(e){console.log('FAIL  '+name+' — '+e.message);fail++;}
 }
 function eq(a,b,msg){if(JSON.stringify(a)!==JSON.stringify(b))throw new Error((msg||'')+' expected '+JSON.stringify(b)+' got '+JSON.stringify(a));}
@@ -2178,3 +2178,12 @@ T('REQ-0045 invCanRotateBP: inventory page -- blocked by an UNRELATED free-place
 console.log('----------------------------------');
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
+
+// ---- REQ-0334: per-test timing ----------------------------------------
+// Hoisted on purpose -- see tools/lib/test_clock.cjs and the sibling suites:
+// T() runs at module scope, so a  here would be in the temporal dead
+// zone;  +  hoist, and the require is deferred to first call.
+var __clock;
+function clk(name, t0) {
+  return (__clock || (__clock = require('../../tools/lib/test_clock.cjs')(__filename))).clk(name, t0);
+}

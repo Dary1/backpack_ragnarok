@@ -69,7 +69,16 @@ export default defineConfig({
   fullyParallel: false, // REQ-0083: file-level parallelism (each file -> one worker/backend), respects within-file order
   workers: PARALLEL,
   retries: 0,
-  reporter: [['list']],
+  // REQ-0334: the list reporter is the one a human watches, and it stays the
+  // default. Setting PLAYWRIGHT_JSON_OUTPUT_NAME additionally emits the JSON
+  // report, which is the ONLY source of per-test durations for this suite --
+  // tools/test_timings.cjs merges it with the node suites' own JSONL so one
+  // ci.sh run answers "which tests cost what" across all 44 suites at once.
+  // Opt-in rather than always-on: the JSON report is written at the very end
+  // and is pure overhead for an ordinary run.
+  reporter: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME
+    ? [['list'], ['json']]
+    : [['list']],
   // REQ-0080: auto-start the local ingress proxy, but only for a localhost baseURL.
   webServer: USE_LOCAL_PROXY ? {
     command: 'node e2e/local-proxy.cjs',

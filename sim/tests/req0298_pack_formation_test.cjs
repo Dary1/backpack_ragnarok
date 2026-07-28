@@ -71,7 +71,7 @@ module.exports = { register };
 
 if (require.main === module) {
   let pass = 0, fail = 0;
-  const T = (name, fn) => { try { fn(); console.log('PASS  ' + name); pass++; } catch (e) { console.log('FAIL  ' + name + ' -- ' + e.message); fail++; } };
+  const T = (name, fn) => { const __t0 = Date.now(); try { fn(); console.log('PASS  ' + name + clk(name, __t0)); pass++; } catch (e) { console.log('FAIL  ' + name + ' -- ' + e.message); fail++; } };
   const eq = (a, b, msg) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error((msg || '') + ' expected ' + JSON.stringify(b) + ' got ' + JSON.stringify(a)); };
   const ok = (v, msg) => { if (!v) throw new Error(msg || 'expected truthy'); };
   const approx = (a, b, tol, msg) => { if (Math.abs(a - b) > (tol || 1e-9)) throw new Error((msg || '') + ' expected ~' + b + ' got ' + a); };
@@ -79,4 +79,16 @@ if (require.main === module) {
   console.log('----------------------------------');
   console.log('req0298_pack_formation: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
+}
+
+
+// ---- REQ-0334: per-test timing ----------------------------------------
+// Hoisted on purpose: these suites call their T()/AT() at module scope, so a
+// `const` binding declared down here would be in the temporal dead zone when
+// the first tests run. `var` + `function` hoist to the top of the module, and
+// the require is deferred to the first call so it never runs ahead of a
+// harness's own os.homedir()/env setup. See tools/lib/test_clock.cjs.
+var __clock;
+function clk(name, t0) {
+  return (__clock || (__clock = require('../../tools/lib/test_clock.cjs')(__filename))).clk(name, t0);
 }

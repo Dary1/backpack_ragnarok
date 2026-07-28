@@ -24,7 +24,7 @@ const content = require(path.join(REPO, 'server', 'lib', 'content.cjs'));
 const tool = require(path.join(REPO, 'tools', 'backfill_sprite_art.cjs'));
 
 let pass = 0, fail = 0;
-async function AT(name, fn) { try { await fn(); console.log('PASS  ' + name); pass++; } catch (e) { console.log('FAIL  ' + name + ' -- ' + (e && e.message)); fail++; } }
+async function AT(name, fn) { const __t0 = Date.now(); try { await fn(); console.log('PASS  ' + name + clk(name, __t0)); pass++; } catch (e) { console.log('FAIL  ' + name + ' -- ' + (e && e.message)); fail++; } }
 
 const fakePng = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
 async function adoptedArt(name, kind, shape) {
@@ -86,3 +86,15 @@ async function adoptedArt(name, kind, shape) {
   console.log('\nitem_art_wiring_test: ' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error('FATAL', (e && e.stack) || e); process.exit(1); });
+
+
+// ---- REQ-0334: per-test timing ----------------------------------------
+// Hoisted on purpose: these suites call their T()/AT() at module scope, so a
+// `const` binding declared down here would be in the temporal dead zone when
+// the first tests run. `var` + `function` hoist to the top of the module, and
+// the require is deferred to the first call so it never runs ahead of a
+// harness's own os.homedir()/env setup. See tools/lib/test_clock.cjs.
+var __clock;
+function clk(name, t0) {
+  return (__clock || (__clock = require('../../tools/lib/test_clock.cjs')(__filename))).clk(name, t0);
+}

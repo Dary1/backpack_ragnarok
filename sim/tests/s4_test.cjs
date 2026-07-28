@@ -10,8 +10,8 @@ const metrics = require(path.join(__dirname, '..', 's4', 'metrics.cjs'));
 const REPO = path.join(__dirname, '..', '..');
 
 let passed = 0, failed = 0;
-function T(name, fn) {
-  try { fn(); passed++; console.log('PASS  ' + name); }
+function T(name, fn) { const __t0 = Date.now();
+  try { fn(); passed++; console.log('PASS  ' + name + clk(name, __t0)); }
   catch (e) { failed++; console.log('FAIL  ' + name + ' -- ' + e.message); }
 }
 function ok(cond, msg) { if (!cond) throw new Error(msg || 'assertion failed'); }
@@ -277,3 +277,15 @@ T('threshold classes: hard fails exit 1, warn-only exits 0 (subprocess, tiny mat
 console.log('----------------------------------');
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
+
+
+// ---- REQ-0334: per-test timing ----------------------------------------
+// Hoisted on purpose: these suites call their T()/AT() at module scope, so a
+// `const` binding declared down here would be in the temporal dead zone when
+// the first tests run. `var` + `function` hoist to the top of the module, and
+// the require is deferred to the first call so it never runs ahead of a
+// harness's own os.homedir()/env setup. See tools/lib/test_clock.cjs.
+var __clock;
+function clk(name, t0) {
+  return (__clock || (__clock = require('../../tools/lib/test_clock.cjs')(__filename))).clk(name, t0);
+}
