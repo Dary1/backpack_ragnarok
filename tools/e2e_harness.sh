@@ -66,11 +66,10 @@ e2e_harness_req() {
   # rather than in the tail, where $HOME could read as the remapped one.
   _E2E_H_LOCK="${E2E_LOCK_FILE:-$HOME/.cache/backpack/e2e.${_E2E_H_REQ}.lock}"
 
-  # REQ-0172/REQ-0251: ports are DERIVED from the REQ number, never hand-picked.
-  # The helper also preflights each port and aborts with ONE clear line if busy,
-  # instead of letting the specs die later on ECONNREFUSED.
+  # REQ-0323: ports come from the rental port desk (tools/port_desk.sh), not the
+  # REQ number. The helper leases a free decade and names static/api/proxy.
   # shellcheck source=/dev/null
-  source "$(dirname "${BASH_SOURCE[0]}")/e2e_ports.sh" "$_E2E_H_REQ"
+  source "$(dirname "${BASH_SOURCE[0]}")/e2e_ports.sh"
 
   TMPROOT="$(mktemp -d)"
   MODELDIR="$(mktemp -d)"

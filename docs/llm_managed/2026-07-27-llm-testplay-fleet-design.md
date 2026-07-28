@@ -702,9 +702,9 @@ The tool must be provable without touching live data.
   → assert the warehouse row is gone. These are the two flows where a silent bug
   loses a player's items.
 - **Integration** — run against a **hermetic** API using the existing rig:
-  `tools/e2e_harness.sh` + `tools/e2e_ports.sh` with this work's own REQ number
-  (ports derive as `5000 + REQ*10 + i`; the gate `tools/check_e2e_ports.cjs`
-  enforces it). Never hand-pick a port.
+  `tools/e2e_harness.sh` + `tools/e2e_ports.sh`, which lease a free port block
+  from the rental port desk (`tools/port_desk.sh`) at run time. Never hand-pick
+  a port.
 - **Rendezvous simulation** — a pure discrete-event simulation of §6 with N bots
   and M humans arriving by a Poisson process, asserting the invariants hold and
   greeter-seat uptime clears 95 %. This is how the anti-deadlock design gets

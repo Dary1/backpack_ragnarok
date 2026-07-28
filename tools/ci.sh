@@ -94,13 +94,8 @@ fi
 
 cd "$(dirname "$0")/.."
 
-# REQ-0172: cheap + first. A harness port collision is invisible until the
-# harnesses actually run (REQ-0159 lost a whole ci cycle to one: two harnesses had
-# hand-picked the same band, and the second one's specs died on ECONNREFUSED). This
-# gate makes the "ports are derived from the REQ number" rule machine-checked, and
-# it costs milliseconds, so it goes in front of everything.
-echo "==== [0/8] e2e harness port rule (REQ-0172) ===="
-node tools/check_e2e_ports.cjs
+# REQ-0323: ports now come from the rental port desk (tools/port_desk.sh) at run
+# time, so there is no derived-port rule to machine-check here any more.
 echo "==== [1/7] sim tests ===="
 node sim/tests/run.cjs
 echo "==== [2/7] sim replay goldens (determinism contract) ===="
@@ -362,7 +357,7 @@ if [ "${SKIP_E2E:-0}" != "1" ]; then
   E2E_REQ="${E2E_REQ:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null | sed -n 's/^req-\([0-9]\{4\}\).*/\1/p')}"
   if [ -n "$E2E_REQ" ] && [ -z "${PLAYWRIGHT_BASE_URL:-}" ]; then
     echo "==== [7/7] client e2e (SCOPED hermetic run, REQ-$E2E_REQ decade -- admin trio excluded, see above) ===="
-    source tools/e2e_ports.sh "$E2E_REQ"
+    source tools/e2e_ports.sh
     (cd client && E2E_FLEET_ROOT="/tmp/bp_e2e_workers_req${E2E_REQ}" \
                   E2E_PROXY_PORT="$PROXYPORT" \
                   E2E_FLEET_BASE_PORT="$((E2E_PORT_BASE + 4))" \
