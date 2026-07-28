@@ -41,8 +41,8 @@ const mpackClone = () => JSON.parse(JSON.stringify(GOOD_MPACK));
 const PO_SCHEMA = liveItems.schema;             // 'po/2'
 
 let pass = 0, fail = 0;
-function T(name, fn) {
-  try { fn(); console.log('PASS  ' + name); pass++; }
+function T(name, fn) { const __t0 = Date.now();
+  try { fn(); console.log('PASS  ' + name + clk(name, __t0)); pass++; }
   catch (e) { console.log('FAIL  ' + name + ' -- ' + (e && e.stack ? e.stack.split('\n').slice(0, 3).join(' | ') : e)); fail++; }
 }
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -776,3 +776,15 @@ T('REQ-0266 the unit_skin dialect does NOT leak: po/2, enemy/1 and unit/1 keep t
 
 console.log('\n== REQ-0161/0160 dialect: ' + pass + ' passed, ' + fail + ' failed ==');
 process.exit(fail === 0 ? 0 : 1);
+
+
+// ---- REQ-0334: per-test timing ----------------------------------------
+// Hoisted on purpose: these suites call their T()/AT() at module scope, so a
+// `const` binding declared down here would be in the temporal dead zone when
+// the first tests run. `var` + `function` hoist to the top of the module, and
+// the require is deferred to the first call so it never runs ahead of a
+// harness's own os.homedir()/env setup. See tools/lib/test_clock.cjs.
+var __clock;
+function clk(name, t0) {
+  return (__clock || (__clock = require('../../tools/lib/test_clock.cjs')(__filename))).clk(name, t0);
+}
