@@ -53,9 +53,26 @@ function clearWarehouseForPlayerFiles(playerId) {
 
 // ---- warehouse: pg backend ----
 
+// REQ-0333: BOTH single-row accessors here take playerId and MUST use it. The
+// files backend gets owner scoping for free -- its path is
+// warehouse/<playerId>/<itemUid>.json, so naming another player's uid simply
+// misses. The pg backend keyed on item_uid alone, which is GLOBALLY unique, so
+// the same call answered whoever asked. Not a theoretical hole: REQ-0328's
+// from-warehouse sell resolves its row through readWarehouseItem(callerId,
+// rowId), so under pg -- the backend production runs -- one player could list
+// ANOTHER player's warehouse drop on the market. server/tests/api/market.cjs's
+// "from-warehouse validation" case already asserted the foreign row 404s; it
+// passed on files and failed on pg, i.e. the gate was describing this bug
+// correctly and only the pg stage ever saw it.
+// Scoping is safe: a warehouse row never changes owner (see
+// writeWarehouseItemPg's REQ-0041 note) and every caller already knows the
+// owning player -- its own id, or a participant id from a run's reward split.
 function readWarehouseItemPg(playerId, itemUid) {
   const { querySync } = require('../pg_sync.cjs');
-  const res = querySync('SELECT doc FROM warehouse_items WHERE item_uid = $1', [namespacedId(itemUid)]);
+  const res = querySync(
+    'SELECT doc FROM warehouse_items WHERE item_uid = $1 AND player_id = $2',
+    [namespacedId(itemUid), namespacedId(playerId)]
+  );
   return res.rows.length > 0 ? res.rows[0].doc : null;
 }
 function writeWarehouseItemPg(playerId, itemUid, doc) {
@@ -82,7 +99,12 @@ function writeWarehouseItemPg(playerId, itemUid, doc) {
 }
 function deleteWarehouseItemPg(playerId, itemUid) {
   const { querySync } = require('../pg_sync.cjs');
-  querySync('DELETE FROM warehouse_items WHERE item_uid = $1', [namespacedId(itemUid)]);
+  // REQ-0333: owner-scoped, same reasoning as readWarehouseItemPg -- an
+  // unscoped DELETE let a caller destroy another player's row by uid alone.
+  querySync(
+    'DELETE FROM warehouse_items WHERE item_uid = $1 AND player_id = $2',
+    [namespacedId(itemUid), namespacedId(playerId)]
+  );
 }
 function listWarehouseItemsPg(playerId) {
   const { querySync } = require('../pg_sync.cjs');
