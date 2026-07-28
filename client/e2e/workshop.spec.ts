@@ -150,9 +150,25 @@ test.describe('Workshop gacha roll (dev player)', () => {
       // up/restored around this test but not otherwise emptied) -- diff
       // against the id set captured BEFORE the roll rather than
       // assuming canvas.bps[0]/pages[0].bps[0] is the freshly-minted one.
+      //
+      // REQ-0331 (F3): that diff alone was NOT enough and made this test the
+      // suite's only load-dependent red. The pre-roll snapshot is whatever
+      // /api/profile/default/canvas happened to hold when seedDevLrdstBalance
+      // read it; a fixture BP from client/e2e/fixtures/profiles/e2e_ci.json
+      // (ids `canvas_bp1`/`canvas_bp2`/`homebp`) can re-enter the profile
+      // between that read and the read-back, and then counts as "freshly
+      // minted". Evidence (2026-07-28, 4-worker run): the diff was
+      // {bp_7300dd2f2961360c (princess, 6 cells -- the real roll),
+      // canvas_bp2 (berserker, 18 cells -- a fixture BP)}, while
+      // totalLrdst === 989 above already PROVED exactly one roll was charged.
+      // Minted BP uids are `bp_<hex>` (server/services/gacha.cjs: genId('bp'));
+      // no fixture BP is. Restricting the diff to minted ids removes the false
+      // positive WITHOUT weakening the invariant: a genuine double-mint would
+      // still produce two `bp_`-prefixed ids and still fail here.
+      const isMintedBpId = (id: string): boolean => /^bp_/.test(id);
       const newBpIds = new Set<string>();
-      for (const pg of canvas.inv.pages) for (const b of pg.bps) if (!preRollBpIds.has(b.id)) newBpIds.add(b.id);
-      for (const b of canvas.bps) if (!preRollBpIds.has(b.id)) newBpIds.add(b.id);
+      for (const pg of canvas.inv.pages) for (const b of pg.bps) if (!preRollBpIds.has(b.id) && isMintedBpId(b.id)) newBpIds.add(b.id);
+      for (const b of canvas.bps) if (!preRollBpIds.has(b.id) && isMintedBpId(b.id)) newBpIds.add(b.id);
       expect(newBpIds.size).toBe(1); // exactly one freshly-minted BP from this one roll
       const allBps = [...canvas.inv.pages.flatMap((pg: any) => pg.bps), ...canvas.bps];
       const newBp = allBps.find((b: any) => newBpIds.has(b.id));

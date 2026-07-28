@@ -59,6 +59,8 @@ export function Board() {
       cancelled = true;
       rendererRef.current?.destroy();
       rendererRef.current = null;
+      // REQ-0331 (F4): the readiness marker dies with the renderer.
+      canvasRef.current?.removeAttribute('data-board-ready');
       setReady(false);
     };
     // Board is (re)mounted once per successful boot; state updates after
@@ -69,6 +71,13 @@ export function Board() {
   useEffect(() => {
     if (ready && rendererRef.current && snapshot.state) {
       rendererRef.current.render(snapshot.state);
+      // REQ-0331 (F4): e2e used to approximate "the board has painted" with
+      // a fixed 400ms sleep at the end of helpers.ts bootApp() -- the most-
+      // executed wall-clock wait in the suite (~180 runs) and a load-
+      // sensitive one. Publish the fact instead, set AFTER the first real
+      // render() so it is true exactly when the sleep was trying to be true.
+      // Purely additive: a data attribute nothing in the app itself reads.
+      canvasRef.current?.setAttribute('data-board-ready', '1');
     }
   }, [ready, snapshot.state, snapshot.stateVersion]);
 
