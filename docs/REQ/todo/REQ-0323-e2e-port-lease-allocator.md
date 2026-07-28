@@ -159,3 +159,75 @@ lands, recording that it was superseded rather than implemented.
 ## 8. Outcome
 
 *(to be filled at build time.)*
+
+---
+
+## 9. Stale leases must be impossible — owner requirement (2026-07-27)
+
+> 「台帳管理で確認する方法を取ると、未使用なのにロックされ続ける現象が
+>   発生しないようにしてください。」
+
+### 9.1 The principle
+
+**The ledger is a hint. Reality is the authority.**
+
+Whether a block is free is decided by asking the OS whether its ports are
+bindable. The lease file exists for exactly one purpose: to cover the few
+milliseconds between "I chose this block" and "I bound it". It must never be able
+to hold a block that nothing is using.
+
+Implement the checks in that order. If a future reader is tempted to make the
+lease authoritative "for speed", this section is why they must not.
+
+### 9.2 Three reclaim conditions — ANY one invalidates a lease
+
+1. **`boot_id` mismatch.** Record `/proc/sys/kernel/random/boot_id` in the lease.
+   A lease from a previous boot is stale, full stop.
+   *Why this and not pid alone:* PIDs are reused after a reboot. A lease naming
+   pid 1234 can find an unrelated live pid 1234 after a restart and hold its block
+   **forever** — the exact failure the owner is asking us to prevent, and the one a
+   naive pid check makes worst.
+2. **Dead pid** (`kill -0`). The ordinary `kill -9` / crashed-harness path.
+3. **No port in the block is bound, and the lease is older than the grace window.**
+   This is the catch-all. Whatever the cause — a bug, a container teardown, a
+   half-written file — a lease with no live sockets behind it dies here.
+
+Condition 3 is what makes the guarantee absolute: **a lease can be wrong for at
+most `GRACE` seconds.** Nothing longer is reachable.
+
+### 9.3 The grace window, and why it exists at all
+
+`GRACE = 60s` [TUNABLE — the only tunable in this design].
+
+Without it, condition 3 eats a lease that was just taken: allocator A leases block
+9010 and has not bound yet; allocator B scans, sees the ports unbound, decides the
+lease is bogus, and steals it. The grace window is exactly the "chosen but not yet
+bound" allowance and nothing else. 60s is generous for a harness bringup; do not
+raise it without a measured reason, and do not remove it.
+
+### 9.4 Reclamation runs on every call
+
+The allocation scan reclaims stale leases as it walks. No cron, no daemon, no
+sweeper unit — the pool self-heals as a side effect of being used. (Same posture as
+the rest of this codebase: `settleRoomIfDue`, warehouse TTL purge and market
+listing expiry are all lazy, poll-driven, and hold no timer.)
+
+`--who` must show, per live lease: block, caller, pid, age, **and whether the block
+is actually bound right now**. A `leased but idle` row is then visible at a glance
+instead of being inferred.
+
+Also provide `--gc` (reclaim now, report what was freed) for an operator who wants
+it explicitly. It must be a convenience, never a prerequisite.
+
+### 9.5 Additional gates
+
+| # | Gate |
+|---|---|
+| G8 | `kill -9` a running harness, then allocate immediately → its block is reclaimed and re-issued (its sockets died with it, so condition 3's bind check passes at once) |
+| G9 | Hand-write a bogus lease for an unbound block, wait past `GRACE`, allocate → reclaimed. **Then verify the negative:** allocate DURING the grace window → not reclaimed (proves the window actually protects the just-leased case, rather than the test passing for the wrong reason) |
+| G10 | Simulate a reboot by writing a lease with a foreign `boot_id` and a live pid (e.g. this shell's own) → reclaimed anyway |
+| G11 | Fill the pool, then release: every block returns. No permanent leak after a full cycle |
+
+G9's negative half matters as much as its positive half. REQ-0322 existed because
+a detector was never proved to detect; do not repeat that shape here by testing
+only that reclamation happens.
