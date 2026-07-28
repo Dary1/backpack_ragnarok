@@ -94,7 +94,27 @@ export async function bootApp(page: Page): Promise<void> {
       { timeout: 10000 }
     );
   }
-  await page.waitForTimeout(400);
+  // REQ-0331 (F4): the badge only proves the STORE is live -- the PixiJS
+  // boards mount asynchronously after it, so this used to be a fixed
+  // waitForTimeout(400) guess at "and the boards have painted". At ~180
+  // executions per suite that was ~72s of assertion-free sleep, and it was
+  // the suite's most load-sensitive wait (a busy box could blow through 400ms
+  // before the first frame, and the failure surfaced as an unrelated
+  // pixel-coordinate miss). Board.tsx/InventoryBoard.tsx now set
+  // data-board-ready="1" on their canvas AFTER the first render(); wait for
+  // that instead. Same fallthrough discipline as waitForAutoSave: if no board
+  // ever publishes (a route with no board, or an older build served by a
+  // stale proxy), proceed rather than fail -- the caller's own assertions
+  // remain the real gate.
+  try {
+    await page.waitForFunction(
+      () => {
+        const cs = Array.from(document.querySelectorAll('canvas.board-canvas'));
+        return cs.length > 0 && cs.every((c) => c.getAttribute('data-board-ready') === '1');
+      },
+      { timeout: 5000 },
+    );
+  } catch { /* no board published readiness inside the budget -- proceed */ }
 }
 
 /** Loads a JSON fixture as the live profile (PUT, bypassing the app), then

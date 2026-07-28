@@ -66,6 +66,62 @@ function probeBoxLock(): void {
 }
 
 
+// REQ-0331 (F1): E2E_GPU=1 is a REQUEST, not a guarantee. If the box's nvidia
+// KERNEL module and its USERSPACE libraries drift apart -- which is what an
+// apt driver upgrade without a reboot does -- ANGLE cannot reach the GPU and
+// silently falls back to llvmpipe/SwiftShader. Nothing anywhere says so: the
+// vulkan flags are still on the command line, the suite still passes, it just
+// renders on the CPU. That is exactly what happened between 2026-07-24 (driver
+// 595.71.05 -> 595.84, box not rebooted) and 2026-07-28, and it cost ~25% of
+// the suite's wall time plus a load flake, unnoticed, for four days.
+//
+// One probe launch per run (~0.5s) converts that silent tax into a printed
+// line. Warns by default; E2E_REQUIRE_GPU=1 turns the warning into an abort
+// (same seam shape as E2E_REQUIRE_WORKTREE above).
+const GPU_PROBE_ARGS = [
+  '--headless=new', '--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist',
+  '--enable-features=Vulkan', '--ozone-platform=headless', '--no-sandbox',
+];
+
+async function assertGpuRenderer(): Promise<void> {
+  if (process.env.E2E_GPU !== '1') return;
+  const { chromium } = await import('@playwright/test');
+  const browser = await chromium.launch({ headless: false, args: GPU_PROBE_ARGS });
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<canvas id="gpu-probe"></canvas>');
+    const renderer: string = await page.evaluate(() => {
+      const c = document.getElementById('gpu-probe') as HTMLCanvasElement | null;
+      const gl = (c?.getContext('webgl2') ?? c?.getContext('webgl')) as WebGLRenderingContext | null;
+      if (!gl) return 'NO WEBGL CONTEXT';
+      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+      if (!dbg) return 'NO WEBGL_debug_renderer_info';
+      return String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL));
+    });
+    if (/NVIDIA/i.test(renderer)) {
+      console.log('[global-setup] REQ-0331: GPU rendering CONFIRMED -- ' + renderer);
+      return;
+    }
+    const msg =
+      '[global-setup] REQ-0331: E2E_GPU=1 but WebGL is NOT on the NVIDIA GPU.\n' +
+      '  renderer: ' + renderer + '\n' +
+      '  expected: ANGLE (NVIDIA, Vulkan ..., NVIDIA GeForce RTX 2080)\n' +
+      '  This run will render on the CPU: roughly +25% wall time, and the box\n' +
+      '  saturates at 4 workers (REQ-0331 F2), which turns load into flakes.\n' +
+      '  Usual cause -- kernel/userspace driver drift after an unrebooted apt\n' +
+      '  upgrade. Check:  nvidia-smi   (an NVML "version mismatch" here is the\n' +
+      '  tell)  and  cat /proc/driver/nvidia/version  vs  dpkg -l | grep nvidia-driver.\n' +
+      '  Fix -- stop every GPU holder (e.g. systemctl --user stop comfyui), then\n' +
+      '  sudo rmmod nvidia_uvm nvidia_drm nvidia_modeset nvidia && sudo modprobe nvidia\n' +
+      '  (or reboot the box), and restart the holders.';
+    if (process.env.E2E_REQUIRE_GPU === '1') throw new Error(msg + '\n  (E2E_REQUIRE_GPU=1 -> abort)');
+    console.warn('\n' + '='.repeat(78) + '\n' + msg + '\n' + '='.repeat(78) + '\n');
+  } finally {
+    await browser.close();
+  }
+}
+
+
 export default async function globalSetup(): Promise<void> {
   // REQ-0225 (ratified via REQ-0234): a NON-local baseURL from a linked
   // worktree tests the DEPLOYED code, not this branch -- the mistake is
@@ -95,6 +151,8 @@ export default async function globalSetup(): Promise<void> {
     throw new Error('[global-setup] E2E_PARALLEL=' + parallelWorkers + ' exceeds the 6 fleet slots a REQ decade holds (indexes 4-9, PROJECT.md port rule) -- lower it.');
   }
   execFileSync('node', [join(process.cwd(), '..', 'tools', 'e2e_fleet.cjs'), 'start', String(parallelWorkers)], { stdio: 'inherit' });
+  // REQ-0331 (F1): prove the GPU path is real before 190+ tests rely on it.
+  await assertGpuRenderer();
   // REQ-0037: reset the tracked-files ledger for guest-creating specs at
   // the START of every run (each spec appends the worker-HOME files it
   // creates; teardown sweeps whatever is registered).

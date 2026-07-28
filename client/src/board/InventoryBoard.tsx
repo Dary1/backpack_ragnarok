@@ -86,6 +86,8 @@ export function InventoryBoard() {
       cancelled = true;
       rendererRef.current?.destroy();
       rendererRef.current = null;
+      // REQ-0331 (F4): the readiness marker dies with the renderer.
+      canvasRef.current?.removeAttribute('data-board-ready');
       setInventoryRenderer(null);
       setReady(false);
     };
@@ -107,6 +109,9 @@ export function InventoryBoard() {
   useEffect(() => {
     if (ready && rendererRef.current && snapshot.state) {
       rendererRef.current.render(snapshot.state);
+      // REQ-0331 (F4): same readiness marker as Board.tsx -- bootApp() waits
+      // for BOTH boards, so both must publish it. See Board.tsx for why.
+      canvasRef.current?.setAttribute('data-board-ready', '1');
     }
   }, [ready, snapshot.state, snapshot.stateVersion]);
 
