@@ -166,6 +166,48 @@ function leaveTroop(roomId, callerId) {
   return troopView(room);
 }
 
+// cancelTroop: REQ-0326. ANY SEATED member cancels the co-op Troop; the WHOLE
+// troop disbands (all-or-nothing, REQ-0036 golden g) -- distinct from leave,
+// which frees only the caller's own seat pre-departure and never disbands.
+//   - Still recruiting (never departed): disband NOW.
+//   - Departed with a dive in flight: flag `disbandRequested`, let the current
+//     run finish + settle its rewards normally (REQ-0325); the disband then
+//     fires ON RETURN inside runs.maybeAutoStartNextRun, where the next run
+//     would otherwise auto-start.
+//   - Departed but BETWEEN runs (cooling down, no dive in flight): disband NOW.
+// One unifying mechanism for a departed troop: set `disbandRequested`, then run
+// the shared settle engine -- a dive still mid-flight makes settle a no-op (the
+// disband waits for return), while an already-elapsed / cooling-down troop
+// settles (applying any rewards) straight into the disband instead of a
+// restart. A disband returns a view carrying the `disbandEvent` roster (the
+// discrete, observable outcome REQ-0327 consumes).
+function cancelTroop(roomId, callerId, itemDefsById) {
+  const room = loadTroopRaw(roomId);
+  if (room.state === "canceled") return troopView(room); // idempotent -- already disbanded
+  // Only a SEATED member may cancel (host or joiner alike -- a seat is the right).
+  const seated = (room.slots || []).some((s) => {
+    const slot = normalizeSlot(s, room);
+    return slot && slot.ownerId === callerId;
+  });
+  if (!seated) {
+    const err = new Error("you do not hold a seat in this troop"); err.code = "CONFLICT"; throw err;
+  }
+  if (room.state === "recruiting") {
+    // No run ever departed -> disband immediately, returning every seat.
+    return troopView(runs.disbandTroopRoom(room, "member_cancel"));
+  }
+  // Departed (state 'active'): flag the disband, then hand the room to the
+  // shared settle/return engine. A dive still in flight -> settle is a no-op and
+  // the disband fires later on RETURN; a dive already elapsed / cooling down ->
+  // the settle applies its rewards (if any) then disbands NOW instead of
+  // auto-restarting (maybeAutoStartNextRun honours disbandRequested).
+  room.disbandRequested = true;
+  room.updatedAt = new Date().toISOString();
+  storage.writeRoom(room.id, room);
+  const settled = runs.settleRoomIfDue(room, null, itemDefsById);
+  return troopView(settled);
+}
+
 // settleTroopIfDue: REQ-0325. The poll-driven settle/auto-restart entry point
 // for a Troop, mirroring the solo scheduler's settleRoomIfDue: load the RAW
 // troop room and hand it to the shared run engine, which (for a DEPARTED troop
@@ -216,6 +258,7 @@ module.exports = {
   createTroop,
   joinTroop,
   leaveTroop,
+  cancelTroop, // REQ-0326: any seated member cancels -> whole troop disbands on return
   getTroopOr404,
   settleTroopIfDue, // REQ-0325: poll-driven departed-troop settle/auto-restart
   listRecruitingTroops,

@@ -859,6 +859,114 @@ module.exports.run = async function run(h) {
     for (const uid of seatUids) assert.ok(frozen.has(uid), 'joiner seat uid ' + uid + ' must be frozen while the troop is departed');
   });
 
+  // ===================================================================
+  // REQ-0326: a seated member CANCELS -> the whole co-op Troop disbands (all-or-
+  // nothing), every seat is RETURNED (uids released from the deploy/market
+  // freeze), and a discrete disbandEvent carrying the released-owner roster is
+  // emitted (the seam REQ-0327 consumes). No run in flight -> disband NOW; a run
+  // active -> the current dive settles normally, then disbands ON RETURN.
+  // ===================================================================
+
+  await AT('REQ-0326: a seated member cancels a still-RECRUITING troop -> immediate disband, every seat returned, disbandEvent lists the seated owners; a released owner can redeploy the same squad elsewhere', async () => {
+    const owners = ['R6RecHost', 'R6RecB', 'R6RecC'].map((n) => playersFixture.createPlayer(n, []));
+    for (const pl of owners) scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const open = await scheduleReq('POST', '/api/schedule/troops', owners[0].token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1', squadIndex: 0 });
+    const id = open.body.troop.id;
+    await scheduleReq('POST', '/api/schedule/troops/' + id + '/join', owners[1].token, { squadIndex: 1 });
+    const j = await scheduleReq('POST', '/api/schedule/troops/' + id + '/join', owners[2].token, { squadIndex: 2 });
+    assert.strictEqual(j.body.troop.state, 'recruiting', 'precondition: 3/4, still recruiting (no run in flight)');
+    // A NON-member cannot cancel a live troop.
+    const outsider = playersFixture.createPlayer('R6RecOutsider', []);
+    scheduleStorage.writeProfile(outsider.playerId, makeTestCanvas());
+    const bad = await scheduleReq('POST', '/api/schedule/troops/' + id + '/cancel', outsider.token);
+    assert.strictEqual(bad.status, 409, 'a non-seated player cannot cancel: ' + JSON.stringify(bad.body));
+    // A seated JOINER (not the host) cancels -> the WHOLE troop disbands NOW.
+    const res = await scheduleReq('POST', '/api/schedule/troops/' + id + '/cancel', owners[1].token);
+    assert.strictEqual(res.status, 200, 'seated-member cancel: ' + JSON.stringify(res.body));
+    const t = res.body.troop;
+    assert.strictEqual(t.state, 'canceled', 'a recruiting troop disbands immediately on cancel');
+    assert.ok(t.slots.every((sl) => sl === null), 'every seat is returned (cleared) on disband');
+    assert.ok(t.disbandEvent, 'a discrete disbandEvent is emitted');
+    assert.strictEqual(t.disbandEvent.roomId, id, 'disbandEvent carries the troop id');
+    assert.deepStrictEqual([...t.disbandEvent.releasedOwners].sort(), owners.map((o) => o.playerId).sort(), 'disbandEvent lists exactly the seated owners at cancel time (<=4)');
+    assert.ok(t.disbandEvent.releasedOwners.length <= 4, 'at most four owners');
+    // The persisted room carries the same disbandEvent (the REQ-0327 read seam).
+    const stored = scheduleStorage.readRoom(id);
+    assert.deepStrictEqual([...stored.disbandEvent.releasedOwners].sort(), owners.map((o) => o.playerId).sort(), 'the disbandEvent is persisted on the room doc');
+    // A disbanded troop is gone from browse.
+    const browse = await browseTroops(owners[0].token);
+    assert.ok(!browse.body.troops.some((x) => x.roomId === id), 'a disbanded troop no longer appears in browse');
+    // Released owner can immediately deploy the SAME squad elsewhere -- the seat
+    // no longer freezes its uids (would 409 deployed_overlap if still committed).
+    const rehost = await scheduleReq('POST', '/api/schedule/troops', owners[0].token, { dungeonId: 'test_dungeon', level: 1, squadIndex: 0 });
+    assert.strictEqual(rehost.status, 200, 'a released owner redeploys squad 0 after disband: ' + JSON.stringify(rehost.body));
+    scheduleStorage.deleteRoom(rehost.body.troop.id);
+    scheduleStorage.deleteRoom(id);
+  });
+
+  await AT('REQ-0326: cancelling a DEPARTED troop mid-run defers to RETURN -- the in-flight dive settles its rewards normally, THEN the troop disbands (no restart), every seat returned, disbandEvent lists all four owners', async () => {
+    const owners = ['R6MidA', 'R6MidB', 'R6MidC', 'R6MidD'].map((n) => playersFixture.createPlayer(n, []));
+    for (const pl of owners) scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const { id, departed } = await openAndFillTroop(owners, 1);
+    assert.strictEqual(departed.state, 'active', 'precondition: troop departed, run in flight');
+    const runId = departed.lastRunId;
+    // A seated member cancels WHILE the run is active -> disband is DEFERRED.
+    const cancel = await scheduleReq('POST', '/api/schedule/troops/' + id + '/cancel', owners[2].token);
+    assert.strictEqual(cancel.status, 200, 'mid-run cancel: ' + JSON.stringify(cancel.body));
+    assert.strictEqual(cancel.body.troop.state, 'active', 'the troop stays active mid-run -- disband waits for RETURN');
+    assert.strictEqual(cancel.body.troop.disbandRequested, true, 'disbandRequested is flagged for the return');
+    assert.ok(!cancel.body.troop.disbandEvent, 'no disbandEvent yet -- the dive has not returned');
+    // The in-flight run is UNAFFECTED and still settles normally.
+    const run0 = scheduleStorage.readRun(runId);
+    assert.strictEqual(run0.result, 'victory', 'the in-flight dive is untouched by the cancel');
+    forceRunElapsed(runId);
+    const afterReturn = await scheduleReq('GET', '/api/schedule/troops/' + id, owners[0].token); // poll -> settle THEN disband
+    assert.strictEqual(afterReturn.status, 200, 'return poll: ' + JSON.stringify(afterReturn.body));
+    const run = scheduleStorage.readRun(runId);
+    assert.strictEqual(run.settled, true, 'the current dive settled its rewards normally before disband');
+    const t = afterReturn.body.troop;
+    assert.strictEqual(t.state, 'canceled', 'on RETURN the troop disbands instead of restarting');
+    assert.ok(t.slots.every((sl) => sl === null), 'every seat is returned on disband');
+    const stored = scheduleStorage.readRoom(id);
+    assert.strictEqual(stored.state, 'canceled', 'the disband is persisted');
+    assert.strictEqual(stored.status, 'canceled', 'a disbanded troop never auto-starts again');
+    assert.strictEqual(stored.lastRunId, runId, 'NO next run was scheduled (lastRunId is still the settled dive)');
+    assert.ok(stored.disbandEvent, 'a discrete disbandEvent is emitted on return');
+    assert.deepStrictEqual([...stored.disbandEvent.releasedOwners].sort(), owners.map((o) => o.playerId).sort(), 'disbandEvent lists all four released owners');
+    // The FINAL dive settled its rewards normally: at least one participant banked an item.
+    let banked = 0;
+    for (const pl of owners) {
+      const wh = await scheduleReq('GET', '/api/warehouse', pl.token);
+      banked += wh.body.items.filter((it) => it.sourceRunId === runId).length;
+    }
+    assert.ok(banked >= 1, 'the final dive settled its rewards normally before disband');
+    // A released owner can now deploy the same squad elsewhere.
+    const redeploy = await scheduleReq('POST', '/api/schedule/troops', owners[3].token, { dungeonId: 'test_dungeon', level: 1, squadIndex: 3 });
+    assert.strictEqual(redeploy.status, 200, 'a released owner redeploys squad 3 after disband: ' + JSON.stringify(redeploy.body));
+    scheduleStorage.deleteRoom(redeploy.body.troop.id);
+    scheduleStorage.deleteRoom(id);
+  });
+
+  await AT('REQ-0326: cancelling a departed troop BETWEEN runs (cooling down, no dive in flight) disbands immediately and schedules no next run', async () => {
+    const owners = ['R6CoolA', 'R6CoolB', 'R6CoolC', 'R6CoolD'].map((n) => playersFixture.createPlayer(n, []));
+    for (const pl of owners) scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const { id } = await openAndFillTroop(owners, 1);
+    const runId = scheduleStorage.readRoom(id).lastRunId;
+    forceRunElapsed(runId);
+    await scheduleReq('GET', '/api/schedule/troops/' + id, owners[0].token); // settle run #1 -> now cooling down
+    const cooling = scheduleStorage.readRoom(id);
+    assert.strictEqual(cooling.state, 'active', 'still departed, cycling between runs');
+    assert.strictEqual(cooling.status, 'open', 'between runs -> status open (no dive in flight)');
+    assert.ok(cooling.cooldownUntil && Date.parse(cooling.cooldownUntil) > Date.now(), 'precondition: cooling down, next run not yet due');
+    const res = await scheduleReq('POST', '/api/schedule/troops/' + id + '/cancel', owners[1].token);
+    assert.strictEqual(res.status, 200, 'between-runs cancel: ' + JSON.stringify(res.body));
+    assert.strictEqual(res.body.troop.state, 'canceled', 'a between-runs cancel disbands immediately (no dive to finish)');
+    assert.ok(res.body.troop.slots.every((sl) => sl === null), 'every seat returned');
+    assert.deepStrictEqual([...res.body.troop.disbandEvent.releasedOwners].sort(), owners.map((o) => o.playerId).sort(), 'disbandEvent lists all four owners');
+    assert.strictEqual(scheduleStorage.readRoom(id).lastRunId, runId, 'no next run scheduled on disband');
+    scheduleStorage.deleteRoom(id);
+  });
+
   scheduleStorage.deleteRoom(r5TroopId);
 
   // Cleanup the shared open troop so it never leaks into later suites' state.

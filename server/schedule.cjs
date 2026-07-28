@@ -82,6 +82,7 @@ module.exports = {
   createTroop: troops.createTroop,
   joinTroop: troops.joinTroop,
   leaveTroop: troops.leaveTroop,
+  cancelTroop: troops.cancelTroop, // REQ-0326: seated-member cancel -> disband on return
   getTroopOr404: troops.getTroopOr404,
   settleTroopIfDue: troops.settleTroopIfDue, // REQ-0325
   listRecruitingTroops: troops.listRecruitingTroops,
