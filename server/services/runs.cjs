@@ -390,6 +390,43 @@ function settleRoomIfDue(room, profileCanvas, itemDefsById) {
   return room;
 }
 
+// REQ-0326: disbandTroopRoom -- the all-or-nothing teardown a seated member's
+// cancel triggers on a co-op Troop (services/troops.cjs cancelTroop, and the
+// deferred on-RETURN path in maybeAutoStartNextRun below). It RETURNS THE SEATS:
+// every slot is cleared, so each seat owner's uids stop gating their other
+// deploys (squads.cjs roomSeatGates/deployedUidSet both key on a LIVE seat) and
+// stop being market-frozen. It flips state:'canceled' + status:'canceled' so no
+// next run ever auto-starts, and records a DISCRETE, observable `disbandEvent`
+// on the room doc carrying the roster of released owner ids -- the seam REQ-0327
+// reads to learn whom to notify. Idempotent: an already-canceled troop is
+// returned untouched (its disbandEvent preserved). All-or-nothing (golden g).
+function disbandTroopRoom(room, reason) {
+  if (room.state === 'canceled') return room; // already disbanded -- keep the recorded disbandEvent
+  const releasedOwners = [];
+  const seen = new Set();
+  for (const rawSlot of room.slots || []) {
+    const slot = normalizeSlot(rawSlot, room);
+    if (slot && slot.ownerId != null && !seen.has(slot.ownerId)) {
+      seen.add(slot.ownerId);
+      releasedOwners.push(slot.ownerId);
+    }
+  }
+  const now = new Date().toISOString();
+  room.slots = (room.slots || []).map(() => null); // return every seat (release the uids)
+  room.state = 'canceled';
+  room.status = 'canceled';       // off every run lane -> never auto-starts again
+  room.disbandRequested = false;  // consumed
+  room.disbandEvent = {           // REQ-0327 seam: the released-owner roster to notify
+    roomId: room.id,
+    reason: reason || 'member_cancel',
+    releasedOwners,
+    disbandedAt: now,
+  };
+  room.updatedAt = now;
+  storage.writeRoom(room.id, room);
+  return room;
+}
+
 // maybeAutoStartNextRun (golden i "then AUTO-SCHEDULE the next run after
 // cooldown unless canceled" -- "scheduled auto-runs = core design fact").
 // Fires the moment the room's cooldownUntil has passed, UNLESS the room
@@ -399,6 +436,16 @@ function settleRoomIfDue(room, profileCanvas, itemDefsById) {
 // room instead of auto-starting the next one).
 function maybeAutoStartNextRun(room, profileCanvas) {
   if (room.status !== 'open') return room; // already active, or canceled
+  // REQ-0326: a co-op Troop whose seated member cancelled disbands ON RETURN --
+  // right here, the point the next run would auto-start. The in-flight dive has
+  // already settled normally (rewards fanned out, REQ-0325); instead of
+  // restarting, tear the troop down all-or-nothing: every seat returned, state
+  // 'canceled', a discrete disbandEvent recorded (the REQ-0327 notify roster).
+  // Checked BEFORE the cooldown guard so disband fires the instant the dive
+  // returns, not only once the (now-moot) cooldown would have cleared.
+  if (isTroopRoom(room) && room.disbandRequested) {
+    return disbandTroopRoom(room, 'member_cancel');
+  }
   // REQ-0058: a sealed-seed room is single-shot -- once its one run has
   // settled, never auto-start another (each participant runs a given
   // sealId exactly once). The FIRST run still auto-starts normally
@@ -501,6 +548,7 @@ module.exports = {
   settleRun,
   settleRoomIfDue,
   maybeAutoStartNextRun,
+  disbandTroopRoom, // REQ-0326: co-op Troop teardown (member cancel -> disband on return / immediately)
   lastRunSummary,
   devBackdateActiveRun,
 };

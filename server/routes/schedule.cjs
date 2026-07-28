@@ -37,6 +37,7 @@ const SCHEDULE_SEAL_REPLAY_RE = /^\/api\/schedule\/seals\/([^/]+)\/runs\/([^/]+)
 const SCHEDULE_TROOPS_RE = /^\/api\/schedule\/troops$/;
 const SCHEDULE_TROOP_JOIN_RE = /^\/api\/schedule\/troops\/([^/]+)\/join$/;
 const SCHEDULE_TROOP_LEAVE_RE = /^\/api\/schedule\/troops\/([^/]+)\/leave$/;
+const SCHEDULE_TROOP_CANCEL_RE = /^\/api\/schedule\/troops\/([^/]+)\/cancel$/; // REQ-0326: seated-member cancel -> disband
 const SCHEDULE_TROOP_RE = /^\/api\/schedule\/troops\/([^/]+)$/;
 
 function tryScheduleRoutes(req, res, url, p) {
@@ -47,7 +48,7 @@ function tryScheduleRoutes(req, res, url, p) {
     p.match(SCHEDULE_SEAL_MINT_RE) || p.match(SCHEDULE_SEAL_GET_RE) ||
     p.match(SCHEDULE_SEAL_COMPARE_RE) || p.match(SCHEDULE_SEAL_REPLAY_RE) ||
     p.match(SCHEDULE_TROOPS_RE) || p.match(SCHEDULE_TROOP_JOIN_RE) ||
-    p.match(SCHEDULE_TROOP_LEAVE_RE) || p.match(SCHEDULE_TROOP_RE);
+    p.match(SCHEDULE_TROOP_LEAVE_RE) || p.match(SCHEDULE_TROOP_CANCEL_RE) || p.match(SCHEDULE_TROOP_RE);
   if (scheduleMatch) {
     const ctx = resolveCallerOr401(req, res);
     if (!ctx) return;
@@ -518,6 +519,24 @@ function tryScheduleRoutes(req, res, url, p) {
       if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
       try {
         const troop = schedule.leaveTroop(roomId, callerId);
+        sendJSON(res, 200, { ok: true, troop });
+      } catch (e) { sendScheduleError(res, e); }
+      return;
+    }
+
+    // ---- POST /api/schedule/troops/:id/cancel (REQ-0326) ----
+    // ANY seated member cancels the co-op Troop -> the WHOLE troop disbands
+    // (all-or-nothing). No run in flight (recruiting, or between runs cooling
+    // down) -> disband NOW; a dive in flight -> flag it and disband ON RETURN
+    // after the current run settles its rewards (REQ-0325). Every seat is
+    // returned; the response carries a discrete disbandEvent (REQ-0327's roster).
+    const troopCancelMatch = p.match(SCHEDULE_TROOP_CANCEL_RE);
+    if (troopCancelMatch) {
+      const roomId = decodeURIComponent(troopCancelMatch[1]);
+      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      try {
+        const { itemDefsById } = schedule.getScheduleContent();
+        const troop = schedule.cancelTroop(roomId, callerId, itemDefsById);
         sendJSON(res, 200, { ok: true, troop });
       } catch (e) { sendScheduleError(res, e); }
       return;
