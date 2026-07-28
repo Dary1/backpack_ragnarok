@@ -67,8 +67,8 @@ Three consequences that are easy to lose and expensive to rediscover:
   twice independently (subagent at REQ-0309 base, orchestrator on the merge
   commit), different specs each time, green at `E2E_PARALLEL=1`. Recorded as an
   addendum to REQ-0222.
-- **Ports derive from the REQ number**: `5000 + REQ*10 + i`. REQ-0309 → 8090 decade.
-  Never hand-pick.
+- **Ports come from the rental port desk** (`tools/port_desk.sh`, REQ-0323): ask
+  it for a free port at run time. Never hand-pick, never derive from a REQ number.
 
 ## Environment state, 2026-07-27
 
