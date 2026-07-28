@@ -1,0 +1,13 @@
+{
+  "name": "backpack-fleet-bot",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.10.0",
+  "description": "REQ-0330 -- Reactive Test-Play Fleet. A deterministic, framework-free Node daemon (NO LLM) that watches troop recruitment, drip-joins one pool account per 30s, and auto-sells every drop to the market on disband. Sibling of server/; its own package.json; zero runtime dependencies (node:http/fs/os only).",
+  "main": "bin/fleet.cjs",
+  "scripts": {
+    "start": "node bin/fleet.cjs",
+    "test": "node tests/run.cjs",
+    "canary": "node tests/canary_hermetic.cjs"
+  }
+}

@@ -1,0 +1,37 @@
+# bot/systemd/backpack-fleet.service -- REQ-0330 reactive test-play fleet.
+#
+# systemd --user unit (linger is on for qtie). The fleet reads the REQ-0329 pool
+# token vault at ~/backpack_fleet/agents and drives the LIVE dev API on
+# 127.0.0.1:8802 (browse recruiting troops -> drip-join one account / 30s ->
+# auto-sell every drop on disband). SELL-ONLY, allowlisted egress, >=400ms rate
+# floor -- it never hosts, cancels, or buys.
+#
+# Install (the ORCHESTRATOR does this -- do NOT enable during implementation):
+#   cp %h/backpack_ragnarok/bot/systemd/backpack-fleet.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now backpack-fleet
+# Kill switch:
+#   systemctl --user stop backpack-fleet
+# Logs:
+#   journalctl --user -u backpack-fleet -f
+[Unit]
+Description=backpack_ragnarok reactive test-play fleet (REQ-0330)
+After=network-online.target backpack-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/backpack_ragnarok
+# The vault (~/backpack_fleet) holds the tokens; nothing confidential is passed
+# on the command line or in this unit. Defaults are compiled into bot/lib/
+# config.cjs; override here via Environment= only if a value must change.
+Environment=BOT_API_BASE=http://127.0.0.1:8802
+ExecStart=/home/qtie/.nvm/versions/node/v24.18.0/bin/node %h/backpack_ragnarok/bot/bin/fleet.cjs
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=backpack-fleet
+
+[Install]
+WantedBy=default.target
