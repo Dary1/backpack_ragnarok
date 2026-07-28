@@ -57,3 +57,12 @@ author remembered writing, not what the tree contains.**
 `tools/ci.sh` green, and a self-test proving each of `STATICPORT=`, `PROXYPORT=`,
 `E2E_PROXY_PORT=`, `E2E_FLEET_BASE_PORT=`, and a bare `http://127.0.0.1:<port>`
 literal is detected when out-of-decade.
+
+---
+
+## Superseded (2026-07-28) — demoted todo → draft
+
+REQ-0323 replaced the REQ-derived port rule with a runtime **rental port desk**
+(`tools/port_desk.sh`) and deleted `tools/check_e2e_ports.cjs` along with its
+`ci.sh` `[0/8]` step. There is no derived-port gate left to fix, so this REQ's
+regex blind spot is moot. Kept for history; not to be implemented.
