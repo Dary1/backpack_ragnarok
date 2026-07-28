@@ -15,6 +15,19 @@ const { execFileSync } = require('child_process');
 if (!process.env.DATABASE_URL) { console.log('SKIP artwork_test.cjs (no DATABASE_URL)'); process.exit(0); }
 process.env.STORAGE_BACKEND = 'pg';
 process.env.ART_ROUTE_MOCK = '1';
+// REQ-0335: never let a TEST bounce the box's real ComfyUI. familyBarrier()
+// (art_jobs.cjs, REQ-0233) does a genuine `systemctl --user restart
+// comfyui.service` on every generation->matte family switch and then polls
+// http://127.0.0.1:8188/system_stats at 1s granularity until FLUX is resident
+// again. Every sibling art test already opts out (artfamily_test.cjs:22,
+// artqueue_test.cjs:22, inspection_test.cjs:22, and tools/e2e_harness.sh for
+// every admin harness) -- this file was simply missed, so ci.sh stage [5.1/7]
+// spent 70s restarting the user's art server instead of 3s testing storage.
+// The barrier is incidental here: this file gates REQ-0151 G1/G2/G3
+// (chokepoint, sizing law, provenance) and asserts nothing about it. The
+// logical fire is still counted with the flag off, so artfamily_test.cjs --
+// which DOES assert barrier behaviour -- keeps its coverage.
+process.env.ART_FAMILY_BARRIER = '0';
 
 // Isolated namespace: remap homedir before requiring storage so NAMESPACE is
 // unique to this run and never collides with live/e2e artwork rows.
