@@ -127,3 +127,12 @@ already exists and is already populated by the write paths.
 - 2026-07-28 found via REQ-0331's release gate; reserved as REQ-0333 on branch
   req-0333-warehouse-pg-owner-scope (branched from master 0129152).
 - 2026-07-28 fixed, both backends green, full gate run; reserved -> built.
+
+## Deploy record (2026-07-28)
+- Merged to master b99d297 (--no-ff) via REQ-0331's branch, which carried the
+  combined gate: `tools/release.sh` **CI GREEN**, 505 s, including [5/7] pg
+  (the stage that was red) and [4/7] files.
+- `systemctl --user restart backpack-api` -- REQUIRED here: this is a
+  server/storage change and the running api had the unscoped queries in memory.
+  Post-restart: api 200, web 200, tunnel 200, all services active.
+- built -> done.

@@ -228,3 +228,22 @@ Box-side, not in git: nvidia kernel modules reloaded to 595.84.
 - 2026-07-28 user ratified all findings; GPU repaired on the box; F1 guard, F4
   and F3(2) implemented; F3(1) disproved against unmodified master; F5 held.
   draft -> built.
+
+## Deploy record (2026-07-28)
+- Merged to master b99d297 (--no-ff), together with REQ-0333 whose fix this
+  REQ's own release gate uncovered. Combined gate before the merge:
+  `tools/release.sh` **CI GREEN**, 505 s wall (42 stages; admin trio 8/1/28,
+  registry stage 4/4 no-skip, scoped e2e 197 passed / 0 failed / 1 skipped),
+  `dist unchanged -- nothing to commit`.
+- `systemctl --user restart backpack-api` (REQ-0333 touches server/storage).
+  backpack-api / backpack-web / backpack-tunnel / comfyui all active
+  afterwards; api 200, web 200, tunnel /app 200, tunnel /api/health 200.
+- Live verification that THIS change shipped, not just that the box is up:
+  https://backpack-dev.qtie.jp/app/ serves assets/index-DRsciBYG.js, which is
+  HEAD's committed bundle, and that bundle contains `data-board-ready` -- the
+  F4 readiness marker. built -> done.
+- Note for the next deployer: the main checkout's web/app carried an
+  UNCOMMITTED rebuild (mtime 09:31, from another session) before this merge.
+  It was restored to HEAD and discarded -- a build artifact, reproducible from
+  source, and the merge replaced it anyway. Worth watching: a service serving
+  an uncommitted dist is invisible until someone looks.
