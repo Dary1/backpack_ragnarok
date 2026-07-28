@@ -186,3 +186,13 @@ it until someone needs to rank *within* api_test.
   (off master b99d297, i.e. after REQ-0331/0333 landed).
 - 2026-07-28 implemented; first attempt's TDZ failure diagnosed and replaced
   with the hoisted form; full green gate + first measurement; reserved -> built.
+
+## Deploy record (2026-07-28)
+- Merged to master f29b020 (--no-ff). Gate before the merge: `tools/release.sh`
+  **CI GREEN**, 504.9 s, `dist unchanged -- nothing to commit`.
+- **No service restart, no dist rebuild.** Every changed path is a test harness,
+  a tool, or docs; the only file outside a tests/ directory is
+  `client/playwright.config.ts`, which is test configuration and is not part of
+  the shipped bundle. Verified post-merge anyway: backpack-api / backpack-web /
+  backpack-tunnel / comfyui all active, api 200, web 200, tunnel 200.
+- built -> done.
