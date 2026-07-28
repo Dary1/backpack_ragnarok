@@ -43,9 +43,19 @@ function listGachaPendingFiles(playerId) {
 
 // ---- gacha pending-roll store: pg backend (REQ-0042) ----
 
+// REQ-0333: the same owner-scoping hole the warehouse store had, in the same
+// shape -- the files backend partitions by
+// gacha_pending/<playerId>/<rollUid>.json while these two keyed on roll_uid
+// alone. Fixed alongside it because a pending roll is finalized or dropped BY
+// UID, so an unscoped read/delete let one caller inspect or destroy another
+// player's pending roll. No gate caught this one -- it is the sibling the
+// warehouse failure pointed at, found by grepping for the same signature.
 function readGachaPendingPg(playerId, rollUid) {
   const { querySync } = require('../pg_sync.cjs');
-  const res = querySync('SELECT doc FROM gacha_pending WHERE roll_uid = $1', [namespacedId(rollUid)]);
+  const res = querySync(
+    'SELECT doc FROM gacha_pending WHERE roll_uid = $1 AND player_id = $2',
+    [namespacedId(rollUid), namespacedId(playerId)]
+  );
   return res.rows.length > 0 ? res.rows[0].doc : null;
 }
 function writeGachaPendingPg(playerId, rollUid, doc) {
@@ -60,7 +70,11 @@ function writeGachaPendingPg(playerId, rollUid, doc) {
 }
 function deleteGachaPendingPg(playerId, rollUid) {
   const { querySync } = require('../pg_sync.cjs');
-  querySync('DELETE FROM gacha_pending WHERE roll_uid = $1', [namespacedId(rollUid)]);
+  // REQ-0333: owner-scoped, see readGachaPendingPg.
+  querySync(
+    'DELETE FROM gacha_pending WHERE roll_uid = $1 AND player_id = $2',
+    [namespacedId(rollUid), namespacedId(playerId)]
+  );
 }
 function listGachaPendingPg(playerId) {
   const { querySync } = require('../pg_sync.cjs');
