@@ -1733,3 +1733,34 @@ html, body {
   color: var(--gold);
   font-weight: 700;
 }
+
+/* REQ-0327: troop-disband notification toast (device consumer of the
+   notification feed). Fixed bottom-right; plain CSS, no toast library --
+   same posture as .invite-banner above. */
+.notify-toast {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 340px;
+  background: #3d1c1c;
+  color: #d98a8a;
+  border: 1px solid #6b2f2f;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.notify-toast-close {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}

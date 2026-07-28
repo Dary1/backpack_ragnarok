@@ -39,14 +39,15 @@ import { marketEn, marketJa } from './i18n/market';
 import { ragnarokEn, ragnarokJa } from './i18n/ragnarok';
 import { settingsEn, settingsJa } from './i18n/settings';
 import { guideEn, guideJa } from './i18n/guide';
+import { notifyEn, notifyJa } from './i18n/notify'; // REQ-0327
 
 /** The merged chrome dictionary. Exported for the key-parity gate and
  * future tooling ONLY -- UI code goes through t(), never DICT directly.
  * Spreads are key-disjoint by construction (buckets partition the key
  * prefixes), so merge order cannot change the result. */
 export const DICT = {
-  en: { ...navEn, ...commonEn, ...canvasEn, ...dexEn, ...scheduleEn, ...sortieEn, ...warehouseEn, ...workshopEn, ...marketEn, ...ragnarokEn, ...settingsEn, ...guideEn },
-  ja: { ...navJa, ...commonJa, ...canvasJa, ...dexJa, ...scheduleJa, ...sortieJa, ...warehouseJa, ...workshopJa, ...marketJa, ...ragnarokJa, ...settingsJa, ...guideJa },
+  en: { ...navEn, ...commonEn, ...canvasEn, ...dexEn, ...scheduleEn, ...sortieEn, ...warehouseEn, ...workshopEn, ...marketEn, ...ragnarokEn, ...settingsEn, ...guideEn, ...notifyEn },
+  ja: { ...navJa, ...commonJa, ...canvasJa, ...dexJa, ...scheduleJa, ...sortieJa, ...warehouseJa, ...workshopJa, ...marketJa, ...ragnarokJa, ...settingsJa, ...guideJa, ...notifyJa },
 } as const;
 
 export type TranslationKey = keyof typeof DICT.en;

@@ -100,6 +100,7 @@ import { FloatingItemTip } from './FloatingItemTip';
 // item tip is -- it floats over whichever board the pointer is interrogating.
 import { BeamTracePanel } from './BeamTracePanel';
 import { InviteBanner } from './InviteBanner';
+import { TroopDisbandToast } from './TroopDisbandToast'; // REQ-0327
 import { LandingPage } from './landing/LandingPage';
 import { Nav } from './Nav';
 import { PlaceholderPage } from './PlaceholderPage';
@@ -188,6 +189,10 @@ function App() {
         />
       )}
       <InviteBanner text={snapshot.welcomeBanner} locale={snapshot.locale} />
+      {/* REQ-0327: the troop-disband toast -- polls /api/notifications and
+          surfaces the one notification kind. Top-level (outside the route
+          switch), like InviteBanner, so it can appear on any route. */}
+      <TroopDisbandToast locale={snapshot.locale} />
       {/* REQ-0141: first-run guided tour + contextual hint. Non-modal; both
           render null unless on the canvas page with an active guide/hint. */}
       <FirstRunGuide />

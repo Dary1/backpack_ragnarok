@@ -14,6 +14,7 @@ const { WAREHOUSE_TTL_MS, SQUAD_SLOTS, getScheduleContent, resolveRewardItemId, 
 const { squadCanvasOf, applyPendingSwapIfAny } = require('./squads.cjs');
 const { addToWarehouse } = require('./warehouse.cjs');
 const bioService = require('./bio.cjs'); // REQ-0060
+const notifications = require('./notifications.cjs'); // REQ-0327: troop-disband notification feed emission hook
 const pacing = require('./pacing.cjs'); // REQ-0240: presentation-pacing serving-layer decoration
 
 // REQ-0293: the enemy level-scaling manifest, loaded ONCE at module load (the
@@ -424,6 +425,11 @@ function disbandTroopRoom(room, reason) {
   };
   room.updatedAt = now;
   storage.writeRoom(room.id, room);
+  // REQ-0327: append a troop_disbanded notification to EACH released owner's
+  // feed (humans and bots alike). Kept out of the run engine's core math --
+  // it runs after the seat-return / state:'canceled' teardown has committed,
+  // and is best-effort per owner (see services/notifications.cjs).
+  notifications.emitTroopDisbanded(room);
   return room;
 }
 

@@ -1323,3 +1323,27 @@ export interface ApiDismantleLedgerResponse {
   ok: true;
   entries: ApiDismantleLedgerEntry[];
 }
+
+// ---- REQ-0327: Notification feed ----
+// Wire shapes for GET /api/notifications[?since=<id>] and
+// POST /api/notifications/ack (server/routes/notifications.cjs). ONE
+// mechanism a human device and a bot program consume identically; one
+// kind today ('troop_disbanded').
+export interface ApiNotification {
+  id: number;
+  ts: string;
+  kind: 'troop_disbanded';
+  roomId: string;
+  attackLv: number | null;
+  seenAt: string | null;
+  payload: { reason?: string; disbandedAt?: string };
+}
+export interface ApiNotificationsResponse {
+  ok: true;
+  notifications: ApiNotification[];
+  cursor: number;
+}
+export interface ApiNotificationAckResponse {
+  ok: true;
+  acked: number;
+}
