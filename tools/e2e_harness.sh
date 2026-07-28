@@ -15,7 +15,7 @@
 #
 # USAGE
 #   source "$(dirname "$0")/e2e_harness.sh"
-#   e2e_harness_req 0152 art_inspect_e2e
+#   e2e_harness_name art_inspect_e2e
 #   e2e_harness_api_env ART_ROUTE_MOCK=1 ART_MODEL_DIR="$MODELDIR"
 #   e2e_harness_run --config=e2e/artinspect.config.ts
 #
@@ -43,17 +43,15 @@
 #     the legacy shared-port path. Same-harness runs still queue.
 set -euo pipefail
 
-_E2E_H_REQ=""
 _E2E_H_NAME=""
 _E2E_H_API_ENV=()
 
 # ---------------------------------------------------------------- init --------
-# e2e_harness_req <REQ> <name>
-# Derives+preflights the ports, builds the isolated namespace, arms the cleanup
+# e2e_harness_name <name>
+# Leases the ports from the desk, builds the isolated namespace, arms the cleanup
 # trap. Everything after this can assume WT/HOMEDIR/TMPROOT/MODELDIR/EXPORTDIR.
-e2e_harness_req() {
-  _E2E_H_REQ="${1:?e2e_harness_req needs a REQ number}"
-  _E2E_H_NAME="${2:?e2e_harness_req needs a harness name}"
+e2e_harness_name() {
+  _E2E_H_NAME="${1:?e2e_harness_name needs a harness name}"
 
   : "${DATABASE_URL:?source server/.env first (DATABASE_URL required)}"
 
@@ -64,7 +62,7 @@ e2e_harness_req() {
   PW_CACHE="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
   # The lock lives in the REAL home too, for the same reason -- resolve it here
   # rather than in the tail, where $HOME could read as the remapped one.
-  _E2E_H_LOCK="${E2E_LOCK_FILE:-$HOME/.cache/backpack/e2e.${_E2E_H_REQ}.lock}"
+  _E2E_H_LOCK="${E2E_LOCK_FILE:-$HOME/.cache/backpack/e2e.${_E2E_H_NAME}.lock}"
 
   # REQ-0323: ports come from the rental port desk (tools/port_desk.sh), not the
   # REQ number. The helper leases a free decade and names static/api/proxy.
@@ -131,8 +129,8 @@ e2e_harness_run() {
     esac
   done
 
-  local log="/tmp/req${_E2E_H_REQ}_e2e"
-  echo "[${_E2E_H_NAME}] api :$APIPORT  proxy :$PROXYPORT  (REQ-${_E2E_H_REQ})"
+  local log="/tmp/${_E2E_H_NAME}_e2e"
+  echo "[${_E2E_H_NAME}] api :$APIPORT  proxy :$PROXYPORT"
 
   if declare -F e2e_h_seed_preboot >/dev/null; then
     echo "[${_E2E_H_NAME}] seeding before api boot"

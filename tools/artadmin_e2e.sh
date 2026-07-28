@@ -12,7 +12,7 @@
 #   set -a; source ~/backpack_ragnarok/server/.env; set +a; bash tools/artadmin_e2e.sh
 source "$(dirname "$0")/e2e_harness.sh"
 
-e2e_harness_req 0156 artadmin_e2e
+e2e_harness_name artadmin_e2e
 
 VENV_PY="${ART_KIT_PYTHON:-/home/qtie/backpack_ragnarok/.venv/bin/python}"
 

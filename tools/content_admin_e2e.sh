@@ -9,15 +9,14 @@
 #     spawned via the api's own node.
 #   - The sprite backfill (below) is seeded AFTER the api is up.
 #
-# NOTE (REQ-0251): this file used to say "REQ-0155" in its header while sourcing
-# ports for 0157 and logging to req0155_*. 0157 is the number the port gate
-# declares and the lock used, so 0157 is now the single answer throughout.
+# NOTE: ports and the lock no longer key off a REQ number (REQ-0323); the harness
+# NAME "content_admin_e2e" is the single identifier used throughout.
 #
 # Requires DATABASE_URL (source server/.env first). Run:
 #   set -a; source ~/backpack_ragnarok/server/.env; set +a; bash tools/content_admin_e2e.sh
 source "$(dirname "$0")/e2e_harness.sh"
 
-e2e_harness_req 0157 content_admin_e2e
+e2e_harness_name content_admin_e2e
 
 e2e_harness_api_env \
   ALLOW_DEV_CLEAR=1 \
@@ -27,7 +26,7 @@ e2e_harness_api_env \
 # adopted renders; no GPU/python -- Playwright rasterizes the SVG symbols) so the
 # contentadmin wiring test can prove registry-first art vs the sprite fallback.
 e2e_h_after_ready() {
-  local log=/tmp/req0157_e2e_backfill.log
+  local log=/tmp/content_admin_e2e_backfill.log
   e2e_harness_node node "$WT/tools/backfill_sprite_art.cjs" > "$log" 2>&1
   echo "[content_admin_e2e] sprite backfill seeded ($(tail -1 "$log"))"
 }

@@ -21,7 +21,7 @@
 # Requires DATABASE_URL (source server/.env first) and a built client (web/).
 source "$(dirname "$0")/e2e_harness.sh"
 
-e2e_harness_req 0221 registry_first_e2e
+e2e_harness_name registry_first_e2e
 
 e2e_h_seed_preboot() {
   e2e_harness_node node "$WT/tools/seed_registry_e2e.cjs"

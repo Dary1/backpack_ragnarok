@@ -47,8 +47,9 @@ changed.
 
 `tools/e2e_harness.sh` and `tools/ci.sh` now `source tools/e2e_ports.sh` with no
 argument. The four harnesses reach their ports through `e2e_harness.sh`, so their
-bodies were untouched. `e2e_harness_req <REQ> <name>` still takes a REQ, but only
-as the harness's label and lock-file name — never for ports.
+bodies were untouched. `e2e_harness_name <name>` (formerly `e2e_harness_req <REQ> <name>`) now takes
+only the harness name; the lock and log key off that name. No REQ number survives
+anywhere in the port/harness path.
 
 ## Outcome
 
@@ -60,8 +61,7 @@ choice):
 - `source tools/e2e_ports.sh` (no arg) → leased 9000-9009, exported
   static:9000 api:9001 proxy:9002.
 
-Follow-up, not done here: run the full `tools/ci.sh` e2e gate; optionally retire
-the now-cosmetic REQ label in `e2e_harness_req`.
+Follow-up, not done here: run the full `tools/ci.sh` e2e gate.
 
 PROJECT.md's port sections are user-maintained (LLMs may not edit them); the
 plain-English replacement text was presented to the owner separately.
