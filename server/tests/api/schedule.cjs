@@ -574,6 +574,143 @@ module.exports.run = async function run(h) {
   });
 
 
+  // ===================================================================
+  // REQ-0324: co-operative Troop -- recruitment + human-equivalent join/leave.
+  // A player OPENS a public recruiting Troop that other players (human or bot,
+  // indistinguishably) BROWSE and JOIN with one of their own squads, and may
+  // LEAVE before departure. Dedicated players (each with its own canvas) so
+  // these never perturb the scheduleP1/P2 room state later suites assert on.
+  // ===================================================================
+  const troopHost = playersFixture.createPlayer('TroopHost', []);
+  const troopJ2 = playersFixture.createPlayer('TroopJoiner2', []);
+  const troopJ3 = playersFixture.createPlayer('TroopJoiner3', []);
+  // A BOT account is just a plain player -- REQ-0324 forbids special-casing; it
+  // browses/joins through the exact same X-Auth-Token surface as a human.
+  const troopBot = playersFixture.createPlayer('TroopBot4', []);
+  for (const pl of [troopHost, troopJ2, troopJ3, troopBot]) scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+
+  function browseTroops(token, query) {
+    return scheduleReq('GET', '/api/schedule/troops' + (query || '?state=recruiting'), token);
+  }
+
+  let openTroopId = null;
+
+  await AT('troop: POST /api/schedule/troops opens a PUBLIC recruiting troop with the host seated in slot 0', async () => {
+    const res = await scheduleReq('POST', '/api/schedule/troops', troopHost.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1', squadIndex: 0 });
+    assert.strictEqual(res.status, 200, 'host open must 200: ' + JSON.stringify(res.body));
+    const t = res.body.troop;
+    openTroopId = t.id;
+    assert.strictEqual(t.visibility, 'public', 'a troop is a public room');
+    assert.strictEqual(t.state, 'recruiting');
+    assert.strictEqual(t.hostId, troopHost.playerId, 'hostId == opener');
+    assert.strictEqual(t.ownerId, troopHost.playerId, 'ownerId is kept as an alias of hostId');
+    assert.strictEqual(t.slots.length, 4);
+    assert.ok(t.slots[0] && t.slots[0].ownerId === troopHost.playerId && t.slots[0].squadIndex === 0, 'host seated in slot 0: ' + JSON.stringify(t.slots[0]));
+    assert.ok(typeof t.slots[0].joinedAt === 'string' && t.slots[0].joinedAt.length > 0, 'seat carries a joinedAt');
+    assert.strictEqual(t.slots[1], null, 'slots 1..3 start empty (null)');
+    assert.strictEqual(t.slots[2], null);
+    assert.strictEqual(t.slots[3], null);
+  });
+
+  await AT('troop: browse (GET /troops?state=recruiting) shows the open troop as 1/4; &attackLv filters on the host-set level', async () => {
+    const res = await browseTroops(troopJ2.token);
+    assert.strictEqual(res.status, 200);
+    assert.ok(Array.isArray(res.body.troops));
+    const mine = res.body.troops.find((x) => x.roomId === openTroopId);
+    assert.ok(mine, 'the open troop must appear in the public browse for ANOTHER player');
+    assert.strictEqual(mine.seats, '1/4', 'one seat filled (the host)');
+    assert.strictEqual(mine.attackLv, 1);
+    assert.strictEqual(mine.hostId, troopHost.playerId);
+    assert.ok(Number.isInteger(mine.ageSec) && mine.ageSec >= 0, 'ageSec is a non-negative integer');
+    const match = await browseTroops(troopJ2.token, '?state=recruiting&attackLv=1');
+    assert.ok(match.body.troops.some((x) => x.roomId === openTroopId), 'attackLv=1 must include a level-1 troop');
+    const nomatch = await browseTroops(troopJ2.token, '?state=recruiting&attackLv=99');
+    assert.ok(!nomatch.body.troops.some((x) => x.roomId === openTroopId), 'attackLv=99 must exclude a level-1 troop');
+  });
+
+  await AT('troop: a 2nd player JOINS the lowest free seat -> 2/4', async () => {
+    const res = await scheduleReq('POST', '/api/schedule/troops/' + openTroopId + '/join', troopJ2.token, { squadIndex: 0 });
+    assert.strictEqual(res.status, 200, 'join must 200: ' + JSON.stringify(res.body));
+    const t = res.body.troop;
+    assert.strictEqual(t.slots[1].ownerId, troopJ2.playerId, 'joiner takes seat 1 (lowest free)');
+    assert.strictEqual(t.slots[1].squadIndex, 0);
+    assert.strictEqual(t.slots[2], null);
+    const browse = await browseTroops(troopJ3.token);
+    assert.strictEqual(browse.body.troops.find((x) => x.roomId === openTroopId).seats, '2/4');
+  });
+
+  await AT('troop: 3rd and 4th players join -> 4/4; a FULL troop drops out of browse and no run is started (departure is REQ-0325)', async () => {
+    const r3 = await scheduleReq('POST', '/api/schedule/troops/' + openTroopId + '/join', troopJ3.token, { squadIndex: 0 });
+    assert.strictEqual(r3.status, 200, 'J3 join: ' + JSON.stringify(r3.body));
+    assert.strictEqual(r3.body.troop.slots[2].ownerId, troopJ3.playerId);
+    const r4 = await scheduleReq('POST', '/api/schedule/troops/' + openTroopId + '/join', troopBot.token, { squadIndex: 0 });
+    assert.strictEqual(r4.status, 200, 'bot join (no special-casing): ' + JSON.stringify(r4.body));
+    const t = r4.body.troop;
+    assert.strictEqual(t.slots[3].ownerId, troopBot.playerId, 'bot takes the last seat 3');
+    assert.ok(t.slots.every((sl) => sl && sl.squadIndex != null), 'all 4 seats filled');
+    assert.strictEqual(t.state, 'recruiting', 'a full troop stays recruiting -- no run starts here (REQ-0325)');
+    assert.strictEqual(t.lastRunId, null, 'no run was started by filling the last seat');
+    const browse = await browseTroops(troopHost.token);
+    assert.ok(!browse.body.troops.some((x) => x.roomId === openTroopId), 'a FULL troop must not appear in browse (no seat to offer)');
+    const r5 = await scheduleReq('POST', '/api/schedule/troops/' + openTroopId + '/join', troopHost.token, { squadIndex: 1 });
+    assert.strictEqual(r5.status, 409, 'joining a full troop must 409: ' + JSON.stringify(r5.body));
+  });
+
+  await AT('troop: LEAVE frees a seat before departure and it REAPPEARS in browse; a non-member cannot leave', async () => {
+    const res = await scheduleReq('POST', '/api/schedule/troops/' + openTroopId + '/leave', troopBot.token);
+    assert.strictEqual(res.status, 200, 'leave must 200: ' + JSON.stringify(res.body));
+    assert.strictEqual(res.body.troop.slots[3], null, 'the leaver seat is freed');
+    const browse = await browseTroops(troopJ2.token);
+    const mine = browse.body.troops.find((x) => x.roomId === openTroopId);
+    assert.ok(mine, 'the troop reappears once a seat is free');
+    assert.strictEqual(mine.seats, '3/4');
+    const nonMember = playersFixture.createPlayer('TroopNonMember', []);
+    scheduleStorage.writeProfile(nonMember.playerId, makeTestCanvas());
+    const bad = await scheduleReq('POST', '/api/schedule/troops/' + openTroopId + '/leave', nonMember.token);
+    assert.strictEqual(bad.status, 409, 'a non-member leave must 409: ' + JSON.stringify(bad.body));
+  });
+
+  await AT('troop: cross-player deploy gate -- a joiner double-deploying a uid already seated elsewhere is refused 409 deployed_overlap', async () => {
+    const gateJoiner = playersFixture.createPlayer('TroopGateJoiner', []);
+    scheduleStorage.writeProfile(gateJoiner.playerId, makeTestCanvas());
+    // gateJoiner hosts their OWN troop with squad 0 -> squad 0's uids are now
+    // committed to a recruiting troop they hold a seat in.
+    const own = await scheduleReq('POST', '/api/schedule/troops', gateJoiner.token, { dungeonId: 'test_dungeon', level: 1, squadIndex: 0 });
+    assert.strictEqual(own.status, 200, 'gateJoiner opens their own troop: ' + JSON.stringify(own.body));
+    // openTroopId still has a free seat. gateJoiner tries to ALSO seat squad 0
+    // there -> same player, same uids, already committed elsewhere.
+    const clash = await scheduleReq('POST', '/api/schedule/troops/' + openTroopId + '/join', gateJoiner.token, { squadIndex: 0 });
+    assert.strictEqual(clash.status, 409, 'double-deploying squad 0 must 409: ' + JSON.stringify(clash.body));
+    assert.strictEqual(clash.body.reason, 'deployed_overlap', 'the 409 carries reason=deployed_overlap');
+    // A DIFFERENT, independent squad (index 1) is fine -- the gate blocks uid
+    // OVERLAP, not the player.
+    const ok = await scheduleReq('POST', '/api/schedule/troops/' + openTroopId + '/join', gateJoiner.token, { squadIndex: 1 });
+    assert.strictEqual(ok.status, 200, 'a non-overlapping squad still joins: ' + JSON.stringify(ok.body));
+    scheduleStorage.deleteRoom(own.body.troop.id);
+  });
+
+  await AT('troop: legacy-slot migration on read -- an ownerless { squadIndex } seat surfaces with ownerId = room.ownerId', async () => {
+    const legacyHost = playersFixture.createPlayer('TroopLegacyHost', []);
+    scheduleStorage.writeProfile(legacyHost.playerId, makeTestCanvas());
+    const opened = await scheduleReq('POST', '/api/schedule/troops', legacyHost.token, { dungeonId: 'test_dungeon', level: 1, squadIndex: 2 });
+    assert.strictEqual(opened.status, 200);
+    const roomId = opened.body.troop.id;
+    // Simulate a LEGACY solo-shaped seat (pre-REQ-0324): { squadIndex } with NO
+    // owner field. Migration-on-read must attribute it to room.ownerId.
+    const raw = scheduleStorage.readRoom(roomId);
+    raw.slots[0] = { squadIndex: 2 };
+    scheduleStorage.writeRoom(roomId, raw);
+    const view = await scheduleReq('GET', '/api/schedule/troops/' + roomId, legacyHost.token);
+    assert.strictEqual(view.status, 200);
+    assert.strictEqual(view.body.troop.slots[0].ownerId, legacyHost.playerId, 'a legacy ownerless seat reads as owned by the room owner');
+    assert.strictEqual(view.body.troop.slots[0].squadIndex, 2, 'the squad index is preserved');
+    assert.strictEqual(view.body.troop.slots[0].joinedAt, null, 'a legacy seat has no joinedAt');
+    scheduleStorage.deleteRoom(roomId);
+  });
+
+  // Cleanup the shared open troop so it never leaks into later suites' state.
+  scheduleStorage.deleteRoom(openTroopId);
+
   // REQ-0145a (sf): publish this group's shared fixtures for the later suites.
   Object.assign(h, { schedule, scheduleStorage, makeTestCanvas, fillAllSlots, forceRunElapsed, scheduleP1, scheduleP2, scheduleReq, fillAllSlotsSnapshotsFrom });
 };
