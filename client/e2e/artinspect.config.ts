@@ -4,7 +4,20 @@
 // started manually against an isolated (HOME-namespaced) pg instance of THIS
 // worktree by tools/art_inspect_e2e.sh. baseURL = the local proxy.
 import { defineConfig, devices } from '@playwright/test';
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:6522';
+// REQ-0323: the proxy port is LEASED at run time from a pool, so there is no
+// correct default to write here. The old literal was a DEFAULT that rotted --
+// every one of these configs still carried its pre-REQ-0172 hand-picked port
+// years after the harnesses had moved (REQ-0251), harmless only because the
+// harness always passed PLAYWRIGHT_BASE_URL. A fallback now would be worse than
+// stale: pool ports are reused, so it could point at ANOTHER run's proxy. Fail
+// instead.
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL;
+if (!BASE_URL) {
+  throw new Error(
+    'PLAYWRIGHT_BASE_URL is not set. This config is driven by tools/art_inspect_e2e.sh, which leases a ' +
+    'port block (tools/e2e_ports.sh) and passes the proxy URL in. Run the harness -- ' +
+    'a bare `playwright test --config=...` has no port to talk to (REQ-0323).');
+}
 export default defineConfig({
   testDir: '.',
   testMatch: '**/artinspect.spec.ts',

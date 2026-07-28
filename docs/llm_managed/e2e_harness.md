@@ -18,17 +18,34 @@
 Preferred — SCOPED run (shares nothing box-global; safe to run while other
 sessions work; skips the box lock):
 
-    source tools/e2e_ports.sh 0NNN     # -> PROXYPORT, E2E_PORT_BASE, ...
-    E2E_FLEET_ROOT=/tmp/bp_e2e_workers_req0NNN \
-    E2E_PROXY_PORT=$PROXYPORT E2E_FLEET_BASE_PORT=$((E2E_PORT_BASE + 4)) \
+    _src() { source tools/e2e_ports.sh; }; _src   # NO argument -- see below
+    E2E_FLEET_ROOT=/tmp/bp_e2e_workers_p$E2E_PORT_BASE \
+    E2E_PROXY_PORT=$PROXYPORT E2E_FLEET_BASE_PORT=$E2E_FLEET_PORT_BASE \
     PLAYWRIGHT_BASE_URL=http://127.0.0.1:$PROXYPORT \
     E2E_PARALLEL=4 pnpm exec playwright test        # from client/
+    e2e_ports_release                               # when you are done
 
-Ports follow the REQ-decade rule (tools/e2e_ports.sh): PORT = 5000 + REQ*10 +
-index since REQ-0321, so index 2 = proxy and indexes 4..(4+workers-1) = fleet
-apis, and E2E_PARALLEL<=6 fits a decade. DERIVE them by sourcing the helper --
-never hand-type a port, and never concatenate the REQ number (that was the
-pre-REQ-0321 rule, and it now names a different, unowned port).
+Ports are LEASED AT RUN TIME (REQ-0323, supersedes the REQ-decade rule of
+REQ-0172/0251/0321). tools/e2e_ports.sh takes NO ARGUMENTS: it asks the OS which
+ports are bindable, takes the lowest free 10-port block out of 9000-9999, writes
+an O_EXCL lease under ~/backpack_ragnarok_state/e2e_ports/, and exports
+E2E_PORT_BASE / STATICPORT / APIPORT / PROXYPORT / E2E_FLEET_PORT_BASE. Index 1 =
+api, 2 = proxy, 4..9 = fleet workers, so E2E_PARALLEL<=6 still fits a block.
+Passing a REQ number is now an ERROR (exit 64) -- there is no base, no ceiling,
+no poisoned decade and no REQ-2775 wall left to get wrong.
+
+Wrap the `source` in a zero-argument function, as above: bash lets a sourced
+file see the CALLER's "$@", so sourcing it from inside a function that took
+arguments looks exactly like passing it a REQ number.
+
+    tools/e2e_ports.sh --who    # live leases: block, caller, pid, age, BOUND NOW
+    tools/e2e_ports.sh --gc     # reclaim stale leases now (a convenience only)
+
+A lease can never hold an idle block: it is invalidated by a boot_id mismatch, a
+dead pid, or by having nothing bound in its block for longer than the 60s grace
+window -- whichever comes first. Reclamation happens as a side effect of the
+next allocation, so the pool self-heals by being used; there is no cron, daemon
+or sweeper. THE LEDGER IS A HINT, WHETHER A PORT IS BINDABLE IS THE AUTHORITY.
 
 Legacy — `pnpm run e2e` (tools/e2e_run.sh): shared proxy 8803 + fleet
 8810+, serialized by the box lock. Works, but queues against every other
@@ -76,8 +93,11 @@ freeze README) IMMEDIATELY instead of stalling silently for E2E_LOCK_WAIT.
 
 ## Rules that stay
 - Box lock (REQ-0117) still guards the LEGACY shared-port path.
-- Port decades (REQ-0172), rebased onto the 5000 base by REQ-0321 to match
-  PROJECT.md; scoped runs live inside their REQ's own decade.
+- Port LEASES (REQ-0323) replaced the REQ-derived decades of REQ-0172/0321: a
+  scoped run leases a block from 9000-9999 for its lifetime and gives it back.
+  tools/check_e2e_ports.cjs (ci [0/8]) now forbids any literal pool port or
+  pinned endpoint anywhere in the harness/config set, and self-tests that it
+  detects each defect shape; ci [0.5/8] tests the lease mechanics themselves.
 - Admin harnesses (artadmin/artinspect/contentadmin) keep their own
   isolated HOME-remap rigs (REQ-0159); since REQ-0234 they drive the
   post-0217 proxy via E2E_FLEET_BASE_PORT=<their api port> (the proxy's old

@@ -47,10 +47,37 @@ _E2E_H_REQ=""
 _E2E_H_NAME=""
 _E2E_H_API_ENV=()
 
+# REQ-0323: source the port allocator from a ZERO-ARGUMENT function.
+# `source file` without arguments does NOT clear the positional parameters --
+# the sourced file sees the CALLER's "$@". Sourced straight from
+# e2e_harness_req (which is called as `e2e_harness_req 0152 art_inspect_e2e`),
+# e2e_ports.sh would see "0152" and correctly reject it as a pre-REQ-0323 call
+# site passing a REQ number. Calling through a no-arg wrapper makes $# == 0.
+_e2e_h_source_ports() {
+  # shellcheck source=/dev/null
+  source "$(dirname "${BASH_SOURCE[0]}")/e2e_ports.sh"
+}
+
+# Kill everything we spawned and WAIT for it, so the kernel has actually
+# released the sockets before we probe or re-lease (REQ-0323 2.4).
+_e2e_h_kill_pids() {
+  local p
+  for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
+  for p in "${PIDS[@]:-}"; do wait "$p" 2>/dev/null || true; done
+  PIDS=()
+}
+
 # ---------------------------------------------------------------- init --------
-# e2e_harness_req <REQ> <name>
-# Derives+preflights the ports, builds the isolated namespace, arms the cleanup
-# trap. Everything after this can assume WT/HOMEDIR/TMPROOT/MODELDIR/EXPORTDIR.
+# e2e_harness_req <id> <name>
+# Leases a port block, builds the isolated namespace, arms the cleanup trap.
+# Everything after this can assume WT/HOMEDIR/TMPROOT/MODELDIR/EXPORTDIR.
+#
+# <id> IS NO LONGER A PORT INPUT (REQ-0323). Ports are leased at run time from a
+# pool; this argument now only names the harness's own advisory lock
+# (~/.cache/backpack/e2e.<id>.lock, REQ-0234 F2) and its log files. It is kept
+# as the REQ number so those names stay stable across worktrees that have not
+# rebased yet -- renaming the lock would silently DE-serialize this harness
+# against an older tree running the same one.
 e2e_harness_req() {
   _E2E_H_REQ="${1:?e2e_harness_req needs a REQ number}"
   _E2E_H_NAME="${2:?e2e_harness_req needs a harness name}"
@@ -66,11 +93,13 @@ e2e_harness_req() {
   # rather than in the tail, where $HOME could read as the remapped one.
   _E2E_H_LOCK="${E2E_LOCK_FILE:-$HOME/.cache/backpack/e2e.${_E2E_H_REQ}.lock}"
 
-  # REQ-0172/REQ-0251: ports are DERIVED from the REQ number, never hand-picked.
-  # The helper also preflights each port and aborts with ONE clear line if busy,
-  # instead of letting the specs die later on ECONNREFUSED.
-  # shellcheck source=/dev/null
-  source "$(dirname "${BASH_SOURCE[0]}")/e2e_ports.sh" "$_E2E_H_REQ"
+  # REQ-0323: ports are LEASED at run time from a pool -- the REQ-derived rule
+  # (5000 + REQ*10 + index) is deleted. The allocator asks the OS which ports
+  # are bindable, takes the lowest free block, records the lease, and prints the
+  # numbers it handed out. Released by the cleanup trap below; a crashed run
+  # leaves a lease whose pid is dead, reclaimed on the next allocation.
+  export E2E_PORTS_CALLER="$_E2E_H_NAME"
+  _e2e_h_source_ports
 
   TMPROOT="$(mktemp -d)"
   MODELDIR="$(mktemp -d)"
@@ -89,6 +118,10 @@ e2e_harness_req() {
   # shellcheck disable=SC2317
   _e2e_h_cleanup() {
     for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
+    # REQ-0323: hand the port block back. This is the ORDINARY path only -- the
+    # allocator never trusts it (a lease whose pid is dead, or whose block has
+    # had nothing bound in it past the grace window, is reclaimed anyway).
+    if declare -F e2e_ports_release >/dev/null 2>&1; then e2e_ports_release || true; fi
     rm -rf "$TMPROOT" "$MODELDIR" "$EXPORTDIR"
   }
   trap _e2e_h_cleanup EXIT
@@ -103,6 +136,47 @@ e2e_harness_api_env() { _E2E_H_API_ENV+=("$@"); }
 e2e_harness_node() {
   env HOME="$HOMEDIR" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" \
       PLAYWRIGHT_BROWSERS_PATH="$PW_CACHE" "$@"
+}
+
+# _e2e_h_bringup <logprefix> <attempt> -- spawn api + proxy on the CURRENTLY
+# LEASED block and wait for both. Returns non-zero if either never comes up, so
+# the caller can release the block and try another one (REQ-0323 2.4).
+_e2e_h_bringup() {
+  local log="$1" attempt="$2" sfx=""
+  [ "$attempt" -gt 1 ] && sfx=".try${attempt}"
+  echo "[${_E2E_H_NAME}] api :$APIPORT  proxy :$PROXYPORT  (leased block ${E2E_PORT_BASE}-${E2E_PORT_BLOCK_END}, attempt ${attempt})"
+
+  # REQ-0233: ART_FAMILY_BARRIER=0 -- see the isolation contract above. NOTE what
+  # is deliberately NOT here: ALLOW_DEV_CLEAR. It ungates the destructive
+  # clear-all/bump-kit dev seams (REQ-0156, added after a live-namespace wipe),
+  # so a harness that needs it says so itself. A library default would hand it to
+  # harnesses that never asked -- registry_first is one.
+  env HOME="$HOMEDIR" PORT="$APIPORT" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" \
+      ART_FAMILY_BARRIER=0 \
+      ${_E2E_H_API_ENV[@]+"${_E2E_H_API_ENV[@]}"} \
+      node "$WT/server/api.cjs" > "${log}_api.log${sfx}" 2>&1 &
+  PIDS+=($!)
+
+  # REQ-0234 (F7): the REQ-0217 local-proxy serves /app + /preview from the
+  # worktree ITSELF and routes headerless /api to E2E_FLEET_BASE_PORT+0. The old
+  # E2E_STATIC_PORT/E2E_API_PORT knobs no longer exist, so the "fleet" base must
+  # point at this harness's single api -- without it /api fell through to the
+  # DEFAULT fleet base and every spec died on 502. (The python static server
+  # this rig used to run went with those knobs: nothing routes to it any more,
+  # and its single-threaded accept loop was the flake source in REQ-0222.)
+  env E2E_PROXY_PORT="$PROXYPORT" E2E_FLEET_BASE_PORT="$APIPORT" \
+      node "$WT/client/e2e/local-proxy.cjs" > "${log}_proxy.log${sfx}" 2>&1 &
+  PIDS+=($!)
+
+  if ! _e2e_h_wait 80 "http://127.0.0.1:$APIPORT/api/content"; then
+    echo "[${_E2E_H_NAME}] api never came up on :$APIPORT -- see ${log}_api.log${sfx}" >&2
+    return 1
+  fi
+  if ! _e2e_h_wait 40 "http://127.0.0.1:$PROXYPORT/api/content" "http://127.0.0.1:$PROXYPORT/app/"; then
+    echo "[${_E2E_H_NAME}] proxy never came up on :$PROXYPORT -- see ${log}_proxy.log${sfx}" >&2
+    return 1
+  fi
+  return 0
 }
 
 _e2e_h_wait() {  # _e2e_h_wait <tries> <url...>
@@ -133,43 +207,31 @@ e2e_harness_run() {
   done
 
   local log="/tmp/req${_E2E_H_REQ}_e2e"
-  echo "[${_E2E_H_NAME}] api :$APIPORT  proxy :$PROXYPORT  (REQ-${_E2E_H_REQ})"
 
+  # Seeding is port-independent and can be expensive, so it happens ONCE,
+  # outside the bringup retry loop below.
   if declare -F e2e_h_seed_preboot >/dev/null; then
     echo "[${_E2E_H_NAME}] seeding before api boot"
     e2e_h_seed_preboot
   fi
 
-  # REQ-0233: ART_FAMILY_BARRIER=0 -- see the isolation contract above. NOTE what
-  # is deliberately NOT here: ALLOW_DEV_CLEAR. It ungates the destructive
-  # clear-all/bump-kit dev seams (REQ-0156, added after a live-namespace wipe),
-  # so a harness that needs it says so itself. A library default would hand it to
-  # harnesses that never asked -- registry_first is one.
-  env HOME="$HOMEDIR" PORT="$APIPORT" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" \
-      ART_FAMILY_BARRIER=0 \
-      ${_E2E_H_API_ENV[@]+"${_E2E_H_API_ENV[@]}"} \
-      node "$WT/server/api.cjs" > "${log}_api.log" 2>&1 &
-  PIDS+=($!)
-
-  # REQ-0234 (F7): the REQ-0217 local-proxy serves /app + /preview from the
-  # worktree ITSELF and routes headerless /api to E2E_FLEET_BASE_PORT+0. The old
-  # E2E_STATIC_PORT/E2E_API_PORT knobs no longer exist, so the "fleet" base must
-  # point at this harness's single api -- without it /api fell through to the
-  # DEFAULT fleet base 8810 and every spec died on 502. (The python static server
-  # this rig used to run went with those knobs: nothing routes to it any more,
-  # and its single-threaded accept loop was the flake source in REQ-0222.)
-  env E2E_PROXY_PORT="$PROXYPORT" E2E_FLEET_BASE_PORT="$APIPORT" \
-      node "$WT/client/e2e/local-proxy.cjs" > "${log}_proxy.log" 2>&1 &
-  PIDS+=($!)
-
-  if ! _e2e_h_wait 80 "http://127.0.0.1:$APIPORT/api/content"; then
-    echo "[${_E2E_H_NAME}] FATAL: api never came up on :$APIPORT -- see ${log}_api.log" >&2
-    return 1
-  fi
-  if ! _e2e_h_wait 40 "http://127.0.0.1:$PROXYPORT/api/content" "http://127.0.0.1:$PROXYPORT/app/"; then
-    echo "[${_E2E_H_NAME}] FATAL: proxy never came up on :$PROXYPORT -- see ${log}_proxy.log" >&2
-    return 1
-  fi
+  # REQ-0323 (2.4): the lease shrinks the bind race but cannot erase it -- a
+  # port can still be taken between the allocator's probe and our bind. So if
+  # bringup fails to come up, give the block back, lease ANOTHER, and retry.
+  # Bounded at 3 attempts, then fail loudly rather than loop.
+  local attempt _max=3
+  for ((attempt = 1; attempt <= _max; attempt++)); do
+    if _e2e_h_bringup "$log" "$attempt"; then break; fi
+    if [ "$attempt" -ge "$_max" ]; then
+      echo "[${_E2E_H_NAME}] FATAL: services never came up on ${_max} different port blocks." >&2
+      echo "[${_E2E_H_NAME}]   logs: ${log}_api.log* ${log}_proxy.log*   leases: tools/e2e_ports.sh --who" >&2
+      return 1
+    fi
+    echo "[${_E2E_H_NAME}] bringup failed on block ${E2E_PORT_BASE}-${E2E_PORT_BLOCK_END} (attempt ${attempt}/${_max}) -- releasing it and leasing another" >&2
+    _e2e_h_kill_pids
+    e2e_ports_release
+    _e2e_h_source_ports
+  done
 
   if declare -F e2e_h_after_ready >/dev/null; then e2e_h_after_ready; fi
 

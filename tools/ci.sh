@@ -94,13 +94,30 @@ fi
 
 cd "$(dirname "$0")/.."
 
-# REQ-0172: cheap + first. A harness port collision is invisible until the
+# REQ-0323: cheap + first. A harness port collision is invisible until the
 # harnesses actually run (REQ-0159 lost a whole ci cycle to one: two harnesses had
-# hand-picked the same band, and the second one's specs died on ECONNREFUSED). This
-# gate makes the "ports are derived from the REQ number" rule machine-checked, and
-# it costs milliseconds, so it goes in front of everything.
-echo "==== [0/8] e2e harness port rule (REQ-0172) ===="
+# hand-picked the same band, and the second one's specs died on ECONNREFUSED).
+# Ports are now LEASED at run time, so the gate no longer checks derivation -- it
+# checks that NO file names a pool port or pins an endpoint at all. The self-test
+# runs FIRST and proves the detector detects: REQ-0322 existed because a gate's
+# pattern silently could not match the spelling harnesses actually wrote, and a
+# detector that is never tested is a rumour. Both cost milliseconds.
+echo "==== [0/8] e2e port pool gate: detector self-test (REQ-0323, folds in REQ-0322) ===="
+node tools/check_e2e_ports.cjs --self-test
+echo "==== [0/8] e2e port pool gate (REQ-0323: no literal pool port, no pinned endpoint) ===="
 node tools/check_e2e_ports.cjs
+# REQ-0323 G3/G5/G8-G11: the LEASE MECHANICS, measured. The rule this replaced
+# could only be argued about -- "derived ports cannot collide" is a claim about
+# arithmetic. This one can be tested, so it is, permanently: concurrent
+# allocators get distinct blocks, a killed holder's block comes straight back,
+# and a lease can never hold an idle block (boot_id mismatch / dead pid /
+# nothing-bound-past-grace). It runs with a SHORT grace window so the
+# time-based cases cost seconds; the 60s production value is exercised by the
+# harnesses themselves at [6.5/8] and [6.6/8]. Both halves of the grace test
+# are asserted -- a reclaim test that only proves reclamation HAPPENS would
+# pass by reclaiming always, which is the bug the window exists to prevent.
+echo "==== [0.5/8] e2e port lease mechanics (REQ-0323 G3/G5/G8-G11, stdlib python3) ===="
+python3 tools/tests/e2e_port_lease_test.py
 echo "==== [1/7] sim tests ===="
 node sim/tests/run.cjs
 echo "==== [2/7] sim replay goldens (determinism contract) ===="
@@ -359,16 +376,28 @@ if [ "${SKIP_E2E:-0}" != "1" ]; then
   # against other sessions nor touches the box lock the REQ-0217 freeze
   # daemon holds. The main checkout (no req- branch) and any run with an
   # explicit PLAYWRIGHT_BASE_URL keep the legacy path unchanged.
+  # REQ-0323: E2E_REQ no longer names any port -- it only answers "is this a
+  # linked req- worktree", which selects the SCOPED path over the legacy shared
+  # 8803/8810+ one. The scoped path's ports come from a run-time lease.
   E2E_REQ="${E2E_REQ:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null | sed -n 's/^req-\([0-9]\{4\}\).*/\1/p')}"
   if [ -n "$E2E_REQ" ] && [ -z "${PLAYWRIGHT_BASE_URL:-}" ]; then
-    echo "==== [7/7] client e2e (SCOPED hermetic run, REQ-$E2E_REQ decade -- admin trio excluded, see above) ===="
-    source tools/e2e_ports.sh "$E2E_REQ"
-    (cd client && E2E_FLEET_ROOT="/tmp/bp_e2e_workers_req${E2E_REQ}" \
+    echo "==== [7/7] client e2e (SCOPED hermetic run on a LEASED port block -- admin trio excluded, see above) ===="
+    # Zero-argument wrapper: `source` with no args lets the sourced file see THIS
+    # script's "$@", which e2e_ports.sh would (correctly) reject as a caller
+    # passing it a REQ number. See the header of tools/e2e_ports.sh.
+    _ci_source_ports() { source tools/e2e_ports.sh; }
+    _ci_source_ports
+    # Give the block back when ci ends, however it ends. The allocator does not
+    # depend on this (a dead pid, or a block with nothing bound in it past the
+    # grace window, is reclaimed anyway) -- it just returns it promptly.
+    trap 'e2e_ports_release' EXIT
+    (cd client && E2E_FLEET_ROOT="/tmp/bp_e2e_workers_p${E2E_PORT_BASE}" \
                   E2E_PROXY_PORT="$PROXYPORT" \
-                  E2E_FLEET_BASE_PORT="$((E2E_PORT_BASE + 4))" \
+                  E2E_FLEET_BASE_PORT="$E2E_FLEET_PORT_BASE" \
                   PLAYWRIGHT_BASE_URL="http://127.0.0.1:$PROXYPORT" \
                   E2E_GPU="${E2E_GPU:-1}" \
                   E2E_PARALLEL="${E2E_PARALLEL:-4}" pnpm exec playwright test)
+    e2e_ports_release
   else
     echo "==== [7/7] client e2e (default suite -- admin trio excluded, see above) ===="
     # REQ-0080: default to the local ingress proxy (localhost, ~40x less latency
