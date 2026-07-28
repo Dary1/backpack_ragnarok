@@ -27,6 +27,7 @@ module.exports = {
   normalizeListing: market.normalizeListing,
   listListings: market.listListings,
   createListing: market.createListing,
+  createListingFromWarehouse: market.createListingFromWarehouse,
   withdrawListing: market.withdrawListing,
   devClearAllListings: market.devClearAllListings,
   buyListing: market.buyListing,

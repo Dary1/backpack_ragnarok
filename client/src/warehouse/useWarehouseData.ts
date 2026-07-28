@@ -27,6 +27,7 @@ import { usePolledResource } from '../lib/usePolledResource';
 import { friendlyScheduleError, isApiErrorStatus } from '../schedule/errors';
 import { notifyStateChanged, useGameStore, type Locale } from '../store';
 import { playClaimChime } from './claimSfx';
+import { sellFromWarehouse } from '../api/market'; // REQ-0328
 
 /** REQ-0072: market-settled rows (buyer delivery / seller TM proceeds --
  * server/services/market.cjs's settle step) carry a `sourceListingId`
@@ -44,6 +45,10 @@ const POLL_MS = 5000;
 // class is removed from the DOM -- same "duration + margin" convention
 // as TAB_PULSE_MS above.
 const FLASH_FADEOUT_MS = 450;
+// REQ-0328: the market's default/sole live TM (mirrors
+// MarketPage.MARKET_TM_ID); the direct-sell price is carved in it. A TM
+// selector for the warehouse Sell action arrives with a 2nd live TM.
+const SELL_TM_ID = 'lrdst';
 
 /** Outcome of a single-item claim, so Claim All can stop the moment the
  * board is genuinely full without guessing at React state timing. */
@@ -81,6 +86,8 @@ export function useWarehouseData(locale: Locale) {
   });
   const [claimingUid, setClaimingUid] = useState<string | null>(null);
   const [claimingAll, setClaimingAll] = useState(false);
+  // REQ-0328: the row whose direct warehouse->market sell is in flight.
+  const [sellingUid, setSellingUid] = useState<string | null>(null);
   // REQ-0091: per-row claim press-feedback (flash while the claim POST
   // is in flight, then a one-shot fade-out once the response is known --
   // see handleClaim's beginClaimFadeOut). Keyed by itemUid rather than a
@@ -233,6 +240,36 @@ export function useWarehouseData(locale: Locale) {
     }
   };
 
+  // REQ-0328: DIRECT warehouse->market sell (item 9's player UI). Opens a
+  // price prompt for a CLAIMABLE row and calls POST /api/market/listings/
+  // from-warehouse -- the row is consumed and becomes an active listing
+  // WITHOUT ever occupying a canvas cell; the item shows up under the
+  // Market page's My Listings. A currency (tm) row has no direct-sell path
+  // (the Sell button is hidden for it in WarehousePage), so this only ever
+  // runs for spoils rows.
+  const handleSell = async (itemUid: string) => {
+    if (sellingUid) return;
+    const raw = typeof window !== 'undefined' && typeof window.prompt === 'function'
+      ? window.prompt(t(locale, 'schedule.warehouse.sellPrompt'))
+      : null;
+    if (raw == null) return; // cancelled -- no-op
+    const qty = Number.parseInt(raw.trim(), 10);
+    if (!Number.isInteger(qty) || qty < 1 || qty > 999) {
+      setToast(t(locale, 'schedule.warehouse.sellInvalidPrice'));
+      return;
+    }
+    setSellingUid(itemUid);
+    try {
+      await sellFromWarehouse(itemUid, { tm: SELL_TM_ID, qty });
+      setToast(t(locale, 'schedule.warehouse.sellSuccess', { qty }));
+      await reload(); // the consumed row leaves the warehouse list
+    } catch (e) {
+      setToast(t(locale, 'schedule.warehouse.sellFailed') + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setSellingUid(null);
+    }
+  };
+
   // Claim All -- a thin composition over the single-item handleClaim,
   // walking rows soonest-to-expire first (same order the list renders)
   // and stopping the moment the board is genuinely full (outcome
@@ -262,7 +299,9 @@ export function useWarehouseData(locale: Locale) {
     claimingAll,
     claimFx,
     claimErrors,
+    sellingUid,
     handleClaim,
     handleClaimAll,
+    handleSell,
   };
 }

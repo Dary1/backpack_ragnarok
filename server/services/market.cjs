@@ -99,6 +99,7 @@ module.exports = {
   normalizeListing: listings.normalizeListing,
   listListings: views.listListings,
   createListing: listings.createListing,
+  createListingFromWarehouse: listings.createListingFromWarehouse,
   withdrawListing: listings.withdrawListing,
   devClearAllListings: listings.devClearAllListings,
   buyListing: trade.buyListing,

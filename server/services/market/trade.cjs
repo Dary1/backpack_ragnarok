@@ -149,11 +149,20 @@ function buyListing(buyerId, listingId, idemKey) {
 
   // Seller-side eligibility, re-derived NOW (lazy, never trusted stale).
   const kind = listing.kind || 'po';
-  const sellerDoc = storage.readProfile(listing.sellerId);
+  // REQ-0328: a warehouse-sourced listing escrows its item ON the listing
+  // (consumed from the warehouse when it was listed), so there is NO
+  // seller-canvas instance to re-derive and nothing to strip at settle -- the
+  // item is always available. Reconstruct the delivery payload from the
+  // listing itself so the shared itemRow builder below works unchanged.
+  const fromWarehouse = listing.source === 'warehouse';
+  const sellerDoc = fromWarehouse ? null : storage.readProfile(listing.sellerId);
   const sellerCanvas = sellerDoc ? sellerDoc.canvas : null;
   let sellerInst = null;
   let sellerBp = null;
-  if (kind === 'tm') {
+  if (fromWarehouse) {
+    if (kind === 'unit') sellerBp = listing.bp;
+    else sellerInst = { q: typeof listing.q === 'number' ? listing.q : undefined };
+  } else if (kind === 'tm') {
     // REQ-0195b: tm stock is the live balance; a shortfall is a
     // (reversible) SUSPENSION re-check, never an item-gone auto-withdraw.
     const stock = sellerCanvas ? readTmBalance(sellerCanvas, listing.itemId) : 0;
@@ -224,16 +233,24 @@ function buyListing(buyerId, listingId, idemKey) {
 
   // (3/7) remove the sold value from the seller (kind-branched: strip the
   // PO instance everywhere, or debit tmQty off the seller's TM stacks).
-  if (kind === 'tm') {
+  if (fromWarehouse) {
+    // REQ-0328: no seller-canvas mutation at all -- the item left the
+    // warehouse (was consumed) at listing time and has lived escrowed on the
+    // listing since. This is the direct path's whole point: the seller's
+    // canvas/inventory is never touched.
+  } else if (kind === 'tm') {
     debitTmFromCanvas(sellerCanvas, listing.itemId, listing.tmQty);
+    storage.writeProfile(listing.sellerId, sellerCanvas);
   } else if (kind === 'si') {
     stripSiFromCanvas(sellerCanvas, listing.itemUid);
+    storage.writeProfile(listing.sellerId, sellerCanvas);
   } else if (kind === 'unit') {
     stripBpFromCanvas(sellerCanvas, listing.itemUid);
+    storage.writeProfile(listing.sellerId, sellerCanvas);
   } else {
     stripPoFromCanvas(sellerCanvas, listing.itemUid); // also re-homes SIs seated on the sold PO (REQ-0195c)
+    storage.writeProfile(listing.sellerId, sellerCanvas);
   }
-  storage.writeProfile(listing.sellerId, sellerCanvas);
 
   // (4/7) deliver the item to the buyer's WAREHOUSE as a normal
   // claimable row -- the buyer places it via the standard two-phase

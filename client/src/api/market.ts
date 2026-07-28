@@ -2,7 +2,7 @@
 // (extracted VERBATIM from the old flat api.ts). newIdemKey stays
 // module-private, exactly as it was file-private before.
 import { scheduleJSON } from './http';
-import type { ApiMarketBuyResponse, ApiMarketCreateListingRequest, ApiMarketFurnaceResponse, ApiMarketListingResponse, ApiMarketListingsResponse } from '../../../shared/dto';
+import type { ApiMarketBuyResponse, ApiMarketCreateListingRequest, ApiMarketFurnaceResponse, ApiMarketListingResponse, ApiMarketListingsResponse, ApiMarketPrice } from '../../../shared/dto';
 
 // ---- REQ-0064: Market (交易の火床 / Hearth of Barter) ----
 // Client surface for server/routes/market.cjs. Shapes are EXACTLY
@@ -88,4 +88,21 @@ export function buyMarketListing(listingId: string): Promise<ApiMarketBuyRespons
  * season:null when no season has started). */
 export function fetchMarketFurnace(): Promise<ApiMarketFurnaceResponse> {
   return scheduleJSON<ApiMarketFurnaceResponse>('/api/market/furnace');
+}
+
+/** POST /api/market/listings/from-warehouse {warehouseRowId, price} --
+ * REQ-0328: the DIRECT warehouse->market sell. Consumes a CLAIMABLE
+ * warehouse row and creates an active listing WITHOUT routing through the
+ * seller's canvas/inventory (the item is escrowed on the listing;
+ * withdraw/expiry returns it to the warehouse). price.tm must be a live TM
+ * id; qty an integer in [1,999]. Sends a fresh Idempotency-Key so a retry
+ * de-dupes server-side. Throws ApiError(404) for an unknown/expired row,
+ * ApiError(409 reason:'claiming') for a row being claimed, ApiError(400
+ * reason:'unsellable_kind' | bad price). */
+export function sellFromWarehouse(warehouseRowId: string, price: ApiMarketPrice): Promise<ApiMarketListingResponse> {
+  return scheduleJSON<ApiMarketListingResponse>('/api/market/listings/from-warehouse', {
+    method: 'POST',
+    headers: { 'Idempotency-Key': newIdemKey() },
+    body: JSON.stringify({ warehouseRowId, price }),
+  });
 }
