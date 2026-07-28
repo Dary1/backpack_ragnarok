@@ -4,7 +4,7 @@
 // deployedUidSetsForGate) and slot assignment/swap, moved VERBATIM from
 // server/schedule.cjs.
 const storage = require('../storage.cjs');
-const { SQUAD_SLOTS, makeEngine } = require('./core.cjs');
+const { SQUAD_SLOTS, makeEngine, normalizeSlot } = require('./core.cjs');
 
 function squadCanvasOf(canvas, idx) {
   if (!canvas || !canvas.presets) return null;
@@ -107,24 +107,48 @@ function isSquadDeployable(engine, canvas, squadIndex) {
 // "this squad is off on a run that is still going" -- and deserve distinct
 // 409 messages, even though the underlying rule ("this uid is already
 // committed somewhere") is one and the same.
+// REQ-0324: does this room's SEATS gate a player's other deploys right now?
+// A public co-op Troop gates while it is recruiting OR active -- a seat is a
+// real commitment the instant it is taken, before departure. A solo room
+// gates ONLY while its run is active: byte-for-byte the pre-REQ rule (an
+// 'open' solo room never gated cross-room). Legacy solo rooms carry no
+// `visibility` at all -> they fall through to the solo branch unchanged.
+function roomSeatGates(room) {
+  if (room.visibility === 'public') {
+    return room.state === 'recruiting' || room.state === 'active';
+  }
+  return room.status === 'active';
+}
+
 function deployedUidSetsByOrigin(playerId, room, profileCanvas, excludeSlotIndex) {
   const sameRoom = new Set();
   const otherRooms = new Set();
-  // (a) this room's OWN other slots, regardless of the room's own status.
-  room.slots.forEach((slot, i) => {
+  // (a) this room's OWN other slots that belong to ME (the caller). A
+  // same-room duplicate is only meaningful against MY own canvas -- another
+  // player's seat names THEIR squad index on THEIR separate canvas and can
+  // never collide here (REQ-0324). In a solo room every filled slot is the
+  // owner's, so this stays byte-for-byte the old owner-agnostic behaviour.
+  room.slots.forEach((rawSlot, i) => {
     if (i === excludeSlotIndex) return; // the slot being assigned right now never counts against itself
-    if (slot.squadIndex == null) return;
+    const slot = normalizeSlot(rawSlot, room);
+    if (!slot) return;
+    if (slot.ownerId !== playerId) return;
     const squadCanvas = squadCanvasOf(profileCanvas, slot.squadIndex);
     for (const uid of squadUidSet(squadCanvas)) sameRoom.add(uid);
   });
-  // (b) every OTHER active room this player owns.
-  const rooms = storage.listRooms();
-  for (const otherRoom of rooms) {
+  // (b) every OTHER live room/troop where I HOLD A SEAT (slot.ownerId ===
+  // playerId). REQ-0324 broadens the old "every OTHER active room I OWN" to
+  // "any active/recruiting troop where I hold a seat" -- host and joiner are
+  // both seat-holders, and a seat (not room ownership) is the deploy
+  // commitment. Solo is unchanged: my own active rooms' slots are all mine;
+  // another player's room holds none of my seats.
+  for (const otherRoom of storage.listRooms()) {
     if (otherRoom.id === room.id) continue; // this room's own slots already covered by (a) above
-    if (otherRoom.ownerId !== playerId) continue;
-    if (otherRoom.status !== 'active') continue; // only CURRENTLY-ACTIVE schedules gate (golden d)
-    for (const slot of otherRoom.slots) {
-      if (slot.squadIndex == null) continue;
+    if (!roomSeatGates(otherRoom)) continue;
+    for (const rawSlot of otherRoom.slots || []) {
+      const slot = normalizeSlot(rawSlot, otherRoom);
+      if (!slot) continue;
+      if (slot.ownerId !== playerId) continue;
       const squadCanvas = squadCanvasOf(profileCanvas, slot.squadIndex);
       for (const uid of squadUidSet(squadCanvas)) otherRooms.add(uid);
     }
@@ -146,7 +170,13 @@ function deployedUidSetsForGate(playerId, room, profileCanvas, excludeSlotIndex)
 // gate: DEPLOYED-OVERLAP only (see deployedUidSetsForGate's doc above) --
 // isSquadIndependent is intentionally NOT consulted here (REQ-0045 v2).
 // Throws {code:'CONFLICT'} (mapped to 409 by api.cjs) on a violation.
-function assignSlot(room, callerId, slotIndex, squadIndex, profileCanvas, itemDefsById) {
+// REQ-0324: the deploy-gate CHECK, extracted from assignSlot so the co-op
+// Troop seat/join path (services/troops.cjs) enforces the IDENTICAL gate
+// (slot/squad range + empty-squad + same-room/cross-room overlap) without
+// duplicating it. Throws on a violation; it NEVER writes -- the caller
+// persists the seat in whichever slot shape it owns (solo { squadIndex } vs
+// troop { ownerId, squadIndex, joinedAt }).
+function assertSeatAllowed(room, callerId, slotIndex, squadIndex, profileCanvas, itemDefsById) {
   if (slotIndex < 0 || slotIndex >= SQUAD_SLOTS.length) {
     const err = new Error('slotIndex out of range'); err.code = 'BAD_REQUEST'; throw err;
   }
@@ -184,6 +214,14 @@ function assignSlot(room, callerId, slotIndex, squadIndex, profileCanvas, itemDe
       err.code = 'CONFLICT'; err.reason = 'deployed_overlap'; throw err;
     }
   }
+}
+
+// assignSlot (golden b/d, SOLO path): enforces the shared deploy gate, then
+// writes the caller's own squad into the slot. Slot shape + behaviour are
+// UNCHANGED by REQ-0324 -- a solo slot is still { squadIndex } and the run
+// auto-start path keys off exactly that.
+function assignSlot(room, callerId, slotIndex, squadIndex, profileCanvas, itemDefsById) {
+  assertSeatAllowed(room, callerId, slotIndex, squadIndex, profileCanvas, itemDefsById);
   room.slots[slotIndex] = { squadIndex };
   room.updatedAt = new Date().toISOString();
   storage.writeRoom(room.id, room);
@@ -358,6 +396,7 @@ module.exports = {
   isSquadIndependent,
   isSquadDeployable,
   deployedUidSetsForGate,
+  assertSeatAllowed, // REQ-0324: shared deploy-gate check (solo + troop)
   deployedUidSet,
   referencedUidSet,
   assignSlot,

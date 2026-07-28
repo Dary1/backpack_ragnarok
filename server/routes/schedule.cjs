@@ -29,6 +29,15 @@ const SCHEDULE_SEAL_MINT_RE = /^\/api\/schedule\/seal$/;
 const SCHEDULE_SEAL_GET_RE = /^\/api\/schedule\/seals\/([^/]+)$/;
 const SCHEDULE_SEAL_COMPARE_RE = /^\/api\/schedule\/seals\/([^/]+)\/comparison$/;
 const SCHEDULE_SEAL_REPLAY_RE = /^\/api\/schedule\/seals\/([^/]+)\/runs\/([^/]+)$/;
+// REQ-0324: co-operative Troop routes. /api/schedule/troops* collides with
+// nothing in this family (the /rooms* + /seals* + /sorties regexes above never
+// match a /troops path), so it is appended here in the order-safe tail slot the
+// router documents. join/leave are anchored (.../join$, .../leave$) so the
+// generic /troops/:id item regex can never shadow them.
+const SCHEDULE_TROOPS_RE = /^\/api\/schedule\/troops$/;
+const SCHEDULE_TROOP_JOIN_RE = /^\/api\/schedule\/troops\/([^/]+)\/join$/;
+const SCHEDULE_TROOP_LEAVE_RE = /^\/api\/schedule\/troops\/([^/]+)\/leave$/;
+const SCHEDULE_TROOP_RE = /^\/api\/schedule\/troops\/([^/]+)$/;
 
 function tryScheduleRoutes(req, res, url, p) {
   const scheduleMatch = p.match(SCHEDULE_ROOMS_RE) || p.match(SCHEDULE_ROOM_RE) ||
@@ -36,7 +45,9 @@ function tryScheduleRoutes(req, res, url, p) {
     p.match(SCHEDULE_ROOM_DEV_BACKDATE_RE) ||
     p.match(SCHEDULE_ROOMS_DEV_CLEAR_RE) || p.match(SCHEDULE_SORTIES_RE) ||
     p.match(SCHEDULE_SEAL_MINT_RE) || p.match(SCHEDULE_SEAL_GET_RE) ||
-    p.match(SCHEDULE_SEAL_COMPARE_RE) || p.match(SCHEDULE_SEAL_REPLAY_RE);
+    p.match(SCHEDULE_SEAL_COMPARE_RE) || p.match(SCHEDULE_SEAL_REPLAY_RE) ||
+    p.match(SCHEDULE_TROOPS_RE) || p.match(SCHEDULE_TROOP_JOIN_RE) ||
+    p.match(SCHEDULE_TROOP_LEAVE_RE) || p.match(SCHEDULE_TROOP_RE);
   if (scheduleMatch) {
     const ctx = resolveCallerOr401(req, res);
     if (!ctx) return;
@@ -423,6 +434,103 @@ function tryScheduleRoutes(req, res, url, p) {
           youAreParticipant: !!yourEntry,
           yourRoomId: yourEntry ? yourEntry.roomId : null,
         });
+      } catch (e) { sendScheduleError(res, e); }
+      return;
+    }
+
+    // ===================================================================
+    // REQ-0324: co-operative Troop routes (tail-appended, order-safe). A
+    // Troop is a visibility:'public' room; these routes are the CROSS-PLAYER
+    // browse/host/join/leave surface (distinct from the owner-guarded /rooms*
+    // surface above). Auth is the standard X-Auth-Token resolved once at the
+    // top of this function -- a bot account browses/joins EXACTLY like a human.
+    // ===================================================================
+
+    // ---- GET/POST /api/schedule/troops ----
+    if (p.match(SCHEDULE_TROOPS_RE)) {
+      if (req.method === 'GET') {
+        // Browse PUBLIC recruiting troops with a free seat -- the signal the
+        // reactive fleet polls. ?state=recruiting (default) [&attackLv=<n>].
+        try {
+          const state = url.searchParams.get('state') || 'recruiting';
+          const attackLvRaw = url.searchParams.get('attackLv');
+          const attackLv = (attackLvRaw !== null && attackLvRaw !== '' && Number.isFinite(Number(attackLvRaw)))
+            ? parseInt(attackLvRaw, 10) : null;
+          const troops = schedule.listRecruitingTroops({ state, attackLv });
+          sendJSON(res, 200, { ok: true, troops });
+        } catch (e) { sendScheduleError(res, e); }
+        return;
+      }
+      if (req.method === 'POST') {
+        // Host a Troop: {dungeonId, level, formationId?, squadIndex}. Only the
+        // host may open a Troop; they are seated in slot 0 here.
+        readBody(req, (err, bodyStr) => {
+          if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
+          let body;
+          try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+          // REQ-0043/0304 parity: genSeed/drawSeed are privileged-only test-
+          // control seams, gated BEFORE any room is created (same guard the
+          // POST /rooms + /sorties paths apply).
+          if (body && body.genSeed !== undefined && body.genSeed !== null && !callerCanSetGenSeed) {
+            sendJSON(res, 403, { ok: false, error: 'forbidden: genSeed may only be specified by a dev/item_admin caller (test-control seam, not a real player action)' });
+            return;
+          }
+          if (body && body.drawSeed !== undefined && body.drawSeed !== null && !callerCanSetGenSeed) {
+            sendJSON(res, 403, { ok: false, error: 'forbidden: drawSeed may only be specified by a dev/item_admin caller (test-control seam, not a real player action)' });
+            return;
+          }
+          try {
+            const { itemDefsById } = schedule.getScheduleContent();
+            const canvas = requireOwnCanvas(callerId);
+            const troop = schedule.createTroop(callerId, body, canvas, itemDefsById);
+            sendJSON(res, 200, { ok: true, troop });
+          } catch (e) { sendScheduleError(res, e); }
+        });
+        return;
+      }
+      sendJSON(res, 405, { ok: false, error: 'method not allowed' });
+      return;
+    }
+
+    // ---- POST /api/schedule/troops/:id/join {squadIndex} ----
+    const troopJoinMatch = p.match(SCHEDULE_TROOP_JOIN_RE);
+    if (troopJoinMatch) {
+      const roomId = decodeURIComponent(troopJoinMatch[1]);
+      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      readBody(req, (err, bodyStr) => {
+        if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
+        let body;
+        try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+        try {
+          const { itemDefsById } = schedule.getScheduleContent();
+          const canvas = requireOwnCanvas(callerId);
+          const troop = schedule.joinTroop(roomId, callerId, body.squadIndex, canvas, itemDefsById);
+          sendJSON(res, 200, { ok: true, troop });
+        } catch (e) { sendScheduleError(res, e); }
+      });
+      return;
+    }
+
+    // ---- POST /api/schedule/troops/:id/leave ----
+    const troopLeaveMatch = p.match(SCHEDULE_TROOP_LEAVE_RE);
+    if (troopLeaveMatch) {
+      const roomId = decodeURIComponent(troopLeaveMatch[1]);
+      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      try {
+        const troop = schedule.leaveTroop(roomId, callerId);
+        sendJSON(res, 200, { ok: true, troop });
+      } catch (e) { sendScheduleError(res, e); }
+      return;
+    }
+
+    // ---- GET /api/schedule/troops/:id (full troop state) ----
+    const troopMatch = p.match(SCHEDULE_TROOP_RE);
+    if (troopMatch) {
+      const roomId = decodeURIComponent(troopMatch[1]);
+      if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      try {
+        const troop = schedule.getTroopOr404(roomId);
+        sendJSON(res, 200, { ok: true, troop });
       } catch (e) { sendScheduleError(res, e); }
       return;
     }
