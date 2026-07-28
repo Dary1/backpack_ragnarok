@@ -967,6 +967,96 @@ module.exports.run = async function run(h) {
     scheduleStorage.deleteRoom(id);
   });
 
+  // ===================================================================
+  // REQ-0327: the troop-disband NOTIFICATION FEED. ONE mechanism a human
+  // device and a bot program consume IDENTICALLY (GET /api/notifications,
+  // auth = X-Auth-Token). disbandTroopRoom (REQ-0326) appends ONE
+  // troop_disbanded entry to each released owner feed; GET returns the
+  // caller unseen entries; ack hides them; a bot account (no browser)
+  // reads its own identical entry via the same endpoint (owner item 7).
+  // ===================================================================
+  await AT('REQ-0327: disbanding a full troop of 4 (on return) gives EACH owner exactly one troop_disbanded entry; GET returns it once; ack hides it; a bot account reads its identical entry via the same endpoint', async () => {
+    const owners = ['R7A', 'R7B', 'R7C', 'R7BotD'].map((n) => playersFixture.createPlayer(n, []));
+    for (const pl of owners) scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const level = 2;
+    const open = await scheduleReq('POST', '/api/schedule/troops', owners[0].token, { dungeonId: 'test_dungeon', level, formationId: 'formation1', squadIndex: 0 });
+    const id = open.body.troop.id;
+    for (let i = 1; i < 4; i++) await scheduleReq('POST', '/api/schedule/troops/' + id + '/join', owners[i].token, { squadIndex: i });
+    // Precondition: no owner has any notification before the disband.
+    for (const pl of owners) {
+      const pre = await scheduleReq('GET', '/api/notifications', pl.token);
+      assert.strictEqual(pre.status, 200, 'feed read: ' + JSON.stringify(pre.body));
+      assert.strictEqual(pre.body.notifications.length, 0, 'no notification before disband for ' + pl.playerId);
+    }
+    // Cancel mid-run defers to RETURN; drive the dive home so the disband
+    // (and its emission) fire on the settle poll.
+    const cancel = await scheduleReq('POST', '/api/schedule/troops/' + id + '/cancel', owners[1].token);
+    assert.strictEqual(cancel.status, 200, 'cancel: ' + JSON.stringify(cancel.body));
+    const runId = scheduleStorage.readRoom(id).lastRunId;
+    forceRunElapsed(runId);
+    await scheduleReq('GET', '/api/schedule/troops/' + id, owners[0].token); // poll -> settle THEN disband -> emit
+    assert.strictEqual(scheduleStorage.readRoom(id).state, 'canceled', 'precondition: the troop disbanded on return');
+    // EACH of the four owners gained EXACTLY ONE troop_disbanded entry.
+    const idOf = {};
+    for (const pl of owners) {
+      const feed = await scheduleReq('GET', '/api/notifications', pl.token);
+      assert.strictEqual(feed.status, 200, 'feed: ' + JSON.stringify(feed.body));
+      const mine = feed.body.notifications.filter((n) => n.kind === 'troop_disbanded' && n.roomId === id);
+      assert.strictEqual(mine.length, 1, 'owner ' + pl.playerId + ' gets exactly one troop_disbanded entry');
+      const entry = mine[0];
+      assert.strictEqual(entry.attackLv, level, 'the entry carries the troop attack level');
+      assert.strictEqual(entry.seenAt, null, 'a fresh entry is unseen');
+      assert.ok(typeof entry.id === 'number' && entry.id > 0, 'the entry has a positive numeric id');
+      assert.ok(typeof entry.ts === 'string' && entry.ts.length > 0, 'the entry carries a timestamp');
+      assert.strictEqual(entry.payload.reason, 'member_cancel', 'the payload carries the disband reason');
+      idOf[pl.playerId] = entry.id;
+    }
+    // Idempotent: a second settle poll never double-emits.
+    await scheduleReq('GET', '/api/schedule/troops/' + id, owners[0].token);
+    const again = await scheduleReq('GET', '/api/notifications', owners[0].token);
+    assert.strictEqual(again.body.notifications.filter((n) => n.roomId === id).length, 1, 'a re-poll never double-notifies (exactly one entry stands)');
+    // ack hides the entry for THAT owner only.
+    const ack = await scheduleReq('POST', '/api/notifications/ack', owners[0].token, { ids: [idOf[owners[0].playerId]] });
+    assert.strictEqual(ack.status, 200, 'ack: ' + JSON.stringify(ack.body));
+    assert.strictEqual(ack.body.acked, 1, 'exactly one entry acked');
+    const afterAck = await scheduleReq('GET', '/api/notifications', owners[0].token);
+    assert.strictEqual(afterAck.body.notifications.filter((n) => n.roomId === id).length, 0, 'ack hides the entry from the unseen feed');
+    // The BOT account (no browser) still reads its identical entry via the SAME endpoint (item 7).
+    const botFeed = await scheduleReq('GET', '/api/notifications', owners[3].token);
+    const botMine = botFeed.body.notifications.filter((n) => n.roomId === id);
+    assert.strictEqual(botMine.length, 1, 'the bot account reads its own identical entry via the same endpoint');
+    assert.strictEqual(botMine[0].kind, 'troop_disbanded', 'same kind for the bot');
+    assert.strictEqual(botMine[0].attackLv, level, 'same attackLv for the bot');
+    // since cursor: passing the bot own latest id returns nothing strictly-newer.
+    const sinceSelf = await scheduleReq('GET', '/api/notifications?since=' + botMine[0].id, owners[3].token);
+    assert.strictEqual(sinceSelf.status, 200, 'since read: ' + JSON.stringify(sinceSelf.body));
+    assert.strictEqual(sinceSelf.body.notifications.filter((n) => n.roomId === id).length, 0, 'a since cursor at the latest id returns only strictly-newer entries');
+    // No leak: an unrelated caller never sees this disband entry.
+    const outsider = playersFixture.createPlayer('R7Outsider', []);
+    const outFeed = await scheduleReq('GET', '/api/notifications', outsider.token);
+    assert.strictEqual(outFeed.status, 200, 'outsider feed read ok');
+    assert.strictEqual(outFeed.body.notifications.filter((n) => n.roomId === id).length, 0, 'no disband notification leaks to a non-owner');
+    scheduleStorage.deleteRoom(id);
+  });
+
+  await AT('REQ-0327: a still-RECRUITING troop disband notifies exactly the seated owners immediately (<=4)', async () => {
+    const owners = ['R7RecA', 'R7RecB', 'R7RecC'].map((n) => playersFixture.createPlayer(n, []));
+    for (const pl of owners) scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const open = await scheduleReq('POST', '/api/schedule/troops', owners[0].token, { dungeonId: 'test_dungeon', level: 4, formationId: 'formation1', squadIndex: 0 });
+    const id = open.body.troop.id;
+    await scheduleReq('POST', '/api/schedule/troops/' + id + '/join', owners[1].token, { squadIndex: 1 });
+    await scheduleReq('POST', '/api/schedule/troops/' + id + '/join', owners[2].token, { squadIndex: 2 });
+    const res = await scheduleReq('POST', '/api/schedule/troops/' + id + '/cancel', owners[1].token);
+    assert.strictEqual(res.body.troop.state, 'canceled', 'immediate disband while recruiting');
+    for (const pl of owners) {
+      const feed = await scheduleReq('GET', '/api/notifications', pl.token);
+      const mine = feed.body.notifications.filter((n) => n.roomId === id && n.kind === 'troop_disbanded');
+      assert.strictEqual(mine.length, 1, 'each seated owner is notified immediately: ' + pl.playerId);
+      assert.strictEqual(mine[0].attackLv, 4, 'the entry carries the troop attack level');
+    }
+    scheduleStorage.deleteRoom(id);
+  });
+
   scheduleStorage.deleteRoom(r5TroopId);
 
   // Cleanup the shared open troop so it never leaks into later suites' state.
