@@ -302,13 +302,79 @@ scratch proxy does not map and the live web server serves 200.
   path) -- returning every bot's seat and firing its REQ-0327 notification.
   `room_c446897703028e14` is already `canceled`.
 
+## Merged + deployed -- 2026-07-29
+
+- `2517c83` merge into master (`--no-ff`, from pre-merge `967ca37`).
+- `e8f2b77` HOTFIX, see below.
+
+No service restart was needed or performed: server source is untouched, and
+`web/app` is a static docroot served from disk by `backpack-web`. All four
+services (`backpack-api` / `-web` / `-fleet` / `-tunnel`) stayed `active`
+throughout.
+
+### HOTFIX e8f2b77 -- the merged bundle had EMPTY `VITE_SUPABASE_*`
+
+**This was a real regression that shipped for a few minutes. Recording it in
+full, because the failure mode is invisible and will recur.**
+
+`client/.env.local` is GITIGNORED, so it exists ONLY in `~/backpack_ragnarok`
+and a `git worktree` never receives it. Vite inlines `VITE_*` at BUILD time. The
+bundle merged in `2517c83` was built inside the req-0337 worktree, so it baked in
+
+```js
+{BASE_URL:"/app/",DEV:!1,MODE:"production",PROD:!0,SSR:!1}
+```
+
+with `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` simply ABSENT, where the
+pre-merge master bundle had both. `supabaseClient()` returns `null` when either
+is missing, so REQ-0118c Supabase auth was **silently dead** in the deployed
+app -- not throwing, just never constructing a client.
+
+**Every gate passed anyway.** `tsc -b`, `pnpm build`, `oxlint` and `api_test`
+are all perfectly happy with an env-less build, and the REQ-0337 live check
+signed in over the invite-token path (`#/invite/<token>`), which never touches
+Supabase. It surfaced only because rebuilding on master produced a DIFFERENT
+bundle hash than the one just committed -- and that discrepancy was chased down
+instead of waved off as build nondeterminism. It is not nondeterminism: the
+build is byte-stable within a tree, and differed between trees precisely because
+the env differed.
+
+Fixed by rebuilding `web/app` in the main checkout and committing that output
+(no source change). Verified: `VITE_SUPABASE_URL` and the `auth.qtie.jp` origin
+are back in the served bundle, and a rebuild on master now changes nothing.
+
+**Rule this implies -- belongs in PROJECT.md, which agents may not edit, so it
+is flagged to the user instead:** `web/app` is a TRACKED, ENV-DEPENDENT build
+artifact. Build it in the main checkout, or copy `client/.env.local` into the
+worktree first. A worktree-built client bundle must never be committed. A cheap
+standing guard is `grep -c VITE_SUPABASE_URL: web/app/assets/index-*.js` before
+any client merge.
+
+### Post-deploy verification, against the real tunnel origin
+
+```
+landing https://backpack-dev.qtie.jp/app/  -> loads, supabase config present
+CTA mode, 0 squads = solo
+clicked 1 squad    -> CTA mode = recruit,  label "Open the call ⚑"
+committed          -> RECRUITING room_5198fbb2277a5006 | 1/4 seats
+console problems   = NONE
+
+05:07:53  target acquired: troop room_5198fbb2277a5006
+05:07:54 / 05:08:25 / 05:08:55  fleet joined -> troop_departed 05:08:55
+```
+
+Also observed incidentally, confirming the disband path end to end: the troops
+cancelled during the pre-merge check disbanded on return and each bot's
+auto-seller fired on its REQ-0327 notification (`1 disband event(s) -- selling
+all drops`).
+
 ## Still owed before this can move to `done`
 
-1. Merge to master + deploy. NOT done: `~/backpack_ragnarok` and the live
-   services are HANDS-OFF without a fresh go-ahead. Note that for the client
-   this is one step -- `web/app` is tracked and IS the served docroot, so
-   merging to master deploys the bundle.
-2. User acceptance of the scope correction recorded above.
+1. **User acceptance** of the scope correction recorded above (Fuller dropped,
+   NPC-ban split to REQ-0338). Everything else is complete: merged, deployed,
+   and verified live.
+2. Optional cleanup: guest players `p_563d8b7cd48a` and `p_7d4eaa8afaa7` were
+   created for the live checks and still exist.
 
 ## Follow-ups
 
