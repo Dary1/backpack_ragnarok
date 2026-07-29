@@ -385,3 +385,10 @@ No product code, no content, no test assertions.
   (8/8, 2.0 m). Nothing in this REQ touches product code, a spec, a harness or
   the fleet, so it is pre-existing flake in that spec, not a regression here —
   but it is unresolved and belongs to whoever next looks at `artadmin.spec.ts`.
+
+## Deploy record (2026-07-29)
+- Merged to master 02d1cfe (--no-ff). Gate before the merge: `tools/release.sh` CI GREEN,
+  499 s, dist unchanged.
+- **No service restart, no dist change**: every path is tools/ or docs. Verified on
+  master after the merge: `tools/ci_scope.sh --selftest` GREEN (S1-S6).
+- built -> done.
