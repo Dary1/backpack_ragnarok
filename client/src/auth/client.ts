@@ -29,6 +29,13 @@ import type { SupabaseAuthLike } from './session';
 export interface PublicConfig {
   supabaseUrl: string | null;
   supabaseAnonKey: string | null;
+  /** REQ-0344: e2e-only override for the artadmin console's poll interval, in
+   * ms. ALWAYS null in production -- server/routes/public.cjs omits the key
+   * unless ART_ADMIN_POLL_MS is set in the api process's environment, which
+   * only tools/artadmin_e2e.sh does. This endpoint is the app's one runtime
+   * config channel, so a second consumer belongs here rather than in a second
+   * fetch; the supabase values remain its reason for existing. */
+  artAdminPollMs: number | null;
 }
 
 const CONFIG_PATH = '/api/config';
@@ -39,10 +46,17 @@ const CONFIG_PATH = '/api/config';
 // A timeout degrades to "not configured"; it never throws.
 const CONFIG_TIMEOUT_MS = 8000;
 
-const EMPTY: PublicConfig = { supabaseUrl: null, supabaseAnonKey: null };
+const EMPTY: PublicConfig = { supabaseUrl: null, supabaseAnonKey: null, artAdminPollMs: null };
 
 function nonEmptyString(v: unknown): string | null {
   return typeof v === 'string' && v.length > 0 ? v : null;
+}
+
+// REQ-0344: an absent key, a null, a string, 0 or a negative all mean "no
+// override" -- the caller then keeps its own production default. Nothing here
+// can turn a malformed server response into a pathological poll rate.
+function positiveNumber(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
 }
 
 async function fetchPublicConfig(): Promise<PublicConfig> {
@@ -55,6 +69,7 @@ async function fetchPublicConfig(): Promise<PublicConfig> {
     return {
       supabaseUrl: nonEmptyString(body.supabaseUrl),
       supabaseAnonKey: nonEmptyString(body.supabaseAnonKey),
+      artAdminPollMs: positiveNumber(body.artAdminPollMs),
     };
   } catch {
     // Offline, aborted, non-JSON body, no such route on an older server --

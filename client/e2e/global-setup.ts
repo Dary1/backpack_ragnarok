@@ -22,6 +22,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { E2E_DATA_ROOT, E2E_FLEET_ROOT } from './e2e-env';
+import { assertGpuRenderer } from './gpu';
 
 // Guest-auth ledger: guest-creating specs mint fresh players via
 // server/cli_invite.cjs INTO THEIR WORKER'S HOME (e2e-env.ts) and register
@@ -66,73 +67,11 @@ function probeBoxLock(): void {
 }
 
 
-// REQ-0331 (F1): E2E_GPU=1 is a REQUEST, not a guarantee. If the box's nvidia
-// KERNEL module and its USERSPACE libraries drift apart -- which is what an
-// apt driver upgrade without a reboot does -- ANGLE cannot reach the GPU and
-// silently falls back to llvmpipe/SwiftShader. Nothing anywhere says so: the
-// vulkan flags are still on the command line, the suite still passes, it just
-// renders on the CPU. That is exactly what happened between 2026-07-24 (driver
-// 595.71.05 -> 595.84, box not rebooted) and 2026-07-28, and it cost ~25% of
-// the suite's wall time plus a load flake, unnoticed, for four days.
-//
-// One probe launch per run (~0.5s) converts that silent tax into a printed
-// line. REQ-0342: ABORTS by default; E2E_ALLOW_CPU=1 downgrades it to a warning
-// (E2E_REQUIRE_GPU, REQ-0331's opt-in abort, is gone: it IS the default now).
-const GPU_PROBE_ARGS = [
-  '--headless=new', '--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist',
-  '--enable-features=Vulkan', '--ozone-platform=headless', '--no-sandbox',
-];
-
-async function assertGpuRenderer(): Promise<void> {
-  // REQ-0342: mirrors playwright.config.ts's USE_GPU -- only an explicit
-  // E2E_GPU=0 ("I mean to run on CPU") skips the probe.
-  if (process.env.E2E_GPU === '0') return;
-  const { chromium } = await import('@playwright/test');
-  const browser = await chromium.launch({ headless: false, args: GPU_PROBE_ARGS });
-  try {
-    const page = await browser.newPage();
-    await page.setContent('<canvas id="gpu-probe"></canvas>');
-    const renderer: string = await page.evaluate(() => {
-      const c = document.getElementById('gpu-probe') as HTMLCanvasElement | null;
-      const gl = (c?.getContext('webgl2') ?? c?.getContext('webgl')) as WebGLRenderingContext | null;
-      if (!gl) return 'NO WEBGL CONTEXT';
-      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
-      if (!dbg) return 'NO WEBGL_debug_renderer_info';
-      return String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL));
-    });
-    if (/NVIDIA/i.test(renderer)) {
-      console.log('[global-setup] REQ-0331: GPU rendering CONFIRMED -- ' + renderer);
-      return;
-    }
-    const msg =
-      '[global-setup] REQ-0331: E2E_GPU=1 but WebGL is NOT on the NVIDIA GPU.\n' +
-      '  renderer: ' + renderer + '\n' +
-      '  expected: ANGLE (NVIDIA, Vulkan ..., NVIDIA GeForce RTX 2080)\n' +
-      '  This run will render on the CPU: roughly +25% wall time, and the box\n' +
-      '  saturates at 4 workers (REQ-0331 F2), which turns load into flakes.\n' +
-      '  Usual cause -- kernel/userspace driver drift after an unrebooted apt\n' +
-      '  upgrade. Check:  nvidia-smi   (an NVML "version mismatch" here is the\n' +
-      '  tell)  and  cat /proc/driver/nvidia/version  vs  dpkg -l | grep nvidia-driver.\n' +
-      '  Fix -- stop every GPU holder (e.g. systemctl --user stop comfyui), then\n' +
-      '  sudo rmmod nvidia_uvm nvidia_drm nvidia_modeset nvidia && sudo modprobe nvidia\n' +
-      '  (or reboot the box), and restart the holders.';
-    // REQ-0342: ABORT is the default now. REQ-0331 shipped this as a warning
-    // and the warning worked exactly as well as no check at all -- the box
-    // rendered on llvmpipe for four days with the banner printing on every
-    // run. A gate whose failure mode is 'scrolls past' is not a gate.
-    // E2E_ALLOW_CPU=1 is the deliberate, named way to proceed anyway.
-    if (process.env.E2E_ALLOW_CPU === '1') {
-      console.warn('\n' + '='.repeat(78) + '\n' + msg +
-        '\n  (E2E_ALLOW_CPU=1 -> proceeding on CPU by request)\n' + '='.repeat(78) + '\n');
-      return;
-    }
-    throw new Error(msg +
-      '\n  Set E2E_GPU=0 to run on CPU deliberately, or E2E_ALLOW_CPU=1 to accept this' +
-      '\n  fallback for one run. Neither is a fix -- see the repair steps above.');
-  } finally {
-    await browser.close();
-  }
-}
+// REQ-0344: the GPU flag list and the renderer probe that used to live here
+// moved to e2e/gpu.ts, unchanged in behaviour. They were duplicated between
+// this file and playwright.config.ts and absent from the four standalone
+// admin/registry configs, which is the whole reason REQ-0342's default never
+// reached [6.5/8]. One definition, six consumers.
 
 
 export default async function globalSetup(): Promise<void> {

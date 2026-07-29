@@ -140,6 +140,25 @@ globalThis.fetch = async () => { throw new Error('network down'); };
 check('a rejected fetch yields null, no throw -- boot() must never be wedged by this',
   (await authClient.createSupabaseClient()) === null);
 
+// REQ-0344: the artadmin poll override rides the SAME runtime channel. Proved
+// here through the real parser rather than asserted about, because the whole
+// point of the seam is that a production build cannot reach it: absent key ->
+// null -> the console keeps its own 2000 ms.
+authClient.resetPublicConfigForTests();
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ ...okConfig, artAdminPollMs: 250 }) });
+check('REQ-0344: a server that carries artAdminPollMs surfaces it',
+  (await authClient.loadPublicConfig()).artAdminPollMs === 250);
+
+authClient.resetPublicConfigForTests();
+globalThis.fetch = async () => ({ ok: true, json: async () => okConfig });
+check('REQ-0344: a server WITHOUT it yields null, so the console keeps its production poll',
+  (await authClient.loadPublicConfig()).artAdminPollMs === null);
+
+authClient.resetPublicConfigForTests();
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ ...okConfig, artAdminPollMs: -5 }) });
+check('REQ-0344: a non-positive artAdminPollMs is rejected, not honoured',
+  (await authClient.loadPublicConfig()).artAdminPollMs === null);
+
 authClient.resetPublicConfigForTests();
 let fetchCalls = 0;
 globalThis.fetch = async () => { fetchCalls++; return { ok: true, json: async () => okConfig }; };

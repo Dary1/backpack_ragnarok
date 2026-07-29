@@ -89,6 +89,38 @@ T('api: GET /api/config treats a blank env value as absent (REQ-0341)', () => {
   });
 });
 
+// REQ-0344: the artadmin poll override. The THREE cases above deepStrictEqual
+// the WHOLE body with no such key, so they are already the guard that an
+// ordinary server's /api/config is byte-for-byte what REQ-0341 shipped. These
+// two cover the other half -- that the harness's api does carry it, and that a
+// malformed value degrades to absent rather than to a pathological poll rate.
+T('api: GET /api/config carries artAdminPollMs ONLY when the api env sets it (REQ-0344)', () => {
+  withEnv({ SUPABASE_URL: undefined, SUPABASE_ANON_KEY: undefined, ART_ADMIN_POLL_MS: '250' }, () => {
+    const req = mockReq('GET', '/api/config');
+    const res = mockRes();
+    api.handle(req, res);
+    assert.strictEqual(res.statusCode, 200);
+    assert.deepStrictEqual(JSON.parse(res.body), {
+      supabaseUrl: null, supabaseAnonKey: null, artAdminPollMs: 250,
+    });
+  });
+});
+
+T('api: GET /api/config OMITS artAdminPollMs for a junk or non-positive value (REQ-0344)', () => {
+  for (const bad of ['0', '-250', 'fast', '', '   ']) {
+    withEnv({ SUPABASE_URL: undefined, SUPABASE_ANON_KEY: undefined, ART_ADMIN_POLL_MS: bad }, () => {
+      const req = mockReq('GET', '/api/config');
+      const res = mockRes();
+      api.handle(req, res);
+      assert.strictEqual(res.statusCode, 200);
+      // Absent, not null: an unparseable knob must leave the console on its
+      // own production default, and must not change the body's shape either.
+      assert.deepStrictEqual(JSON.parse(res.body), { supabaseUrl: null, supabaseAnonKey: null },
+        'ART_ADMIN_POLL_MS=' + JSON.stringify(bad) + ' must read as absent');
+    });
+  }
+});
+
 T('api: GET /api/config rejects a non-GET method by falling through (REQ-0341)', () => {
   const req = mockReq('POST', '/api/config', '{}');
   const res = mockRes();

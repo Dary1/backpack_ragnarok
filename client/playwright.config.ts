@@ -12,6 +12,7 @@
 // + committed fixtures) and the proxy never routes to the live services, so
 // no live file, profile, or DB row is ever read or written by a run.
 import { defineConfig, devices } from '@playwright/test';
+import { GPU_ARGS, GPU_HEADLESS } from './e2e/gpu';
 
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:8803';
 // REQ-0080: when baseURL is local, a tiny reverse proxy (e2e/local-proxy.cjs)
@@ -28,11 +29,10 @@ const USE_LOCAL_PROXY = BASE_URL.includes('127.0.0.1') || BASE_URL.includes('loc
 // rendered on llvmpipe and merely looked slow. Any run that wants CPU must
 // now say so (E2E_GPU=0), and a run that gets CPU while asking for GPU is a
 // hard abort in global-setup, not a warning that scrolls past.
-const USE_GPU = process.env.E2E_GPU !== '0';
-const GPU_ARGS = USE_GPU
-  ? ['--headless=new', '--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist',
-     '--enable-features=Vulkan', '--ozone-platform=headless', '--no-sandbox']
-  : [];
+// REQ-0344: the flags themselves moved to e2e/gpu.ts. They were duplicated here
+// and in global-setup.ts, and MISSING from the four standalone admin/registry
+// configs, which is how "GPU is the default" stayed false for [6.5/8]+[6.6/8]
+// for as long as REQ-0342 had been landed.
 
 // REQ-0083: E2E_PARALLEL=N runs the suite across N workers, each backed by its
 // OWN isolated backpack-api instance (tools/e2e_fleet.cjs, started in
@@ -96,7 +96,7 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     extraHTTPHeaders: { ...E2E_PROFILE_HEADERS, ...WORKER_HEADERS },
-    headless: !USE_GPU, // REQ-0080: GPU path drives --headless=new via GPU_ARGS
+    headless: GPU_HEADLESS, // REQ-0080: GPU path drives --headless=new via GPU_ARGS
     launchOptions: { args: GPU_ARGS },
     // REQ-0031 Phase B: the 8x8 grid widened each board from ~556px to
     // 716px (PAD*2 + COLS*CELL = 38*2 + 8*80); at the old 1400x1000
