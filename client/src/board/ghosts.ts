@@ -118,9 +118,15 @@ export function flash(self: BoardRenderer, cells: Cell[] | undefined): void {
       const timer = setTimeout(() => {
         rect.destroy();
         self.flashTimers.delete(timer);
+        self.requestRender(); // REQ-0345: the outline is gone -- repaint without it
       }, FLASH_MS);
       self.flashTimers.add(timer);
     }
+    // REQ-0345: this function is one of the three that made the always-on
+    // Ticker load-bearing -- it mutates the scene graph and has never called
+    // render(). With the Ticker off it must paint itself, at both ends of the
+    // 350ms window: once to show the outline, once when the timer removes it.
+    self.requestRender();
   }
 
   /** REQ-0041 -- warehouse-claim placement pulse ("ピコンピコン"): a
@@ -138,6 +144,21 @@ export function flash(self: BoardRenderer, cells: Cell[] | undefined): void {
    * item" cue, visually different from the reject-flash's single red
    * outline. Safe to call on a disposed renderer (no-op) or with no
    * cells (no-op either way).
+   *
+   * REQ-0345 FINDING -- THIS PULSE IS NOT VISIBLE, AND WAS NOT BEFORE EITHER.
+   * Both call sites (useWarehouseData.ts's handleClaim, WorkshopPage.tsx's
+   * roll) call notifyStateChanged() on the very next line. That re-enters
+   * BoardRenderer.render(state), whose first act is gTarget.removeChildren()
+   * -- so these rects are detached from the stage before any frame shows
+   * them, and the timers below then blink an orphan. Measured through the
+   * real claim flow on the e2e box: 0 pixels of #59d68a across the whole 2s
+   * window, identically with the pre-REQ-0345 Ticker running and without it.
+   * Delaying the call 600ms in a throwaway build made every blink paint
+   * (596 px, on the exact 330ms rhythm), which is what proves the mechanism
+   * below is correct and the ORDERING is the fault. Left as found: REQ-0345
+   * is about the frame loop, and choosing the fix (pulse into a layer
+   * render() does not clear, or pulse after the state render) is REQ-0041's
+   * call, not this one's.
    */
 export function pulseCellsSuccess(self: BoardRenderer, cells: Cell[] | undefined): void {
     if (self.disposed) return;
@@ -156,12 +177,19 @@ export function pulseCellsSuccess(self: BoardRenderer, cells: Cell[] | undefined
         rect.visible = !rect.visible;
         if (elapsed >= CLAIM_PULSE_TOTAL_MS) {
           rect.destroy();
+          self.requestRender(); // REQ-0345: last blink -- repaint without the outline
           return;
         }
         currentTimer = setTimeout(blink, CLAIM_PULSE_BLINK_MS);
         self.flashTimers.add(currentTimer);
+        // REQ-0345: one paint per blink. Same reason as flash() above -- the
+        // Ticker used to draw the on/off toggle and nothing else ever will.
+        // Exact and cheap: the blinks are already setTimeout-driven, so this
+        // costs ~6 frames across the whole 2s pulse instead of ~120.
+        self.requestRender();
       };
       currentTimer = setTimeout(blink, CLAIM_PULSE_BLINK_MS);
       self.flashTimers.add(currentTimer);
     }
+    self.requestRender(); // REQ-0345: show the outline's first (visible) state
   }

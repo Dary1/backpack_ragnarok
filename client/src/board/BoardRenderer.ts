@@ -82,6 +82,7 @@ import { drawPOOutline } from './poOutline'; // REQ-0273: per-PO footprint outli
 import { OVERLAY } from './overlayPalette'; // REQ-0143: colourblind-safe overlay palette (single source, BS-G1)
 import { paintUsageRibbons, cellsBBoxPx, topRightCellBBoxPx, topLeftCellBBoxPx } from './usageRibbons'; // REQ-0287
 import { publishRibbonProbe, type UsageRibbonProbeEntry } from './usageRibbonProbe'; // REQ-0287
+import { countPaint } from './paintProbe'; // REQ-0345
 import { flash, paintNeutralReturn, pulseCellsSuccess, renderGhostAssembly, renderGhostBP, renderGhostPO } from './ghosts';
 import { notifyStateChanged } from '../store';
 import { clearItemTip, clearItemTipForBoard, showItemTip } from './itemTip';
@@ -102,6 +103,21 @@ import { traceUnit } from './linkTrace';
 function itemTex(textures: Map<string, Texture>, id: string, spriteKey: string): Texture | undefined {
   const res = resolveItemIcon(id, spriteKey, (k) => textures.has(k));
   return res.key ? textures.get(res.key) : undefined;
+}
+
+/** REQ-0345: count every frame this Application submits, at the one seam both
+ * producers share -- see paintProbe.ts for why the obvious lower-level
+ * instrument (a patched WebGL context) was abandoned. Wraps the renderer INSTANCE's own `render`
+ * (Application.render() resolves `this.renderer` per call, so the Ticker's
+ * captured method reference still lands here), and must run AFTER app.init()
+ * -- `app.renderer` does not exist before that. */
+function countFrames(app: Application, boardKey: string): void {
+  const target = app.renderer as unknown as { render: (opts: unknown) => void };
+  const submit = target.render.bind(app.renderer);
+  target.render = (opts: unknown) => {
+    countPaint(boardKey);
+    submit(opts);
+  };
 }
 
 export interface BoardDeps {
@@ -216,6 +232,11 @@ export class BoardRenderer {
   lastPointerDown = new Map<string, number>();
   lastBPPointerDown = new Map<string, number>(); // REQ-0045 (a2): BP dblclick-rotate tracking, kept separate from PO's own map (see this field's sibling doc).
   flashTimers = new Set<ReturnType<typeof setTimeout>>();
+  /** REQ-0345: the one in-flight requestAnimationFrame handle held by
+   * requestRender(), or null when this board has nothing to paint. It is
+   * null the overwhelming majority of the time -- that is the whole point:
+   * an untouched board schedules nothing at all. */
+  pendingPaint: number | null = null;
   // REQ-0142: link-trace hover subscription (redraw when the interrogated
   // Unit/beam changes -- hover lives outside the game store by design, so
   // nothing else would ever tell this board to repaint).
@@ -296,7 +317,27 @@ export class BoardRenderer {
     // per board forever; nothing about the scene graph or events differs.
     // (Cells/items keep painting their own opaque fills on top, so board
     // content renders identically to the old flat #121212 backdrop.)
-    await app.init({ canvas, width, height, backgroundAlpha: 0, antialias: true });
+    // REQ-0345 -- autoStart:false. PixiJS's TickerPlugin otherwise defaults
+    // autoStart to true (pixi.js 8.19.0 lib/app/TickerPlugin.mjs:14), adds
+    // Application.render at UPDATE_PRIORITY.LOW (:28) and starts the Ticker
+    // (:40), so EVERY mounted board re-rendered its whole scene ~60 times a
+    // second, forever. This board has no continuous animation (see render()'s
+    // tail comment, which said so long before anything acted on it) and
+    // App.tsx keeps BOTH boards mounted on every route -- a route switch only
+    // adds .route-hidden (display:none), which does not stop a Ticker -- so
+    // that was two full WebGL scenes per frame on screens with no board at
+    // all. Measured on the e2e box before this change: 41.2 frames/s per
+    // board on #/backpacks and 59.7 frames/s per board on #/dex, where both
+    // boards are display:none. After: 0.
+    //
+    // With autoStart:false the Ticker is created and Application.render is
+    // still registered on it, but Ticker.autoStart defaults to false and
+    // Ticker.add -> _startIfPossible() therefore requests no animation frame
+    // (lib/ticker/Ticker.mjs:30,160-165), so nothing schedules anything.
+    // Everything that must reach the screen now says so: render(state) paints
+    // synchronously, and every mutation outside it calls requestRender().
+    await app.init({ canvas, width, height, backgroundAlpha: 0, antialias: true, autoStart: false });
+    countFrames(app, boardIdKey(deps.ops.boardId));
     return new BoardRenderer(app, deps);
   }
 
@@ -358,6 +399,13 @@ export class BoardRenderer {
     cancelCarry();
     this.gCarry.removeChildren();
     this.gTarget.removeChildren();
+    // REQ-0345: the caller is still expected to render(state) right after
+    // (InventoryBoard.tsx's ops-swap effect does), but that is an unenforced
+    // contract and the Ticker used to cover for it within one frame. Ask for
+    // the repaint here too so a caller that forgets leaves a stale ghost on
+    // screen for at most a frame instead of until the next state change; the
+    // request is dropped for free if render(state) paints first.
+    this.requestRender();
   }
 
   destroy(): void {
@@ -378,8 +426,55 @@ export class BoardRenderer {
     // canvas detaches (a stale anchor would point at a gone element).
     clearItemTipForBoard(boardIdKey(this.boardId));
     this.app.stage.off('pointerup', this.onStagePointerUp);
+    // REQ-0345: a frame requested moments before teardown would otherwise fire
+    // against a destroyed renderer.
+    if (this.pendingPaint !== null) {
+      cancelAnimationFrame(this.pendingPaint);
+      this.pendingPaint = null;
+    }
     this.app.destroy(true, { children: true });
   }
+
+  /** REQ-0345: submit the CURRENT scene graph, synchronously. The one paint
+   * seam -- render(state) and the coalesced requestRender() below both end
+   * here, and mount()'s countFrames wrapper counts what actually leaves. */
+  paintNow(): void {
+    if (this.disposed) return;
+    // A frame already requested for this scene is now redundant.
+    if (this.pendingPaint !== null) {
+      cancelAnimationFrame(this.pendingPaint);
+      this.pendingPaint = null;
+    }
+    this.app.renderer.render({ container: this.app.stage });
+  }
+
+  /** REQ-0345: ask for ONE paint on the next animation frame, coalescing every
+   * request made in the same frame into it.
+   *
+   * This is what replaces the Ticker for the mutations that happen OUTSIDE
+   * render(state) and never called render() themselves -- which is why the
+   * always-on Ticker was NOT redundant and could not simply be deleted:
+   *   - the drag ghost + drop-target tint (onGlobalPointerMove, and the carry
+   *     subscription that clears them when a drag ends anywhere),
+   *   - the reject flash (ghosts.ts flash(), a 350ms red outline whose
+   *     setTimeout destroys the Graphics), and
+   *   - the claim pulse (ghosts.ts pulseCellsSuccess(), ~2s of blinks whose
+   *     setTimeout toggles rect.visible).
+   * All three mutate the scene graph and would have gone silently invisible
+   * the moment the frame loop stopped.
+   *
+   * rAF, not a loop: exactly one frame is requested per burst and nothing is
+   * scheduled once the burst is done, so an idle board costs zero. A
+   * pointermove storm collapses to one paint per displayed frame -- which is
+   * the most a permanent Ticker could ever have achieved either. */
+  requestRender(): void {
+    if (this.disposed || this.pendingPaint !== null) return;
+    this.pendingPaint = requestAnimationFrame(() => {
+      this.pendingPaint = null;
+      this.paintNow();
+    });
+  }
+
   render(state: GameState): void {
     this.lastState = state;
     const { engine, items, textures, layout, ops } = this.deps;
@@ -1324,9 +1419,15 @@ export class BoardRenderer {
     // loop for event-routing correctness. Rendering synchronously here
     // makes hit-testing correct immediately after every state change,
     // independent of tab visibility/ticker timing.
+    // REQ-0345: that auto-render loop is now gone for good (mount() passes
+    // autoStart:false), so this call is no longer merely an ordering fix for
+    // hit-testing -- it is the ONLY thing that puts a state change on screen.
+    // It stays SYNCHRONOUS rather than going through requestRender() for
+    // exactly the reason above: lastObjectRendered must be correct before the
+    // caller's next pointer event, not one animation frame later.
     // REQ-0287: publish this board's ribbon probe snapshot (e2e read seam).
     publishRibbonProbe(boardIdKey(this.boardId), this.usageRibbonProbe);
-    this.app.renderer.render({ container: this.app.stage });
+    this.paintNow();
   }
   /**
    * Screen (board-canvas-local pixel) position of a socket -- REQ-0027
@@ -1592,6 +1693,10 @@ export class BoardRenderer {
       if (!carry) {
         this.gCarry.removeChildren();
         this.gTarget.removeChildren();
+        // REQ-0345: an unresolved drop (outside both boards, or on a tab
+        // button) clears the overlays with NO engine call and therefore no
+        // notifyStateChanged()/render() -- nothing else would repaint here.
+        this.requestRender();
       }
     });
   }
@@ -1656,6 +1761,7 @@ export class BoardRenderer {
     if (!withinBounds) {
       this.gCarry.removeChildren();
       this.gTarget.removeChildren();
+      this.requestRender(); // REQ-0345: the ghost/tint just went away -- repaint without them
       return;
     }
     const local = clientToLocal(this, e.clientX, e.clientY);
@@ -1810,6 +1916,10 @@ export class BoardRenderer {
       }
     }
     updateCarry(local.x, local.y, drop);
+    // REQ-0345: everything above rebuilt gCarry/gTarget for this pointer
+    // position. Coalesced, so a fast drag paints once per frame, not once per
+    // native pointermove.
+    this.requestRender();
   };
 
   /** Cross-board socket legality preview for an SI -- splices the SI
@@ -1821,7 +1931,10 @@ export class BoardRenderer {
       cancelCarry();
       this.gCarry.removeChildren();
       this.gTarget.removeChildren();
+      // REQ-0345: render(state) paints; the no-state case still has cleared
+      // layers to get rid of.
       if (this.lastState) this.render(this.lastState);
+      else this.requestRender();
     }
   };
 
