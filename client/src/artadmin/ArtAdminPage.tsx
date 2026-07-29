@@ -12,6 +12,9 @@
 // detail 2 s, queue 2 s) and the safety rails (adopt/delete confirm
 // dialogs, toasts + the persistent aria-live art-msg line the e2e asserts
 // on); the panes are dumb components under client/src/artadmin/.
+// REQ-0344: those three intervals are now READ from a default that is exactly
+// the trio above; only a server that sets ART_ADMIN_POLL_MS can move them, and
+// only tools/artadmin_e2e.sh's api does. See POLL_MS below.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Locale } from '../store';
@@ -33,6 +36,18 @@ import { QueuePanel } from './QueuePanel';
 import { Lightbox } from './Lightbox';
 import { cellFitFrom } from './CellBackdrop';
 import type { CellFit } from './CellBackdrop';
+import { loadPublicConfig } from '../auth/client';
+
+// REQ-0344: the PRODUCTION poll cadence, unchanged since REQ-0156. These are
+// the defaults and the only values any deployed build ever uses -- the override
+// below arrives from GET /api/config and the api only carries it when
+// ART_ADMIN_POLL_MS is in its environment (server/routes/public.cjs).
+//
+// The list poll is expressed as a MULTIPLE of the fast one rather than as a
+// second knob, so an override moves all three together and cannot produce a
+// combination nobody has ever run: 2000/2000/10000 stays 1:1:5 at any rate.
+const POLL_MS = 2000;             // queue + selected-artwork detail
+const LIST_POLL_MULTIPLE = 5;     // -> 10 000 ms registry list at the default
 
 interface Toast { id: number; text: string; kind: 'ok' | 'err' }
 // REQ-0223b: every one of these carried a bare seed, because until REQ-0223a a seed
@@ -89,6 +104,19 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
   const [finalPreview, setFinalPreview] = useState('');
   // queue
   const [queue, setQueue] = useState<ArtQueueDto | null>(null);
+  // REQ-0344: e2e-only poll override. store/boot.ts already awaited this exact
+  // (memoised) promise before the app rendered, so it resolves in a microtask:
+  // the intervals below re-arm once, before their first tick, and a production
+  // page simply never sees a value. Deliberately NOT read synchronously at
+  // module scope -- that would make the module's behaviour depend on fetch
+  // ordering rather than on the server's answer.
+  const [pollMs, setPollMs] = useState(POLL_MS);
+  useEffect(() => {
+    let live = true;
+    void loadPublicConfig().then((cfg) => { if (live && cfg.artAdminPollMs) setPollMs(cfg.artAdminPollMs); });
+    return () => { live = false; };
+  }, []);
+  const listPollMs = pollMs * LIST_POLL_MULTIPLE;
   const [queueFetchedAt, setQueueFetchedAt] = useState(0);
   const [nowTick, setNowTick] = useState(Date.now());
   // overlays + feedback
@@ -140,15 +168,15 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
     } catch (_e) { /* transient poll errors stay silent; the next tick retries */ }
   }, []);
 
-  useEffect(() => { void refreshList(); const t = setInterval(() => { void refreshList(); }, 10000); return () => clearInterval(t); }, [refreshList]);
-  useEffect(() => { void pollQueue(); const t = setInterval(() => { void pollQueue(); }, 2000); return () => clearInterval(t); }, [pollQueue]);
+  useEffect(() => { void refreshList(); const t = setInterval(() => { void refreshList(); }, listPollMs); return () => clearInterval(t); }, [refreshList, listPollMs]);
+  useEffect(() => { void pollQueue(); const t = setInterval(() => { void pollQueue(); }, pollMs); return () => clearInterval(t); }, [pollQueue, pollMs]);
   useEffect(() => { const t = setInterval(() => setNowTick(Date.now()), 1000); return () => clearInterval(t); }, []);
   useEffect(() => {
     if (!selected) return;
     void loadDetail(selected);
-    const t = setInterval(() => { void loadDetail(selected); }, 2000);
+    const t = setInterval(() => { void loadDetail(selected); }, pollMs);
     return () => clearInterval(t);
-  }, [selected, loadDetail]);
+  }, [selected, loadDetail, pollMs]);
 
   // REQ-0173 (contentadmin-entity-rendering B): honor + consume a pending
   // artadmin deep-link focus name once the artwork list has loaded (unknown

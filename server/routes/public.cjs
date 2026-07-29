@@ -24,11 +24,41 @@ function envOrNull(name) {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+// REQ-0344: an e2e-only speed knob for the artwork admin console, and the ONE
+// place its production value cannot be reached from.
+//
+// ArtAdminPage polls the queue and the selected artwork's detail every 2000 ms
+// and the registry list every 10000 ms. tools/artadmin_e2e.sh holds each mock
+// job ART_MOCK_DELAY_MS in flight so the queue states stay observable, and its
+// 1500 ms was chosen AGAINST that 2000 ms poll -- the two are one setting wearing
+// two names. Shortening the poll lets the delay shrink with it, so both live in
+// that harness's single env block and can never drift apart.
+//
+// Served, not built in. web/app is a TRACKED build artifact; REQ-0341 exists
+// because making its bytes depend on env is how sign-in shipped broken TWICE.
+// A Vite-inlined `import.meta.env.VITE_ART_POLL_MS` would re-arm exactly that,
+// and would additionally make the tracked bundle differ between a run that set
+// the knob and one that did not.
+//
+// The key is OMITTED (not null) when the env is absent, so an ordinary server's
+// /api/config body is byte-for-byte the one REQ-0341 shipped -- which the three
+// deepStrictEqual cases in server/tests/api/public.cjs already assert, and which
+// therefore now double as the regression guard for THIS field.
+function positiveIntOrNull(name) {
+  const v = process.env[name];
+  if (typeof v !== 'string') return null;
+  const n = Number(v.trim());
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+}
+
 function publicClientConfig() {
-  return {
+  const cfg = {
     supabaseUrl: envOrNull('SUPABASE_URL'),
     supabaseAnonKey: envOrNull('SUPABASE_ANON_KEY'),
   };
+  const pollMs = positiveIntOrNull('ART_ADMIN_POLL_MS');
+  if (pollMs !== null) cfg.artAdminPollMs = pollMs;
+  return cfg;
 }
 
 function tryPublicRoutes(req, res, url, p) {
