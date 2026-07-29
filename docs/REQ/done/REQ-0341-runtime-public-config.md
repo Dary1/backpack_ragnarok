@@ -367,3 +367,33 @@ in, which is the owner's to do, not a check to run unasked. The restore path
 above exercises the same await ordering (initSupabaseAuth -> getSession ->
 auth-js initializePromise, which is where detectSessionInUrl runs), so the
 ordering risk is evidenced but the redirect exchange itself remains untested.
+
+### Full OAuth round-trip, live (2026-07-29) -- the gap above is now CLOSED
+
+Run in a real browser against the deployed app, with the owner's explicit
+authorisation. No credential was ever entered: Discord's own session was live,
+so the flow needed only the consent click.
+
+1. Signed OUT. The signed-out Settings block rendered the **configured** variant
+   -- `settings-continue-discord` + `settings-play-guest`, and NOT
+   `settings-signin-unconfigured`. That branch is reachable only if
+   `createSupabaseClient()` returned a real client built from the
+   runtime-fetched config.
+2. Clicked Continue with Discord. The redirect it produced was correct PKCE:
+   `discord.com/oauth2/authorize?...&response_type=code&scope=email+identify`
+   with `redirect_uri=https://auth.qtie.jp/auth/v1/callback` and a state uuid.
+3. Discord consent screen; authorised.
+4. Returned to `/app/` and **the `?code=` param was gone from the URL**. auth-js
+   removes it (`url.searchParams.delete('code')` + `replaceState`) ONLY after a
+   successful exchange, so the code was consumed -- not silently dropped, which
+   is the exact failure the ordering analysis was guarding against.
+5. Session established: Settings reads "Signed in with Discord as <user>",
+   sign-out button back, data-source badge `live`.
+
+That is the redirect exchange section 2's ordering analysis was written to
+protect, executed end to end against the runtime-config build. The analysis is
+no longer only source-reading -- it has a round-trip behind it.
+
+Still true and worth keeping: **no automated test drives this.** It needs a live
+Discord + GoTrue and a real consent click, so it stays a manual check to repeat
+if `flowType` or the boot ordering is ever touched.
