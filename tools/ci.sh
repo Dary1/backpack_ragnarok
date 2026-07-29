@@ -97,6 +97,12 @@ fi
 
 cd "$(dirname "$0")/.."
 
+# REQ-0343: wall clock for the CI RECEIPT written at the bottom. Started AFTER
+# the flock re-exec above on purpose -- time spent queueing behind another
+# session's run is not gate work, and a receipt that claimed it would be a lie
+# about how long the gate takes.
+CI_RUN_T0=$(date +%s)
+
 # ---- REQ-0339: computed test scope ------------------------------------
 # The two e2e families are 357 s of a 439 s run and each is irrelevant to
 # changes on the other surface. Which of them a run needs is DERIVED from
@@ -176,6 +182,15 @@ stage_summary() {
 stage "[0.5/7] ci scope table self-check + classifier tests (REQ-0339)"
 bash tools/ci_scope.sh --selftest
 python3 tools/tests/ci_scope_test.py
+# REQ-0343: the push gate rests on the receipt this run writes at the bottom and
+# on the classifier above, and its own failure mode is the familiar one -- a
+# check that silently stops checking. [0.6] proves, on every run, that a receipt
+# binds to a tree and that the hook REJECTS: no receipt, wrong tree, and a
+# public receipt under an admin-touching diff are all asserted to be rejected,
+# against a real bare repo built in a temp dir. ~2 s, no network, no services.
+stage "[0.6/7] push-gate receipt + pre-receive hook tests (REQ-0343)"
+bash tools/ci_receipt.sh --selftest
+python3 tools/tests/push_gate_test.py
 stage "[1/7] sim tests"
 node sim/tests/run.cjs
 stage "[2/7] sim replay goldens (determinism contract)"
@@ -473,3 +488,31 @@ else
 fi
 stage_summary
 echo "CI GREEN"
+
+# ---- REQ-0343: the CI receipt -----------------------------------------
+# Everything above this line decides whether the gate is green. This block only
+# RECORDS that it was, for tools/pre_receive_gate.sh to check at push time. It
+# is deliberately below `echo "CI GREEN"` so that nothing here can change what
+# CI GREEN means, and so the receipt banner is the last thing on screen.
+#
+# Two refusals, both of which are the point of the mechanism rather than
+# exceptions to it:
+#
+#   * A run with SKIP_PG / SKIP_CLIENT / SKIP_E2E set prints CI GREEN while
+#     having skipped whole families of gates. Those flags exist for environments
+#     missing a dependency; they must never be able to mint a receipt, or the
+#     push gate degrades to `SKIP_E2E=1 tools/ci.sh && git push`, which is worse
+#     than no gate because it looks like one. Note that a SCOPE-skipped stage is
+#     NOT this case: scope is computed from the diff and the receipt carries it,
+#     so the push gate re-derives the requirement and checks it.
+#   * A failure to write (no origin, external disk unmounted) is LOUD but NOT
+#     fatal. The verdict of a test gate must not depend on a USB disk being
+#     plugged in; the consequence is simply that the push gate will reject the
+#     tree until a receipt exists, which is the correct and visible outcome.
+CI_RUN_SECS=$(( $(date +%s) - CI_RUN_T0 ))
+if [ "${SKIP_PG:-0}" = "1" ] || [ "${SKIP_CLIENT:-0}" = "1" ] || [ "${SKIP_E2E:-0}" = "1" ]; then
+  echo "[ci-receipt] NOT WRITTEN -- this run set SKIP_PG/SKIP_CLIENT/SKIP_E2E, so CI GREEN does not mean the whole gate ran. The push gate will reject this tree." >&2
+else
+  bash tools/ci_receipt.sh write "$CI_SCOPE" "$CI_RUN_SECS" tools/ci.sh \
+    || echo "[ci-receipt] NOT WRITTEN (see above). CI is still GREEN; the push gate will reject this tree until a receipt exists." >&2
+fi
