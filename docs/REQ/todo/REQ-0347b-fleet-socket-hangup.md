@@ -24,6 +24,15 @@ Error: apiRequestContext.delete: socket hang up
 Test #174 of 209 — not at teardown. The immediate re-run of the identical tree
 was **CI GREEN** and pushed.
 
+**Which test that is.** `:1206:3` is playwright's *test-declaration* coordinate
+(`file:line:col` of the `test(` call, col 3 inside a describe), not the line
+that threw. Line 1206 declares
+`REQ-0045 (g): monitor Log tab … › the Log tab shows idx-prefixed humanized
+lines …`, whose last statement is `await apiCancelRoom(...)` — the DELETE.
+Worth stating because the neighbouring test (REQ-0045 (f), declared at 1134)
+also ends in the same `apiCancelRoom` call, and reading 1206 as a throw site
+lands on the wrong one — see §3.
+
 ## 2. What was ruled out originally, and how much of it survives
 
 - **Not the api crashing**: `w1-api.log` contains only its startup lines.
@@ -39,31 +48,36 @@ A quiet api log was the harness's resting state, not a statement about the api.
 
 ## 3. The keep-alive race — tested, RULED OUT
 
-### Why it looked so strong
+### Why it looked strong — and the correction
 
-`client/e2e/schedule.spec.ts:1181-1206`, the exact site of the failure:
+The proxy holds an idle connection for `http.Server.keepAliveTimeout` = **5000
+ms**, and `http.globalAgent.keepAlive` is `true` (node v24.18.0) — both read
+off the banner REQ-0347a added. A pooled connection reused at the instant the
+server drops it is the textbook shape of a one-off `socket hang up`: rare,
+load-dependent, green on re-run. That much stands.
+
+**The first version of this section then pinned it on the wrong test.** It
+quoted the `deadline = Date.now() + 5000` polling loop that precedes
+`apiCancelRoom` in the REQ-0045 (f) enemy-label test — 5000 ms of zero API
+traffic against a 5000 ms timeout, a coincidence too neat to leave untested.
+But that loop belongs to the test declared at **1134**, and the failure is the
+test declared at **1206** (§1). The real prelude to the failing DELETE is:
 
 ```ts
-const deadline = Date.now() + 5000;
-while (Date.now() < deadline) {
-  const bounds = await page.evaluate(...);   // page work only
-  ...
-  await page.waitForTimeout(300);
-}
-expect(checkedAtLeastOne).toBe(true);
-
-await apiCancelRoom(page, player.token, roomId);   // <- line 1206, the DELETE
+await expect(page.locator(... 'monitor-feed-row').first()).toBeVisible({ timeout: 25000 });
+… overflow menu → copy → clipboard read (page-only) …
+await apiCancelRoom(page, player.token, roomId);   // the DELETE that hung up
 ```
 
-The DELETE is preceded by **exactly 5000 ms in which the request context issues
-no API traffic at all** — and `http.Server.keepAliveTimeout` is **5000 ms**
-(confirmed from the banner REQ-0347a added; `http.globalAgent.keepAlive` is
-also `true`, node v24.18.0). A pooled connection going idle for precisely as
-long as the server is willing to hold it, then being reused, is the textbook
-shape of a one-off `socket hang up`: rare, load-dependent, green on re-run.
+— a long and *variable* page-only stretch, not a 5000 ms one. That change of
+facts **weakens** the hypothesis on its own, before any experiment: after a gap
+that long the request context's pooled socket is already gone, so playwright
+opens a fresh connection and there is no reuse window to race. The 5000/5000
+coincidence was never there.
 
-Two numbers that identical, arrived at independently, are exactly the kind of
-coincidence that deserves to be tested rather than believed.
+The experiment below was run against the boundary directly, so it remains valid
+either way — and it is what settles the question. Recorded rather than quietly
+deleted because the misread is the kind a second investigator would repeat.
 
 ### The experiment
 
@@ -89,21 +103,48 @@ one-in-a-hundred-thousand event — but it is no longer the thing to look at
 first. `E2E_PROXY_KEEPALIVE_MS` (REQ-0347a) is kept precisely so the experiment
 is one command rather than a re-derivation.
 
-## 4. What is left
+## 4. The failing test itself — 150 runs, and two leads closed
 
-In rough order of what the evidence permits:
+The direct attack: the actual test at `schedule.spec.ts:1206`, repeated, with
+`E2E_PROXY_TRACE=1` and the same 4-worker parallelism and box load a release
+gate has.
 
-- **A genuinely rare race** of the kind above, at a rate 836 trials cannot see.
-- **Something specific to THAT request**, not to idle sockets generally: line
-  1206 cancels a room with a **live run** attached, after a monitor stream has
-  been open against the same worker api for seconds. Nothing here has looked at
-  what `DELETE /api/schedule/rooms/:id` does to in-flight streams for that room.
-  This is the least-explored direction and the most specific to the failure.
-- **Something outside both processes** — the loopback, or the box, at a moment
-  a full release gate had four browsers, four api workers and a GPU busy.
+| run | repetitions | recurrences | anomaly lines |
+|---|---|---|---|
+| `--repeat-each=30`, 4 workers, loaded | 30 | **0** | **0** |
+| `--repeat-each=120`, 4 workers, loaded | 120 | **0** | **0** |
+
+**150 consecutive executions of the exact failing test, zero recurrences, zero
+anomaly lines.** The trace shows the connections busy throughout (sockets
+serving 1-18 requests over 0.6-7.5 s), so the runs were the real thing.
+
+Two leads die here:
+
+- **"The cancel disturbs an in-flight stream."** There is no stream. The monitor
+  is a **poller** — `client/src/schedule/monitor/useRunPlayhead.ts`, a paced
+  poll with a deliberate 2.5 s live lag. No `EventSource`, no `WebSocket`, no
+  `text/event-stream` anywhere in `client/src` or `server/`. And the handler is
+  ordinary: `DELETE /api/schedule/rooms/:id` → `loadAndSettleRoom` →
+  `rooms.cancelRoom`, which sets a status, writes the room, returns it. It
+  touches no socket, no timer, no other response.
+- **"It is about the request context's idle socket."** §3: not at that gap
+  length, and not in 836 straddling trials.
+
+What that leaves, honestly:
+
+- **A genuinely rare event** — 150 runs of the test and 836 boundary trials do
+  not exclude something at one-in-a-few-thousand. The original was one in one
+  full gate.
+- **Something about the whole gate, not this test** — the failure happened as
+  test #174 of 209 with three other workers, four api processes, chromium and a
+  GPU all live. Every reproduction here ran this test *alone* (×4). The next
+  cheap step, if it recurs, is a full `CI_SCOPE=both` gate with
+  `E2E_PROXY_TRACE=1` rather than more repetitions of one spec.
+- **Something outside both processes** — the loopback or the box itself.
 
 Explicitly NOT on the list any more: "the api was quiet so it must have been
-the proxy" (§2), and the keep-alive race as a first guess (§3).
+the proxy" (§2), the keep-alive race as a first guess (§3), and anything about
+live streams or the cancel handler (this section).
 
 ## 5. On recurrence — what to read, in order
 
@@ -120,7 +161,10 @@ keep-alive race after all, and §3 becomes wrong in a useful way. **No line at
 all** = the socket died before any request was parsed, which excludes both
 services. Every line carries the in-flight request list.
 
-Then re-run with `E2E_PROXY_TRACE=1` for the full connection census.
+Then re-run with `E2E_PROXY_TRACE=1` for the full connection census — and
+make that a **full `CI_SCOPE=both` gate**, not a repeat of one spec: §4 already
+spent 150 solo repetitions of the failing test for nothing, and the one thing
+the original failure had that none of them did is the other 208 tests.
 
 ## 6. What is NOT claimed
 

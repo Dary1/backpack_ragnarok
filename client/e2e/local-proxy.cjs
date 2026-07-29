@@ -204,9 +204,15 @@ const server = http.createServer((creq, cres) => {
 // socket itself and reported when it closes with an error.
 const REQ_COUNT = Symbol('req0347.requests');
 const OPENED_AT = Symbol('req0347.openedAt');
+const PORTS = Symbol('req0347.ports');
 server.on('connection', (sock) => {
   sock[OPENED_AT] = Date.now();
   sock[REQ_COUNT] = 0;
+  // REQ-0347b: read the ports NOW. By the time 'close' fires the socket has
+  // released them and both report `undefined` -- observed across 150 traced
+  // runs of the failing spec, which is exactly the field an incident would
+  // need to line this socket up against anything else on the box.
+  sock[PORTS] = `local=${sock.localPort} remote=${sock.remotePort}`;
   sock.on('close', (hadError) => {
     // Only an ERRORED close is worth a line by default: an ordinary keep-alive
     // expiry is the overwhelmingly common case and would drown the signal.
@@ -217,7 +223,7 @@ server.on('connection', (sock) => {
     // if the hang-up recurs. Off by default: it is one line per connection.
     if (hadError || process.env.E2E_PROXY_TRACE) {
       note(hadError ? 'SOCKET-ERROR-CLOSE' : 'SOCKET-CLOSE',
-        `served=${sock[REQ_COUNT]} age=${Date.now() - sock[OPENED_AT]}ms local=${sock.localPort} remote=${sock.remotePort}`);
+        `served=${sock[REQ_COUNT]} age=${Date.now() - sock[OPENED_AT]}ms ${sock[PORTS]}`);
     }
   });
 });
@@ -225,7 +231,7 @@ server.on('connection', (sock) => {
 server.on('clientError', (e, sock) => {
   // REQ-0347: this used to destroy the socket in complete silence, which is
   // indistinguishable from the reported failure. Name it before destroying.
-  note('CLIENT-ERROR', `${e.code || ''} ${e.message} served=${sock[REQ_COUNT] || 0} bytesRead=${sock.bytesRead}`);
+  note('CLIENT-ERROR', `${e.code || ''} ${e.message} served=${sock[REQ_COUNT] || 0} bytesRead=${sock.bytesRead} ${sock[PORTS] || 'local=? remote=?'}`);
   try { sock.destroy(); } catch {}
 });
 

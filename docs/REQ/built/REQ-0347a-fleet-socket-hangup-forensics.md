@@ -132,6 +132,7 @@ And the banner, from a normal scoped e2e run on this box:
 | `tsc -b` (client) | clean |
 | synthetic anomaly probes | 3/3 lines produced (§3) |
 | used in anger | REQ-0347b's 836-trial keep-alive experiment ran entirely on these knobs |
+| port capture | fixed in REQ-0347b's traced runs: `localPort`/`remotePort` read `undefined` at `'close'` time (the socket has already released them), so they are now captured at `'connection'` |
 | noise on a clean run | a full `CI_SCOPE=both` gate (209 e2e tests, 4 workers) left the anomaly log at **1 line — the banner, 0 anomalies**. That is the intended resting state: silence here is a statement, not an absence of wiring. |
 | `tools/ci.sh CI_SCOPE=both` | shared with REQ-0346 — same branch, same run |
 
