@@ -339,3 +339,31 @@ reaches a configured Supabase client.
   variant live. That path is covered by client/e2e/runtime-config.spec.ts in the
   hermetic harness, including a watched negative control.
 - built -> done.
+
+### Live browser verification (2026-07-29, closing the gap left in the deploy record)
+Done with a real browser against the deployed app, after a genuine full reload:
+
+    227ms  /api/config          <- FIRST api call of the boot
+    293ms  /api/notifications
+    293ms  /api/me
+    323ms  /api/me
+    349ms  /api/profile/<id>/skins
+    349ms  /api/content
+
+- `/api/config` precedes every other call by ~66 ms, so the ordering this REQ was
+  designed around holds in production, not just in the harness.
+- Settings renders the CONFIGURED variant: **"Signed in with Discord as <user>"**
+  with a working sign-out. That is only reachable if createSupabaseClient()
+  returned a real client -- an unconfigured one makes every auth call answer
+  "auth not configured".
+- Bundle served is index-DVVa0rMO.js, the env-LESS build, and the badge reads
+  live. No console errors on the config/auth path.
+- **A live Discord session survives the new async client construction and a full
+  page reload.** This is the path the owner actually uses.
+
+Still NOT verified, and it needs the owner: a FRESH OAuth round-trip (the PKCE
+redirect exchange). Reaching it means signing out of the live session and back
+in, which is the owner's to do, not a check to run unasked. The restore path
+above exercises the same await ordering (initSupabaseAuth -> getSession ->
+auth-js initializePromise, which is where detectSessionInUrl runs), so the
+ordering risk is evidenced but the redirect exchange itself remains untested.
