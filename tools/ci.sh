@@ -7,6 +7,9 @@
 #   SKIP_CLIENT=1  skip client typecheck+build
 #   SKIP_E2E=1     skip Playwright e2e (needs installed browsers + running services)
 #
+# REQ-0339: the two e2e families are also SCOPED from the diff -- see the
+# "computed test scope" block below. CI_SCOPE=both forces the full gate.
+#
 # REQ-0159: "CI GREEN" below means LITERALLY green. There is no accounted/
 # remembered failure set any more -- if this script prints CI GREEN, every gate
 # it ran passed. Do not re-introduce a "these reds are fine" convention: a red
@@ -94,6 +97,36 @@ fi
 
 cd "$(dirname "$0")/.."
 
+# ---- REQ-0339: computed test scope ------------------------------------
+# The two e2e families are 357 s of a 439 s run and each is irrelevant to
+# changes on the other surface. Which of them a run needs is DERIVED from
+# `git diff` by tools/ci_scope.sh -- it is never asked, never a flag someone
+# picks, and never a judgement call, because the failure mode being guarded
+# against is drift in exactly that judgement. Read tools/ci_scope.sh's header
+# for the table and the fail-closed rule; anything it cannot classify comes
+# back as `both`.
+#
+# SEAMS (both can only ever ADD work, never remove it):
+#   CI_SCOPE=both            force the full gate -- what tools/release.sh does
+#   CI_SCOPE=admin|public    force one family (debugging this mechanism)
+#   CI_SCOPE_BASE=<ref>      compare against something other than master
+if [ -n "${CI_SCOPE:-}" ]; then
+  case "$CI_SCOPE" in
+    admin|public|both) ;;
+    *) echo "[ci-scope] CI_SCOPE='$CI_SCOPE' is not one of admin|public|both" >&2; exit 2 ;;
+  esac
+  CI_SCOPE_SRC="forced by CI_SCOPE env"
+else
+  CI_SCOPE="$(bash tools/ci_scope.sh "${CI_SCOPE_BASE:-master}")"
+  CI_SCOPE_SRC="computed from git diff vs ${CI_SCOPE_BASE:-master}"
+fi
+case "$CI_SCOPE" in
+  both)   echo "[ci-scope] admin+public (both) -- $CI_SCOPE_SRC: admin e2e AND client e2e will run" ;;
+  admin)  echo "[ci-scope] admin -- $CI_SCOPE_SRC: [6.5/8]+[6.6/8] run, [7/7] SKIPPED" ;;
+  public) echo "[ci-scope] public -- $CI_SCOPE_SRC: [7/7] runs, [6.5/8]+[6.6/8] SKIPPED" ;;
+esac
+scope_has() { [ "$CI_SCOPE" = both ] || [ "$CI_SCOPE" = "$1" ]; }
+
 # ---- REQ-0334: stage timing -------------------------------------------
 # Every gate below announced itself with a bare echo and no clock, so "ci.sh is
 # slow" could not be answered with a number -- only by watching which banner it
@@ -130,6 +163,19 @@ stage_summary() {
 
 # REQ-0323: ports now come from the rental port desk (tools/port_desk.sh) at run
 # time, so there is no derived-port rule to machine-check here any more.
+
+# REQ-0339: this stage is the whole point of the scoping REQ. The classification
+# table in tools/ci_scope.sh is hand-written, and a hand-written map of a moving
+# tree rots silently -- the failure would be a stage quietly not running, which
+# is the one failure a green gate cannot show you. --selftest asserts the table
+# against the tree (top-level inventory, client/src and server/routes
+# inventories + which of them are admin, every e2e spec classifies, the
+# playwright testIgnore set == the specs classified admin, and every spec an
+# isolated harness actually drives is admin-or-both). It is first because a red
+# here invalidates every scoping decision made above it. ~0.3 s.
+stage "[0.5/7] ci scope table self-check + classifier tests (REQ-0339)"
+bash tools/ci_scope.sh --selftest
+python3 tools/tests/ci_scope_test.py
 stage "[1/7] sim tests"
 node sim/tests/run.cjs
 stage "[2/7] sim replay goldens (determinism contract)"
@@ -361,7 +407,8 @@ fi
 # SKIP_E2E guards. Each harness takes the same box lock via tools/e2e_run.sh,
 # so they queue against each other and against the default suite -- never
 # concurrent, never touching the live namespace.
-if [ "${SKIP_E2E:-0}" != "1" ] && [ "${SKIP_PG:-0}" != "1" ] && [ "${SKIP_CLIENT:-0}" != "1" ]; then
+if [ "${SKIP_E2E:-0}" != "1" ] && [ "${SKIP_PG:-0}" != "1" ] && [ "${SKIP_CLIENT:-0}" != "1" ] \
+   && scope_has admin; then
   stage "[6.5/8] admin e2e harnesses (artadmin + artinspect + contentadmin, REQ-0156/0152/0157)"
   : "${DATABASE_URL:?SKIP_PG=1 or set DATABASE_URL}"
   bash tools/artadmin_e2e.sh
@@ -375,10 +422,15 @@ if [ "${SKIP_E2E:-0}" != "1" ] && [ "${SKIP_PG:-0}" != "1" ] && [ "${SKIP_CLIENT
   # registry-guard specs, failing if any of them skips.
   stage "[6.6/8] registry-first serving e2e (pg, seeded adopted def, REQ-0221)"
   bash tools/registry_first_e2e.sh
+elif [ "${SKIP_E2E:-0}" != "1" ] && [ "${SKIP_PG:-0}" != "1" ] && [ "${SKIP_CLIENT:-0}" != "1" ]; then
+  # REQ-0339: not a skip flag -- the DIFF says this run touches no admin-surface
+  # path. Both banners are printed so "which stages ran" stays greppable.
+  stage "[6.5/8] admin e2e harnesses SKIPPED -- ci-scope is '$CI_SCOPE' (no admin-surface path in the diff; CI_SCOPE=both forces)"
+  stage "[6.6/8] registry-first serving e2e SKIPPED -- ci-scope is '$CI_SCOPE' (same reason)"
 else
   stage "[6.5/8] admin e2e harnesses SKIPPED"
 fi
-if [ "${SKIP_E2E:-0}" != "1" ]; then
+if [ "${SKIP_E2E:-0}" != "1" ] && scope_has public; then
   # REQ-0234 (F2, implements REQ-0225's default-flip): from a req-NNNN
   # REQ-0238: [7/7] is FILES-mode -- registry EMPTY by design, so no
   # registry-first path fires here. See the SERVING-MODE COVERAGE MAP at
@@ -408,6 +460,11 @@ if [ "${SKIP_E2E:-0}" != "1" ]; then
                   E2E_GPU="${E2E_GPU:-1}" \
                   E2E_PARALLEL="${E2E_PARALLEL:-4}" pnpm run e2e) # REQ-0083: 4 isolated-backend workers (E2E_PARALLEL=0 -> serial)
   fi
+elif [ "${SKIP_E2E:-0}" != "1" ]; then
+  # REQ-0339: not SKIP_E2E -- the DIFF says this run touches no public-surface
+  # path. tools/release.sh always forces CI_SCOPE=both, so nothing ever leaves
+  # the repo on a scoped run.
+  stage "[7/7] client e2e SKIPPED -- ci-scope is '$CI_SCOPE' (no public-surface path in the diff; CI_SCOPE=both forces)"
 else
   stage "[7/7] client e2e SKIPPED"
 fi
