@@ -56,6 +56,16 @@ export const sortieEn = {
   'sortie.launch.slotFailed': 'Slot {n} could not be filled: ',
   'sortie.launch.resume': 'Resume this sortie',
   'sortie.dungeonUnknown': 'That dungeon is no longer available — pick another destination.',
+  // ---- REQ-0337: public co-op recruitment (1-3 squads seated; the empty
+  // seats are the recruitment). Copy must never promise a departure -- the
+  // Troop only marches once the fourth seat is taken (REQ-0325).
+  'sortie.launch.needAnySquad': 'Muster at least one squad.',
+  'sortie.slot.openSeat': 'Open seat — recruiting',
+  'sortie.recruit.willOpen': 'Four squads make a troop — you have mustered {n} fewer, so those seats go up publicly and anyone may take them.',
+  'sortie.recruit.button': 'Open the call',
+  'sortie.recruit.opening': 'Raising the banner…',
+  'sortie.recruit.failed': 'The call could not be raised: ',
+  'sortie.recruit.seatFailed': 'The call is open, but your squad for seat {n} was refused: ',
 } as const;
 export const sortieJa = {
   'sortie.pageTitle': '出撃準備',
@@ -112,4 +122,12 @@ export const sortieJa = {
   'sortie.launch.slotFailed': 'スロット{n}を配置できませんでした: ',
   'sortie.launch.resume': '続きから出撃',
   'sortie.dungeonUnknown': 'そのダンジョンは利用できません — 別の行き先を選んでください。',
+  // ---- REQ-0337: 公開募集（1〜3部隊を配置し、空席が募集枠になる）
+  'sortie.launch.needAnySquad': '部隊を最低1つ配置してください。',
+  'sortie.slot.openSeat': '空席 — 募集中',
+  'sortie.recruit.willOpen': '遠征隊は4部隊 — {n}席が空いています。この席を公開して誰でも入れるようにします。',
+  'sortie.recruit.button': '募集をかける',
+  'sortie.recruit.opening': '旗を掲げています…',
+  'sortie.recruit.failed': '募集をかけられませんでした: ',
+  'sortie.recruit.seatFailed': '募集は開始しましたが、{n}番目の部隊は配置できませんでした: ',
 } as const;

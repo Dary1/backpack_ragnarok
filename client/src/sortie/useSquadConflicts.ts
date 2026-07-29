@@ -6,6 +6,7 @@
 // the caller's rooms (+ the B1 lastRun window for the "frees at" time).
 import { useMemo } from 'react';
 import type { ApiRoom } from '../api';
+import { roomHoldsOwnSquad } from '../schedule/seats'; // REQ-0337
 import { useGameStore } from '../store';
 import {
   sharedUids,
@@ -54,7 +55,15 @@ function deploymentFor(index: number, rooms: ApiRoom[] | null): SquadDeployment 
   let cooldown: SquadDeployment | null = null;
   for (const room of rooms) {
     if (room.status === 'canceled') continue;
-    if (!room.slots.some((s) => s.squadIndex === index)) continue;
+    // REQ-0337: was `room.slots.some((s) => s.squadIndex === index)`, which both
+    // THREW on a co-op Troop's null free seats and matched OTHER seat owners'
+    // squad indices as this player's. roomHoldsOwnSquad is null-safe and
+    // owner-scoped. A Troop that is still recruiting is deliberately NOT a
+    // deployment: its seats are held (the server's deploy gate does count them),
+    // but it falls through both branches below since its status is 'recruiting'
+    // -- neither 'active' nor 'open' -- so it reports no run window, which is
+    // honest: no run has started.
+    if (!roomHoldsOwnSquad(room, index)) continue;
     if (room.status === 'active') {
       const lr = room.lastRun;
       const freesAtIso = lr && lr.startedAt

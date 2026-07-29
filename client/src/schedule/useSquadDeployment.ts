@@ -6,6 +6,7 @@
 // its release time is the run end (or cooldownUntil), shown as-is.
 import { useMemo } from 'react';
 import type { ApiRoom } from '../api';
+import { isRecruiting, roomHoldsOwnSquad, seatsTaken } from './seats'; // REQ-0337
 import { useGameStore } from '../store';
 import {
   squadCanvasOf,
@@ -42,10 +43,17 @@ function roomsFor(index: number, rooms: ApiRoom[]): { active: ApiRoom | null; co
   let staging: ApiRoom | null = null;
   for (const room of rooms) {
     if (room.status === 'canceled') continue;
-    if (!room.slots.some((s) => s.squadIndex === index)) continue;
+    // REQ-0337: null-safe + owner-scoped (see schedule/seats.ts). The old
+    // `s.squadIndex === index` threw on a Troop's null free seats and could
+    // match a stranger's index as this player's squad.
+    if (!roomHoldsOwnSquad(room, index)) continue;
     if (room.status === 'active') active = room;
     else if (room.status === 'open' && room.cooldownUntil && Date.parse(room.cooldownUntil) > Date.now()) cooldown = room;
-    else if (room.status === 'open') staging = room;
+    // REQ-0337: a Troop awaiting recruits is 'staging' too -- the squad IS
+    // committed (its uids are deploy-gated and market-frozen by the live seat),
+    // it is simply waiting on people rather than on the player finishing the
+    // muster. Same tile state, honest seat count.
+    else if (room.status === 'open' || isRecruiting(room)) staging = room;
   }
   return { active, cooldown, staging };
 }
@@ -92,7 +100,7 @@ export function useSquadDeployment(rooms: ApiRoom[] | null): SquadBoardState[] {
         return {
           ...base, state: 'staging', cancelReserved: !!staging.cancelRequested,
           roomId: staging.id, dungeonId: staging.dungeonId, level: staging.level,
-          stagingSlotsFilled: staging.slots.filter((s) => s.squadIndex != null).length,
+          stagingSlotsFilled: seatsTaken(staging),
         };
       }
       // Not in any non-canceled room: ready if deployable, else undeployable.
