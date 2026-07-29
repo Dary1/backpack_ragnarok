@@ -128,9 +128,27 @@ And the banner, from a normal scoped e2e run on this box:
 | `client/e2e/local-proxy.cjs` | the forensics block, per-request and per-socket bookkeeping, the anomaly lines, the banner, the two experiment knobs, and `stripHopByHop()` |
 | `client/playwright.config.ts` | `webServer.stdout`/`stderr` `'pipe'` — the proxy could not be heard at all before |
 
-## 4b. One actual fix, carried here
+## 4b. Three actual fixes, carried here
 
-Everything above is observation. One thing is not: `stripHopByHop()`.
+Everything above is observation. Three things are not.
+
+**A truncated upstream response no longer hangs the client.** The proxy noted
+that the api had died mid-body and then left the downstream response open for
+ever; it now destroys it, so proxied and direct behave identically
+(`ABORTED status=200 gotBytes=10`, instantly). The `preq.on('error')` twin —
+which appended proxy prose to a partial API body and ended it *cleanly*, i.e.
+silent corruption — is fixed the same way, and `pres.on('error')`, previously
+unhandled and therefore an uncaught exception waiting to take the whole run
+down, is handled. REQ-0347b §8 carries the measurements.
+
+**The log stopped lying in two places.** One upstream death logged two lines
+(`'aborted'` and `'error'` both fire), and destroying the downstream response
+made it emit `'close'` without `'finish'` — the `DOWNSTREAM-CLOSED` signature —
+so the proxy accused the client of dropping a connection the proxy had just
+killed. In this file that is worse than silence: a false lead in the one place
+built to prevent misattribution.
+
+**And `stripHopByHop()`.**
 REQ-0347b's investigation found that this proxy forwarded hop-by-hop headers in
 both directions (RFC 9110 §7.6.1 / RFC 7230 §6.1) — the worker api's
 `Connection` / `Keep-Alive` terms were being handed to playwright as if they

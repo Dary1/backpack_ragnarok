@@ -215,13 +215,28 @@ const server = http.createServer((creq, cres) => {
   const where = () => `${rec.method} ${rec.url} w${rec.worker} -> :${port} after ${Date.now() - rec.startedAt}ms`;
   let settled = false;
   let upstreamAnswered = false;
+  // REQ-0347b: two bookkeeping flags whose only job is to keep the log HONEST.
+  // `upstreamDead` -- 'aborted' and 'error' both fire for one upstream death,
+  //   which logged the same event twice (measured: an 'aborted' line and an
+  //   'ECONNRESET aborted' line, same millisecond, same request).
+  // `weClosedIt` -- destroying cres makes it emit 'close' without 'finish',
+  //   which is exactly the DOWNSTREAM-CLOSED signature. Left unguarded, the
+  //   proxy accuses the CLIENT of dropping a connection the proxy itself just
+  //   killed. That is worse than no line at all: it is a false lead, in the
+  //   one file whose whole purpose is to stop this failure being misattributed.
+  let upstreamDead = false;
+  let weClosedIt = false;
   const settle = () => { if (!settled) { settled = true; inflight.delete(id); } };
   cres.on('finish', settle);
   cres.on('close', () => {
     // 'close' without 'finish' = the response never completed. If the upstream
     // never answered either, THIS is the shape Playwright reports as a socket
-    // hang up.
-    if (!settled) { note('DOWNSTREAM-CLOSED', `${where()} upstreamAnswered=${upstreamAnswered} headersSent=${cres.headersSent}`); settle(); }
+    // hang up. Not reported when this proxy is the one that closed it (see
+    // weClosedIt): that close is already named by the UPSTREAM-* line above it.
+    if (!settled) {
+      if (!weClosedIt) note('DOWNSTREAM-CLOSED', `${where()} upstreamAnswered=${upstreamAnswered} headersSent=${cres.headersSent}`);
+      settle();
+    }
   });
   const preq = http.request(
     { host: HOST, port, method: creq.method, path: creq.url,
@@ -231,8 +246,33 @@ const server = http.createServer((creq, cres) => {
       upstreamAnswered = true;
       cres.writeHead(pres.statusCode || 502, stripHopByHop(pres.headers)); // REQ-0347b
       pres.pipe(cres);
-      // REQ-0347: the api answered and then dropped the body mid-flight.
-      pres.on('aborted', () => note('UPSTREAM-ABORTED', `${where()} status=${pres.statusCode}`));
+      // REQ-0347b: the api answered and then died mid-body. Until this was
+      // measured the proxy merely NOTED that and left the downstream response
+      // open -- for ever. Talking to the worker api directly, a client sees
+      // that failure instantly and correctly ('aborted', a transport error on
+      // a partial body); through this proxy the same failure became an
+      // indefinite hang, surfacing 10-30s later as somebody else's timeout
+      // with nothing to read. Measured, same stub, same client:
+      //
+      //   direct  -> ABORTED status=200 gotBytes=10     (immediate, correct)
+      //   proxied -> client still waiting at 4000ms      (before this fix)
+      //
+      // DESTROY, do not end: the headers are already downstream so there is no
+      // status left to send, and ending cleanly would hand the client a
+      // TRUNCATED body dressed as a complete one -- silent corruption is worse
+      // than the hang it replaces. Destroying reproduces exactly what the
+      // client would have seen talking to the api itself.
+      const upstreamDied = (why) => {
+        if (upstreamDead) return; // one death, one line
+        upstreamDead = true;
+        note('UPSTREAM-ABORTED', `${where()} status=${pres.statusCode} ${why}`);
+        weClosedIt = true;
+        cres.destroy();
+      };
+      pres.on('aborted', () => upstreamDied('aborted'));
+      // An unhandled 'error' on an IncomingMessage is an uncaught exception,
+      // i.e. it would take the whole proxy -- and the rest of the run -- down.
+      pres.on('error', (e) => upstreamDied(`${e.code || ''} ${e.message}`));
     },
   );
   preq.on('error', (e) => {
@@ -240,7 +280,12 @@ const server = http.createServer((creq, cres) => {
     // reported a bare hang-up did not come through here -- but until now that
     // was unprovable, because the message went to the client and nowhere else.
     note('UPSTREAM-ERROR', `${where()} ${e.code || ''} ${e.message}`);
-    if (!cres.headersSent) cres.writeHead(502, { 'content-type': 'text/plain' });
+    // REQ-0347b: once headers are downstream a 502 is no longer available, and
+    // the old code appended this prose to whatever partial body had already
+    // been sent and ended it CLEANLY -- a corrupt payload presented as a
+    // complete one. Same reasoning as the abort path above: destroy instead.
+    if (cres.headersSent) { weClosedIt = true; cres.destroy(); return; }
+    cres.writeHead(502, { 'content-type': 'text/plain' });
     cres.end(`[e2e local-proxy] upstream error on :${port} -> ${e.message}`);
   });
   creq.pipe(preq);

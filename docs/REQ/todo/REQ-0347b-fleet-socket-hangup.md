@@ -263,7 +263,66 @@ record** — a flake dismissed in a terminal never became a line anywhere. Both
 errors push the true rate **up**, i.e. reproduction is somewhat likelier than
 the table says, but not by an order of magnitude.
 
-## 8. On recurrence — what to read, in order
+## 8. The upstream hop, measured end to end
+
+Every version of this REQ has leaned on one sentence: *"an upstream failure
+always becomes a 502, so a bare hang up cannot have come from that hop."* It
+was read off the code and never tested. It is now tested, with a worker-api
+stand-in that fails on demand:
+
+| upstream does | client sees, through the proxy |
+|---|---|
+| answers normally | `200` |
+| RST **before** any response | **`502`** |
+| graceful FIN before any response | **`502`** |
+| RST **after headers**, mid-body | `ABORTED` on a partial body — *after the fix below* |
+| answers with `Connection: close` | `200`, clean |
+| takes 6 s (past the agent's own 5 s socket timeout) | `200`, clean |
+| **the upstream keep-alive race**: 200 requests at a 200 ms gap against a 200 ms `keepAliveTimeout`, the proxy pooling upstream sockets throughout | **200/200 clean, 0 failures** |
+
+**No upstream failure mode reaches the client as a bare `socket hang up`.** The
+sentence holds — and the upstream twin of §3's hypothesis is clean too. That
+closes the api-side hop.
+
+### The defect this turned up: a truncated api response became an infinite hang
+
+The fourth row was not a hang-up. It was worse, and it is fixed here. Same
+stub, same client, before:
+
+```
+direct to the api  ->  ABORTED status=200 gotBytes=10      (instant, correct)
+through the proxy  ->  still waiting at 4000ms             (for ever, in fact)
+```
+
+The proxy noted `UPSTREAM-ABORTED` and then left the downstream response open
+with no end and no destroy. An api that dies mid-response — the exact hiccup
+class this whole REQ is about — turned a correct, instant transport error into
+an indefinite hang that would surface 10-30 s later as somebody else's timeout,
+in an unrelated-looking place, with nothing to read.
+
+Fixed by **destroying** the downstream response, not ending it: the headers are
+already gone downstream so there is no status left to send, and ending cleanly
+would hand the client a truncated body dressed as a complete one. (The
+`preq.on('error')` path had the same shape and a nastier failure: it appended
+the proxy's own error prose to a partial API response and ended it *cleanly*.
+Silent corruption; also fixed.) `pres.on('error')` was unhandled entirely,
+which on an `IncomingMessage` is an uncaught exception — i.e. it would have
+taken the proxy, and the remaining tests, down with it. After: proxied and
+direct are byte-identical, `ABORTED status=200 gotBytes=10`.
+
+Two logging honesty fixes came with it, both found by reading the output rather
+than the code: `'aborted'` and `'error'` both fire for one upstream death and
+logged it twice, and destroying `cres` makes it emit `'close'` without
+`'finish'` — the exact `DOWNSTREAM-CLOSED` signature — so the proxy was
+**accusing the client of dropping a connection the proxy itself had just
+killed**. In the one file whose job is to stop this failure being
+misattributed, that is worse than no line at all. One event, one line, correct
+subject.
+
+Still not the reported symptom: this produces a timeout, not `socket hang up`.
+Not claimed as the cause.
+
+## 9. On recurrence — what to read, in order
 
 1. the run report — the proxy's stderr is piped into it now, so any
    `[e2e local-proxy][REQ-0347]` line sits next to the failing test;
@@ -292,7 +351,7 @@ nobody was ever going to have set a flag in advance for a 1-in-100-gates event;
 the next natural occurrence now arrives with its own forensics already on disk.
 `E2E_PROXY_TRACE=1` still mirrors the census to stderr for interactive work.
 
-## 9. What is NOT claimed
+## 10. What is NOT claimed
 
 That it is fixed, or that anything here caused it. One green re-run is not a
 diagnosis, and this project's REQ-0159 discipline says a red is either a real
