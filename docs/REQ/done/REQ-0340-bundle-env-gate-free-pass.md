@@ -145,3 +145,9 @@ No product code, no test, no content.
 ## Gate results (2026-07-29)
 - `tools/release.sh` **CI GREEN**. `[6.1/7]` selftest both verdicts correct, then (A) OK + (C) OK.
 - e2e 204 passed / 0 failed / 1 skipped; admin trio 8/1/28; registry 4/4.
+
+## Deploy record (2026-07-29)
+- Merged to master 0d01a35 (--no-ff). Gate before the merge: `tools/release.sh` CI GREEN.
+- **No service restart, no dist change**: tools/ and docs/ only. Verified on master
+  after the merge: --selftest both verdicts correct, (A) OK, (C) OK.
+- built -> done.
