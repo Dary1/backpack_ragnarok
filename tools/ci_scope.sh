@@ -37,7 +37,18 @@
 # the uncommitted working tree (`git status --porcelain`), because running the
 # gate before committing is normal here and a dirty tree must be classified too.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+
+# REQ-0343: --classify-stdin classifies a path list read from STDIN and touches
+# no git repository at all. That mode exists so the push gate
+# (tools/pre_receive_gate.sh) can run THIS FILE, extracted from the tree being
+# pushed, inside a BARE repo -- which has no worktree to cd into and no HEAD
+# meaning what HEAD means here. Every other mode reads the worktree, so it still
+# needs the cd. It must be the FIRST argument.
+CI_SCOPE_STDIN=0
+case "${1:-}" in
+  --classify-stdin) CI_SCOPE_STDIN=1 ;;
+  *) cd "$(dirname "$0")/.." ;;
+esac
 
 # =============================================================================
 # THE TABLE. Ordered; FIRST MATCH WINS. Read it as four blocks: ignored, admin,
@@ -179,7 +190,7 @@ ci_scope_compute() {
         unknown_list="${unknown_list}  ${p}"$'\n' ;;
     esac
     if [ "$explain" = "1" ]; then printf '%-13s %s\n' "$c" "$p"; fi
-  done < <(ci_scope_paths "$base")
+  done < <(if [ "$CI_SCOPE_STDIN" = 1 ]; then cat; else ci_scope_paths "$base"; fi)
 
   local scope reason
   if [ "$n_total" -eq 0 ]; then
@@ -351,6 +362,9 @@ BASE=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --selftest) if ci_scope_selftest; then exit 0; else exit 1; fi ;;
+    # REQ-0343: handled at the top (it suppresses the cd); here only to consume
+    # the argument and to label the banner, since there is no base ref.
+    --classify-stdin) BASE='<stdin>'; shift ;;
     --explain)  EXPLAIN=1; shift ;;
     -h|--help)  sed -n '2,30p' "$0"; exit 0 ;;
     -*) echo "ci_scope: unknown option $1" >&2; exit 2 ;;
