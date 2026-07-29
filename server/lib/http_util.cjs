@@ -5,13 +5,20 @@
 const storage = require('../storage.cjs');
 const MAX_BODY_BYTES = storage.MAX_BODY_BYTES;
 
-function sendJSON(res, code, obj) {
+// REQ-0341: `extra` is an optional header bag merged over the three
+// standard ones (it can override them, which no caller does today). Added
+// for GET /api/config's Cache-Control: no-store -- serving the public
+// Supabase config at runtime is only rotation-friendly if the response is
+// not cached. Every pre-existing 3-argument call is unaffected.
+function sendJSON(res, code, obj, extra) {
   const body = JSON.stringify(obj);
-  res.writeHead(code, {
+  const headers = {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
     'Access-Control-Allow-Origin': '*',
-  });
+  };
+  if (extra) Object.assign(headers, extra);
+  res.writeHead(code, headers);
   res.end(body);
 }
 

@@ -1,22 +1,92 @@
-// client/src/auth/client.ts -- REQ-0118c: builds the real supabase-js
-// client from Vite build-time env. The URL + anon key are PUBLIC client
-// values, but per the project secret policy they are NOT committed --
-// provide them via a gitignored client/.env.local (see client/.env.example)
-// or the build environment. When absent, this returns null and the sign-in
-// UI degrades to "not configured" (the REQ-0037 invite/guest path stays).
+// client/src/auth/client.ts -- REQ-0118c: builds the real supabase-js client.
+// REQ-0341: its two inputs (URL + anon key) now arrive at RUNTIME from the
+// API (GET /api/config) instead of being inlined by Vite at build time.
+//
+// WHY. web/app is a TRACKED build artifact, and `import.meta.env.VITE_*`
+// inlining made its bytes depend on client/.env.local -- a GITIGNORED,
+// main-checkout-only input. A build in any other tree therefore baked an
+// env-LESS bundle and sign-in silently degraded to "not configured". That
+// shipped to production TWICE (REQ-0266 -> 42238f8; REQ-0337 -> 2517c83,
+// hotfixed by e8f2b77) and grew three pieces of compensating machinery
+// (REQ-0278's provision_worktree_env.sh + check_bundle_env.sh, and the
+// ci.sh [6.1/7] stage that ran it). Both values are PUBLIC client
+// credentials -- the anon key is designed to sit in a browser -- so serving
+// them from the API exposes nothing that a downloaded bundle did not.
+//
+// There is deliberately NO import.meta.env fallback. A fallback would keep
+// the coupling alive: web/app's bytes would still vary with an untracked
+// file, and the "env-less bundle works" property could not be asserted
+// without knowing which tree built it. Nothing is lost by dropping it --
+// client/vite.config.ts declares no dev-server /api proxy, so `pnpm run dev`
+// cannot reach any backend anyway and was never a working auth path.
+//
+// When the server carries no config (or the fetch fails/times out) this
+// returns null and the sign-in UI degrades to "not configured" exactly as
+// before; the REQ-0037 invite/guest path is untouched.
 import { createClient } from '@supabase/supabase-js';
 import type { SupabaseAuthLike } from './session';
 
-function readEnv(name: string): string | undefined {
-  const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
-  return env ? env[name] : undefined;
+export interface PublicConfig {
+  supabaseUrl: string | null;
+  supabaseAnonKey: string | null;
 }
 
-export function createSupabaseClient(): SupabaseAuthLike | null {
-  const url = readEnv('VITE_SUPABASE_URL');
-  const anonKey = readEnv('VITE_SUPABASE_ANON_KEY');
-  if (!url || !anonKey) return null;
-  return createClient(url, anonKey, {
+const CONFIG_PATH = '/api/config';
+
+// Bounded on purpose. store/boot.ts awaits this before its first /api/me, so
+// an unbounded wait on a hung or black-holed API would wedge boot() forever
+// -- the REQ-0336 "eternal spinner with nobody underneath it" failure shape.
+// A timeout degrades to "not configured"; it never throws.
+const CONFIG_TIMEOUT_MS = 8000;
+
+const EMPTY: PublicConfig = { supabaseUrl: null, supabaseAnonKey: null };
+
+function nonEmptyString(v: unknown): string | null {
+  return typeof v === 'string' && v.length > 0 ? v : null;
+}
+
+async function fetchPublicConfig(): Promise<PublicConfig> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), CONFIG_TIMEOUT_MS);
+  try {
+    const res = await fetch(CONFIG_PATH, { signal: ctl.signal });
+    if (!res.ok) return EMPTY;
+    const body = (await res.json()) as Record<string, unknown>;
+    return {
+      supabaseUrl: nonEmptyString(body.supabaseUrl),
+      supabaseAnonKey: nonEmptyString(body.supabaseAnonKey),
+    };
+  } catch {
+    // Offline, aborted, non-JSON body, no such route on an older server --
+    // all of them mean the same thing to the caller: not configured.
+    return EMPTY;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+let configPromise: Promise<PublicConfig> | null = null;
+
+/** Memoised: N callers share ONE request for the lifetime of the page. */
+export function loadPublicConfig(): Promise<PublicConfig> {
+  if (!configPromise) configPromise = fetchPublicConfig();
+  return configPromise;
+}
+
+/** Test seam (client/scripts/check_auth.mjs) -- drops the memoised config so
+ * one gate run can drive several server responses through the real code
+ * path. Never called by app code. */
+export function resetPublicConfigForTests(): void {
+  configPromise = null;
+}
+
+/** Builds the supabase-js client from the server-served public config, or
+ * null when the server has none. ASYNC as of REQ-0341 -- see store/boot.ts
+ * for why awaiting it there is safe with respect to the PKCE redirect. */
+export async function createSupabaseClient(): Promise<SupabaseAuthLike | null> {
+  const cfg = await loadPublicConfig();
+  if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) return null;
+  return createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
   }) as unknown as SupabaseAuthLike;
 }
