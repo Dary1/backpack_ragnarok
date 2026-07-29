@@ -93,6 +93,63 @@ function apiPortFor(headers) {
   return FLEET_BASE; // REQ-0217: headerless /api -> worker 0, never :8802
 }
 
+// --------------------------------------------------------------------------
+// REQ-0347: socket-hang-up forensics.
+//
+// tools/release.sh on master (2026-07-29) died at schedule.spec.ts:1206 with
+// `apiRequestContext.delete: socket hang up` on
+// DELETE /api/schedule/rooms/... (X-E2E-Worker: 1), test #174 of 209 -- not at
+// teardown, and GREEN on an immediate re-run of the identical tree. The api
+// worker logs held only their startup lines, there was no OOM and 12 G free,
+// so nothing in the archive said WHO closed that socket. This block exists so
+// the SECOND occurrence answers that question instead of starting over. It is
+// pure observation: no routing, timing or lifecycle behaviour changes.
+//
+// What a hang-up can be, and which line below names it:
+//   - the worker api closed/reset the upstream socket   -> UPSTREAM-ERROR
+//     (this was already handled, but the message went into the 502 body only
+//     and never to a log -- and a 502 body is not what Playwright reported,
+//     which is itself evidence this path did NOT fire)
+//   - the api accepted then dropped mid-response        -> UPSTREAM-ABORTED
+//   - THIS proxy destroyed the client socket            -> CLIENT-ERROR
+//     (server.on('clientError') used to sock.destroy() in total silence --
+//     the single most likely way to produce a bare hang-up with no trace)
+//   - the client socket died before we answered         -> DOWNSTREAM-CLOSED
+//   - a pooled keep-alive socket died between requests  -> SOCKET-ERROR-CLOSE,
+//     with the number of requests it had already served. The leading
+//     hypothesis for a one-off hang-up is exactly this race (node's server
+//     closes an idle keep-alive connection at the instant the client reuses
+//     it), so the socket's served-count and age are logged with it.
+//
+// And if a future hang-up leaves NO line here at all, that is a finding too:
+// the socket then died between Playwright and this proxy without ever
+// reaching a request parse, which narrows it to the box/loopback rather than
+// to either service.
+//
+// Every anomaly goes to stderr AND to a per-run file beside the fleet's own
+// archived worker logs (tools/e2e_fleet.cjs writes ROOT_logs_last/), so it
+// survives teardown the same way and is scoped to one run -- REQ-0234 (F4)'s
+// lesson that a global log path lets run B eat run A's forensics. The stderr
+// copy is not redundant: under tools/e2e_harness.sh this whole process is
+// already redirected into that harness's own <log>_proxy.log (a DIFFERENT
+// file -- hence the distinct name below), and under playwright's webServer it
+// is piped into the run report right next to the failing test.
+const ANOMALY_LOG = (process.env.E2E_FLEET_ROOT || '/tmp/bp_e2e_workers') + '_proxy_anomalies.log';
+/** In-flight /api requests, so an anomaly can report what else the box was
+ * doing at that moment -- the REQ's second explicit ask. */
+const inflight = new Map();
+let seq = 0;
+
+function note(what, detail) {
+  const others = [...inflight.values()]
+    .map((r) => `${r.method} ${r.url} w${r.worker} ${Date.now() - r.startedAt}ms`)
+    .join(' | ');
+  const line = `[e2e local-proxy][REQ-0347] ${new Date().toISOString()} ${what} ${detail}`
+    + ` inflight=${inflight.size}${others ? ' [' + others + ']' : ''}`;
+  console.error(line);
+  try { fs.appendFileSync(ANOMALY_LOG, line + '\n'); } catch { /* forensics are best-effort */ }
+}
+
 const server = http.createServer((creq, cres) => {
   const isApi = creq.url.startsWith('/api/') || creq.url === '/api';
   if (!isApi && (creq.url === "/app" || creq.url.startsWith("/app/"))) { serveAppStatic(creq, cres); return; } // REQ-0051
@@ -100,18 +157,81 @@ const server = http.createServer((creq, cres) => {
   // REQ-0217 hermetic e2e: nothing may fall through to the live services.
   if (!isApi) { cres.writeHead(404, { "content-type": "text/plain" }); cres.end("[e2e local-proxy] hermetic run: only /app/* (worktree static) and /api/* (fleet) exist"); return; }
   const port = apiPortFor(creq.headers);
+  // REQ-0347: this request's identity, for every anomaly line below.
+  const id = ++seq;
+  const rec = { method: creq.method, url: creq.url, worker: creq.headers['x-e2e-worker'] ?? '-', port, startedAt: Date.now() };
+  inflight.set(id, rec);
+  if (creq.socket) creq.socket[REQ_COUNT] = (creq.socket[REQ_COUNT] || 0) + 1;
+  const where = () => `${rec.method} ${rec.url} w${rec.worker} -> :${port} after ${Date.now() - rec.startedAt}ms`;
+  let settled = false;
+  let upstreamAnswered = false;
+  const settle = () => { if (!settled) { settled = true; inflight.delete(id); } };
+  cres.on('finish', settle);
+  cres.on('close', () => {
+    // 'close' without 'finish' = the response never completed. If the upstream
+    // never answered either, THIS is the shape Playwright reports as a socket
+    // hang up.
+    if (!settled) { note('DOWNSTREAM-CLOSED', `${where()} upstreamAnswered=${upstreamAnswered} headersSent=${cres.headersSent}`); settle(); }
+  });
   const preq = http.request(
     { host: HOST, port, method: creq.method, path: creq.url,
       headers: { ...creq.headers, host: `${HOST}:${port}` } },
-    (pres) => { cres.writeHead(pres.statusCode || 502, pres.headers); pres.pipe(cres); },
+    (pres) => {
+      upstreamAnswered = true;
+      cres.writeHead(pres.statusCode || 502, pres.headers);
+      pres.pipe(cres);
+      // REQ-0347: the api answered and then dropped the body mid-flight.
+      pres.on('aborted', () => note('UPSTREAM-ABORTED', `${where()} status=${pres.statusCode}`));
+    },
   );
   preq.on('error', (e) => {
+    // REQ-0347: this path always DID answer (502 + message), so a run that
+    // reported a bare hang-up did not come through here -- but until now that
+    // was unprovable, because the message went to the client and nowhere else.
+    note('UPSTREAM-ERROR', `${where()} ${e.code || ''} ${e.message}`);
     if (!cres.headersSent) cres.writeHead(502, { 'content-type': 'text/plain' });
     cres.end(`[e2e local-proxy] upstream error on :${port} -> ${e.message}`);
   });
   creq.pipe(preq);
 });
 
-server.on('clientError', (_e, sock) => { try { sock.destroy(); } catch {} });
-server.listen(PORT, HOST, () =>
-  console.log(`[e2e local-proxy] http://${HOST}:${PORT}  (/api -> fleet :${FLEET_BASE}+w, /app -> worktree static, else 404)`));
+// REQ-0347: per-socket bookkeeping. A keep-alive socket that dies between
+// requests is the classic one-off hang-up, and the tell is how many requests
+// it had already served and how old it was -- so both are carried on the
+// socket itself and reported when it closes with an error.
+const REQ_COUNT = Symbol('req0347.requests');
+const OPENED_AT = Symbol('req0347.openedAt');
+server.on('connection', (sock) => {
+  sock[OPENED_AT] = Date.now();
+  sock[REQ_COUNT] = 0;
+  sock.on('close', (hadError) => {
+    // Only an ERRORED close is worth a line: an ordinary keep-alive expiry is
+    // the overwhelmingly common case and would drown the signal.
+    if (hadError) {
+      note('SOCKET-ERROR-CLOSE',
+        `served=${sock[REQ_COUNT]} age=${Date.now() - sock[OPENED_AT]}ms local=${sock.localPort} remote=${sock.remotePort}`);
+    }
+  });
+});
+
+server.on('clientError', (e, sock) => {
+  // REQ-0347: this used to destroy the socket in complete silence, which is
+  // indistinguishable from the reported failure. Name it before destroying.
+  note('CLIENT-ERROR', `${e.code || ''} ${e.message} served=${sock[REQ_COUNT] || 0} bytesRead=${sock.bytesRead}`);
+  try { sock.destroy(); } catch {}
+});
+
+server.listen(PORT, HOST, () => {
+  // REQ-0347: the timeouts are in the banner because the keep-alive race
+  // hypothesis is only testable against the values that were actually in
+  // force, and node has changed these defaults between majors.
+  const banner = `[e2e local-proxy] http://${HOST}:${PORT}  (/api -> fleet :${FLEET_BASE}+w, /app -> worktree static, else 404)`
+    + ` [REQ-0347 keepAliveTimeout=${server.keepAliveTimeout}ms headersTimeout=${server.headersTimeout}ms`
+    + ` requestTimeout=${server.requestTimeout}ms upstreamKeepAlive=${http.globalAgent.keepAlive} node=${process.version}`
+    + ` log=${ANOMALY_LOG}]`;
+  console.log(banner);
+  // Truncate per run, then record the configuration this run ran under: an
+  // empty-but-for-the-banner file is the positive statement "this proxy saw
+  // nothing abnormal", which is exactly what the first occurrence lacked.
+  try { fs.writeFileSync(ANOMALY_LOG, banner + '\n'); } catch { /* best-effort */ }
+});

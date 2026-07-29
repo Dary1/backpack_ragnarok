@@ -90,6 +90,15 @@ export default defineConfig({
     url: BASE_URL + '/app/',
     reuseExistingServer: false, // REQ-0217: NEVER adopt a foreign proxy (another session's stale/old-code instance) -- fail loudly instead
     timeout: 15_000,
+    // REQ-0347: the proxy's output used to be discarded (playwright's default
+    // for webServer is stdout/stderr 'ignore'), so its startup banner and --
+    // more to the point -- the socket-hang-up forensics it now writes were
+    // invisible in the very run report that would need them. Piped, both land
+    // in the run output next to the failing test. The proxy also mirrors every
+    // anomaly to a per-run file (see local-proxy.cjs's REQ-0347 block) for the
+    // case where the report itself is not what gets kept.
+    stdout: 'pipe',
+    stderr: 'pipe',
   } : undefined,
   globalSetup: './e2e/global-setup.ts',
   globalTeardown: './e2e/global-teardown.ts',
