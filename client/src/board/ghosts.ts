@@ -144,6 +144,21 @@ export function flash(self: BoardRenderer, cells: Cell[] | undefined): void {
    * item" cue, visually different from the reject-flash's single red
    * outline. Safe to call on a disposed renderer (no-op) or with no
    * cells (no-op either way).
+   *
+   * REQ-0345 FINDING -- THIS PULSE IS NOT VISIBLE, AND WAS NOT BEFORE EITHER.
+   * Both call sites (useWarehouseData.ts's handleClaim, WorkshopPage.tsx's
+   * roll) call notifyStateChanged() on the very next line. That re-enters
+   * BoardRenderer.render(state), whose first act is gTarget.removeChildren()
+   * -- so these rects are detached from the stage before any frame shows
+   * them, and the timers below then blink an orphan. Measured through the
+   * real claim flow on the e2e box: 0 pixels of #59d68a across the whole 2s
+   * window, identically with the pre-REQ-0345 Ticker running and without it.
+   * Delaying the call 600ms in a throwaway build made every blink paint
+   * (596 px, on the exact 330ms rhythm), which is what proves the mechanism
+   * below is correct and the ORDERING is the fault. Left as found: REQ-0345
+   * is about the frame loop, and choosing the fix (pulse into a layer
+   * render() does not clear, or pulse after the state render) is REQ-0041's
+   * call, not this one's.
    */
 export function pulseCellsSuccess(self: BoardRenderer, cells: Cell[] | undefined): void {
     if (self.disposed) return;
