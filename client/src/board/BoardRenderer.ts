@@ -106,8 +106,8 @@ function itemTex(textures: Map<string, Texture>, id: string, spriteKey: string):
 }
 
 /** REQ-0345: count every frame this Application submits, at the one seam both
- * producers share -- see paintProbe.ts for why nothing lower down the stack
- * can be instrumented. Wraps the renderer INSTANCE's own `render`
+ * producers share -- see paintProbe.ts for why the obvious lower-level
+ * instrument (a patched WebGL context) was abandoned. Wraps the renderer INSTANCE's own `render`
  * (Application.render() resolves `this.renderer` per call, so the Ticker's
  * captured method reference still lands here), and must run AFTER app.init()
  * -- `app.renderer` does not exist before that. */

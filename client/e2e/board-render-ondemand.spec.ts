@@ -14,9 +14,9 @@
 //      A zero from a broken probe looks exactly like a zero from a fixed bug,
 //      so test 1 never asserts the zero alone: it makes the SAME counter move
 //      on a known-good render in the same test. (The obvious instrument --
-//      patching WebGLRenderingContext from the page -- reads zero even during
-//      a real state change, because Pixi v8 caches its GL entry points at
-//      context creation. See client/src/board/paintProbe.ts.)
+//      patching the WebGL context from the page -- was measured reading zero
+//      even during a real state change. See client/src/board/paintProbe.ts,
+//      which says what is explained about that and what is not.)
 //
 //   2. THE ANIMATIONS STILL PAINT. Three things mutate the scene graph
 //      OUTSIDE render(state) and never called render() themselves; they were
