@@ -28,6 +28,13 @@
 // room.ownerId.
 import type { ApiRoom, ApiRoomSlot } from '../api';
 
+/** A seat we have established is the VIEWER's AND is actually filled -- so its
+ * squadIndex is a real number and indexes a canvas we hold. isOwnSeat is a type
+ * guard onto this, which is what lets callers read `slot.squadIndex` without a
+ * non-null assertion: the null-seat crash class this module exists to kill is
+ * then a TYPE error rather than something to remember. */
+export type OwnSeat = ApiRoomSlot & { squadIndex: number };
+
 /** True if `room` is a co-operative Troop rather than a solo room. */
 export function isTroopRoom(room: ApiRoom): boolean {
   return room.visibility === 'public';
@@ -40,11 +47,18 @@ export function isRecruiting(room: ApiRoom): boolean {
   return room.status !== 'canceled' && (room.status === 'recruiting' || (isTroopRoom(room) && room.state === 'recruiting'));
 }
 
+/** True if this seat belongs to `ownerId`. Takes the id rather than the room so
+ * a caller inside a React hook can depend on a STABLE string instead of the room
+ * object, which the 4s rooms poll replaces wholesale every tick. */
+export function seatIsOwnedBy(slot: ApiRoomSlot | null | undefined, ownerId: string): slot is OwnSeat {
+  if (!slot || slot.squadIndex == null) return false;
+  return slot.ownerId == null || slot.ownerId === ownerId;
+}
+
 /** True if this seat belongs to the room's own owner (== the viewer). A free
  * seat -- `null` on a Troop, `{squadIndex:null}` on a solo room -- is nobody's. */
-export function isOwnSeat(slot: ApiRoomSlot | null | undefined, room: ApiRoom): boolean {
-  if (!slot || slot.squadIndex == null) return false;
-  return slot.ownerId == null || slot.ownerId === room.ownerId;
+export function isOwnSeat(slot: ApiRoomSlot | null | undefined, room: ApiRoom): slot is OwnSeat {
+  return seatIsOwnedBy(slot, room.ownerId);
 }
 
 /** True if the VIEWER's squad `squadIndex` occupies a seat of `room`. Null-safe
@@ -65,7 +79,7 @@ export function seatsTaken(room: ApiRoom): number {
 export function ownSeatedSquadIndices(room: ApiRoom): number[] {
   const out: number[] = [];
   for (const slot of room.slots) {
-    if (isOwnSeat(slot, room) && slot!.squadIndex != null) out.push(slot!.squadIndex);
+    if (isOwnSeat(slot, room)) out.push(slot.squadIndex);
   }
   return out;
 }

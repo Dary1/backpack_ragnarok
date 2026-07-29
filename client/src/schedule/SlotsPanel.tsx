@@ -80,12 +80,12 @@ export function SlotsPanel({ room, locale, rooms, onChanged }: SlotsPanelProps) 
     // co-op Troop the other three seats belong to other players and their
     // squadIndex indexes THEIR canvas -- counting those here would pre-disable
     // squads of the viewer's that are in fact perfectly free.
-    for (const sl of r.slots) if (isOwnSeat(sl, r)) otherActiveRoomSquads.add(sl!.squadIndex!);
+    for (const sl of r.slots) if (isOwnSeat(sl, r)) otherActiveRoomSquads.add(sl.squadIndex);
   }
   // A squad already sitting in a DIFFERENT slot of THIS room (a duplicate
   // within the room -> same_room_duplicate 409).
   const usedInAnotherSlotOfThisRoom = (idx: number, slotIndex: number): boolean =>
-    room.slots.some((sl, j) => j !== slotIndex && !!sl && sl.squadIndex === idx);
+    room.slots.some((sl, j) => j !== slotIndex && isOwnSeat(sl, room) && sl.squadIndex === idx);
 
   // REQ-0337: a co-op Troop's seats are NOT editable through this panel. Both
   // endpoints it drives are the SOLO surface: PUT /rooms/:id/slots/:i writes a
