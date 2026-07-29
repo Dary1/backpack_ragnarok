@@ -63,10 +63,14 @@ REQ-0347b §3 test that hypothesis at all — and rule it out.
 
 Two knobs come with it, both no-ops unless explicitly set:
 
-- `E2E_PROXY_TRACE=1` — log EVERY socket close, not just errored ones, with the
-  socket's served-request count and age. This is the connection census: it is
-  what showed playwright pooling 8-20 requests per socket over 6-51 s, which is
-  what made REQ-0347b's negative result mean something instead of nothing.
+- `E2E_PROXY_TRACE=1` — mirror the connection census to **stderr** as well.
+  The census itself (every socket close: requests served, age, ports) is now
+  written to the log file on every run regardless, because REQ-0347b §7 put the
+  natural recurrence rate at ~1 per 100 full gates and nobody sets a flag in
+  advance for that. File-only by default, so ~1 200 lines a run cost nothing and
+  the anomalies still stand alone in the run report. The census is also what
+  showed playwright pooling 8-20 requests per socket over 6-51 s, which is what
+  made REQ-0347b's negative results mean something instead of nothing.
 - `E2E_PROXY_KEEPALIVE_MS` — shrink the server's keep-alive boundary so the
   reuse race is crossed hundreds of times a minute. Unset in every real run, so
   node's 5000 ms default stands untouched; set, it turns a "wait for it to

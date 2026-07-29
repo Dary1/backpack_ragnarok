@@ -143,13 +143,18 @@ const ANOMALY_LOG = (process.env.E2E_FLEET_ROOT || '/tmp/bp_e2e_workers') + '_pr
 const inflight = new Map();
 let seq = 0;
 
-function note(what, detail) {
+function note(what, detail, fileOnly = false) {
   const others = [...inflight.values()]
     .map((r) => `${r.method} ${r.url} w${r.worker} ${Date.now() - r.startedAt}ms`)
     .join(' | ');
   const line = `[e2e local-proxy][REQ-0347] ${new Date().toISOString()} ${what} ${detail}`
     + ` inflight=${inflight.size}${others ? ' [' + others + ']' : ''}`;
-  console.error(line);
+  // REQ-0347b: anomalies go to BOTH -- stderr puts them in the run report next
+  // to the failing test. The routine connection census goes to the file ONLY
+  // (~1200 lines a run), so it can be on by default without drowning the report
+  // that the anomalies are meant to stand out in. E2E_PROXY_TRACE=1 also
+  // mirrors the census to stderr for an interactive investigation.
+  if (!fileOnly || process.env.E2E_PROXY_TRACE) console.error(line);
   try { fs.appendFileSync(ANOMALY_LOG, line + '\n'); } catch { /* forensics are best-effort */ }
 }
 
@@ -257,17 +262,17 @@ server.on('connection', (sock) => {
   // need to line this socket up against anything else on the box.
   sock[PORTS] = `local=${sock.localPort} remote=${sock.remotePort}`;
   sock.on('close', (hadError) => {
-    // Only an ERRORED close is worth a line by default: an ordinary keep-alive
-    // expiry is the overwhelmingly common case and would drown the signal.
-    // E2E_PROXY_TRACE=1 logs EVERY close instead -- how many requests each
-    // socket served and how long it lived. That is what proved the REQ-0347b
-    // probe was not vacuous (sockets serving 8-20 requests over 6-51s, i.e.
-    // playwright really does pool them), and it is the first thing to turn on
-    // if the hang-up recurs. Off by default: it is one line per connection.
-    if (hadError || process.env.E2E_PROXY_TRACE) {
-      note(hadError ? 'SOCKET-ERROR-CLOSE' : 'SOCKET-CLOSE',
-        `served=${sock[REQ_COUNT]} age=${Date.now() - sock[OPENED_AT]}ms ${sock[PORTS]}`);
-    }
+    // REQ-0347b: the census is written for EVERY connection, always -- how many
+    // requests it served, how long it lived, which ports. At ~1200 lines a run
+    // (file only, see note()) that is free, and it is the difference between
+    // the next occurrence being diagnosable from the artifacts it already left
+    // and being a reproduction problem. §7 of the REQ puts the natural rate at
+    // ~1 per 100 full gates: nobody is going to have remembered to set a flag.
+    // An ERRORED close is an anomaly and is named as one, so it still reaches
+    // stderr and the run report.
+    note(hadError ? 'SOCKET-ERROR-CLOSE' : 'SOCKET-CLOSE',
+      `served=${sock[REQ_COUNT]} age=${Date.now() - sock[OPENED_AT]}ms ${sock[PORTS]}`,
+      !hadError);
   });
 });
 

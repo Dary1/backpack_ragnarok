@@ -1,9 +1,11 @@
 # REQ-0347b — Unexplained `socket hang up` from a fleet worker api
 
 ## Status
-todo — one occurrence, NOT reproduced, NOT diagnosed. The first hypothesis has
-now been tested and **ruled out**; the REQ stays open, with a shorter list of
-suspects and the instrumentation (REQ-0347a) in place for the next occurrence.
+todo — **two** occurrences (see §6), NOT reproduced, NOT diagnosed. Four
+hypotheses have been tested and ruled out, and the rate has been estimated well
+enough to say that further reproduction attempts are a bad investment. The REQ
+stays open with the instrumentation (REQ-0347a) in place, because one future
+occurrence is now enough to name the closer.
 
 Split from REQ-0347 because its capture half could reach `built` and this half
 cannot.
@@ -190,7 +192,78 @@ forwarding another hop's connection terms is wrong, and because an unfixed
 known-wrong proxy is a permanent confounder for every future investigation
 here.
 
-## 6. On recurrence — what to read, in order
+## 6. This is occurrence #2 — the pattern already existed in the record
+
+This REQ was written "so the **second** occurrence is recognised as a pattern
+rather than re-investigated from scratch". It turns out to be the second.
+`docs/REQ/done/REQ-0142-link-trace-diagnostics.md`, filed **2026-07-13**:
+
+> `reference-model:286` failed once on a **`socket hang up` from the local
+> ingress proxy** and **passes 8/8 when its spec is re-run** (infrastructure
+> flake, not a UI regression).
+
+Same symptom, same component — `client/e2e/local-proxy.cjs` is the "local
+ingress proxy" and has existed since **2026-07-07** (REQ-0080, commit
+`4d913084`), so both occurrences are the same file — same disposition
+(dismissed, green on re-run), 16 days apart.
+
+**And a different spec.** `reference-model.spec.ts:286` then,
+`schedule.spec.ts:1206` now. That is the most useful thing two data points can
+say: it is not about a request, a handler, or a test. It is the **hop**. Every
+"what is special about that DELETE" line of enquiry (§4) was aimed at the wrong
+level, and so — in hindsight — were 150 solo repetitions of one spec.
+
+**It also survived a rebuild of everything around it.** Between the two
+occurrences the harness was substantially rewritten: REQ-0159 (default-suite
+repair), REQ-0172 (the port-decade rule), REQ-0217 (the hermetic fleet),
+REQ-0234 (the effectiveness audit), REQ-0339 (diff-scoped e2e). Whatever this
+is, it is not a bug in any machinery added since 2026-07-13.
+
+**The "infrastructure flake" label has a bad record in this project.** REQ-0159
+class (B) set out to fix five named flakes, found none of them, and reported
+that the two tests which *did* flake across six full runs "**both turned out to
+be real defects, not flakiness**". REQ-0344 root-caused `artadmin.spec.ts:124`
+after it had been dismissed as noise. That is two for two against the label —
+which is exactly why REQ-0347 was filed instead of shrugged at, and why the
+2026-07-13 line should have been a REQ too.
+
+**Standing systemic context**, already audited: REQ-0234 finding F3 — the suite
+is wall-clock-synchronised at ~76 fixed-sleep sites and **saturates the box it
+runs on** (load hit 13.9 on 8 cores during that audit), while
+`client/playwright.config.ts:76` sets `retries: 0`, so any transient at all
+becomes an aborted cycle.
+
+## 7. How rare, and why that ends the reproduction campaign
+
+Every merge to master goes through `tools/release.sh` → the full `ci.sh` → the
+210-test suite. Master took **192 merge commits between 2026-07-13 and
+2026-07-29**. So the window holds on the order of **192 full-suite runs ≈ 40 000
+test executions, with 2 recorded occurrences**:
+
+> **≈ 1 per ~100 full-suite runs, ≈ 1 in 20 000 test executions.**
+
+Against that rate, this REQ's reproduction campaign reads very differently:
+
+| attempt | executions | chance of catching one at the estimated rate |
+|---|---|---|
+| 6 traced full-suite runs (§5) | 1 260 | **~6 %** |
+| the whole campaign (§3 + §4 + §5) | ~2 250 | **~10 %** |
+| what 50 % would need | ~70 full gates | ~4 h of box time |
+| what 90 % would need | ~230 full gates | ~13 h |
+
+The negatives were never likely to be anything else. They still earned their
+keep — they falsified four *mechanisms* (§3, §4, §5), which repetition alone
+could not have done — but "run it again" is now a measurably poor use of the
+box, and that is a conclusion with a number behind it rather than a feeling.
+
+Caveats, stated so the number is not over-read: 192 merges is an approximation
+of gate runs in both directions (some merges may share a gate; some gates run
+and are discarded), and 2 is the count of occurrences that reached a **written
+record** — a flake dismissed in a terminal never became a line anywhere. Both
+errors push the true rate **up**, i.e. reproduction is somewhat likelier than
+the table says, but not by an order of magnitude.
+
+## 8. On recurrence — what to read, in order
 
 1. the run report — the proxy's stderr is piped into it now, so any
    `[e2e local-proxy][REQ-0347]` line sits next to the failing test;
@@ -206,16 +279,25 @@ all** = the socket died before any request was parsed, which excludes both
 services. Every line carries the in-flight request list.
 
 Then re-run with `E2E_PROXY_TRACE=1` for the full connection census. Note that
-this has now been done, six times over (§5), so a seventh identical attempt is
-not the next move: what is missing is a recurrence to look at, and the
-instrumentation exists precisely so that one occurrence is enough.
+this has now been done six times over (§5) and §7 puts the odds of a seventh
+attempt paying off at ~1 %: what is missing is a recurrence to look at, not
+more attempts to manufacture one. The instrumentation exists precisely so that
+one occurrence is enough.
 
-## 7. What is NOT claimed
+**This is now automatic.** The connection census (one line per socket: requests
+served, age, ports) is written to `${E2E_FLEET_ROOT}_proxy_anomalies.log` on
+**every** run, with no flag to remember — ~1 200 lines a run, file only, so the
+run report stays clean and anomalies still stand out in it. Given §7's rate,
+nobody was ever going to have set a flag in advance for a 1-in-100-gates event;
+the next natural occurrence now arrives with its own forensics already on disk.
+`E2E_PROXY_TRACE=1` still mirrors the census to stderr for interactive work.
+
+## 9. What is NOT claimed
 
 That it is fixed, or that anything here caused it. One green re-run is not a
 diagnosis, and this project's REQ-0159 discipline says a red is either a real
 defect or a stale gate. Nothing in §3 was *fixed* — a hypothesis was falsified,
 which is cheaper and worth more than a speculative mitigation shipped as a
-cure. This stays open so the second occurrence is recognised as a pattern —
-exactly how `artadmin.spec.ts:124` was eventually root-caused (REQ-0344) after
-being dismissed as noise.
+cure. This stays open because the pattern is now recognised (§6) but not explained —
+exactly the position `artadmin.spec.ts:124` was in before REQ-0344 root-caused
+it, having been dismissed as noise first.
