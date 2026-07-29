@@ -22,6 +22,7 @@ import { t } from '../i18n';
 import type { Locale } from '../store';
 import { useGameStore } from '../store';
 import { formatCountdown } from './RoomCard';
+import { seatIsOwnedBy } from './seats'; // REQ-0337
 import { MonitorRenderer, type MonitorSquadVisual } from './MonitorRenderer';
 import { ChimeEngine, type ChimeStats } from './chimes/ChimeEngine';
 import { loadChimePrefs, CHIME_PREFS_EVENT } from './chimes/chimePrefs';
@@ -162,7 +163,15 @@ export function Monitor({ room, locale, dungeonName, dungeonTheme, isAdmin, onRu
       const bps: MonitorSquadVisual['bps'] = [];
       const icons: MonitorSquadVisual['icons'] = [];
       let label = `U${idx + 1}`;
-      if (slot.squadIndex != null) {
+      // REQ-0337: `slot` is NULL for a co-op Troop's free seat (a solo room's
+      // unfilled slot is `{squadIndex:null}`), and a seat held by ANOTHER player
+      // names a squad on THEIR canvas which we do not have. isOwnSeat covers
+      // both: anything that is not our own seat draws as the bare `U{n}`
+      // placeholder with no BPs, which is the honest rendering -- we cannot know
+      // what their squad looks like. Reading slot.squadIndex unguarded threw a
+      // TypeError here the moment a Troop was watched (caught live 2026-07-29,
+      // contained by MonitorErrorBoundary but the whole Watch pane was dead).
+      if (seatIsOwnedBy(slot, room.ownerId)) {
         const squadCanvas = squadStore && slot.squadIndex === squadStore.active ? activeCanvas : squadStore?.store[slot.squadIndex] ?? null;
         if (squadCanvas?.bps?.length) {
           label = squadStore?.names[slot.squadIndex] ?? label;
@@ -241,7 +250,7 @@ export function Monitor({ room, locale, dungeonName, dungeonTheme, isAdmin, onRu
         console.warn('[backpack_ragnarok] Monitor: squad/formation mount failed', e);
       }
     })();
-  }, [mountedOnce, room.slots, room.formationId, snapshot.state, snapshot.gameData, room.id]);
+  }, [mountedOnce, room.slots, room.formationId, room.ownerId, snapshot.state, snapshot.gameData, room.id]);
 
   // Push roster (M1) to the renderer once available (drives stage plates/HP ticks).
   useEffect(() => {
@@ -344,7 +353,9 @@ export function Monitor({ room, locale, dungeonName, dungeonTheme, isAdmin, onRu
     return rows;
   }, [released, locale, dungeonName, enemyNameById]);
   const rosterState = useMemo(() => reduceRunRoster(run?.roster ?? null, released, locale === 'ja' ? 'ja' : 'en'), [run?.roster, released, locale]);
-  const squadNames = useMemo(() => room.slots.map((slot) => (slot.squadIndex != null ? snapshot.state?.presets?.names[slot.squadIndex] ?? null : null)), [room.slots, snapshot.state]);
+  // REQ-0337: null-safe + owner-scoped (see the squad-visual mount above and
+  // schedule/seats.ts). This useMemo was the exact frame in the live TypeError.
+  const squadNames = useMemo(() => room.slots.map((slot) => (seatIsOwnedBy(slot, room.ownerId) ? snapshot.state?.presets?.names[slot.squadIndex] ?? null : null)), [room.slots, room.ownerId, snapshot.state]);
   const railNodes = useMemo<RailNode[]>(() => {
     if (!run) return [];
     return railNodesFrom(run.events, locale).map((n) => ({ ...n, passed: n.ptMs <= playheadMs }));

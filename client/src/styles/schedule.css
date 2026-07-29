@@ -275,6 +275,34 @@
   background: rgba(10, 13, 18, 0.28);
 }
 
+/* REQ-0337 -- co-op Troop seats. An OPEN seat is not the same thing as an
+   unfilled solo slot: it is an advertisement, so it reads gold-dashed and
+   awake rather than the dim grey of a slot the player merely has not filled
+   yet. A seat a RECRUIT holds is dimmed and italic -- occupied, but not ours
+   and not resolvable to any squad name we know. */
+.schedule-room-slot-open {
+  border-color: var(--gold-lo);
+  color: var(--gold-lo);
+}
+
+.schedule-room-slot-recruit {
+  font-style: italic;
+  color: var(--bone-3);
+}
+
+.schedule-room-seats {
+  border-color: var(--gold-lo);
+  color: var(--gold-lo);
+}
+
+.schedule-recruiting-note {
+  margin: 6px 0 10px;
+  padding: 6px 10px;
+  border-left: 2px solid var(--gold-lo);
+  color: var(--bone-2);
+  background: rgba(10, 13, 18, 0.28);
+}
+
 /* footer row: room id + actions, over the mock .r-foot hairline */
 .schedule-room-foot {
   display: flex;

@@ -432,6 +432,14 @@ export interface ApiCancelPolicy {
  * squad indices (0-based), or null if unfilled. */
 export interface ApiRoomSlot {
   squadIndex: number | null;
+  /** REQ-0324/0337: a co-op TROOP seat also records WHO took it. Absent on a
+   * solo room's slot (which is `{squadIndex}` and nothing else -- its owner is
+   * the room's ownerId by definition). Present on every seat of a
+   * `visibility:'public'` Troop, where `squadIndex` indexes THAT owner's own
+   * canvas, NOT the reader's -- never resolve it against your own squad names
+   * unless `ownerId` is you. */
+  ownerId?: string;
+  joinedAt?: string;
 }
 
 /** A queued swap (golden j) -- present once `PUT .../swap` is queued
@@ -472,11 +480,24 @@ export interface ApiRoom {
    * only a dev/item_admin caller may have CHOSEN this value explicitly at
    * create-room time (see ApiCreateRoomBody.genSeed). */
   genSeed?: string;
-  visibility: 'self';
+  /** REQ-0324/0337: 'public' marks a co-operative TROOP. GET /api/schedule/rooms
+   * filters by ownerId ONLY (services/rooms.cjs listOwnRooms) -- it does NOT
+   * filter on visibility -- so a Troop the caller HOSTS is returned by that list
+   * alongside their solo rooms, and every consumer of ApiRoom must tolerate it. */
+  visibility: 'self' | 'public';
   formationId: string;
   cancelPolicy: ApiCancelPolicy;
   slots: ApiRoomSlot[];
-  status: 'open' | 'active' | 'canceled';
+  /** REQ-0324 keeps a Troop's `status` OFF the solo 'open'/'active' lanes while it
+   * recruits, so the lazy run-scheduler + the market Law-of-Possession gate treat
+   * it inertly. It rejoins the normal lanes ('active', then 'canceled') once the
+   * fourth seat fills and it departs. */
+  status: 'open' | 'active' | 'canceled' | 'recruiting';
+  /** REQ-0324: the Troop-level lifecycle, present only when visibility is
+   * 'public'. Distinct from `status` above (which the run engine owns). */
+  state?: 'recruiting' | 'active' | 'canceled';
+  /** REQ-0324: the hosting player (== ownerId; kept as an alias). Troops only. */
+  hostId?: string;
   cancelRequested: boolean;
   pendingSwap: ApiPendingSwap | null;
   cooldownUntil: string | null;
@@ -1346,4 +1367,98 @@ export interface ApiNotificationsResponse {
 export interface ApiNotificationAckResponse {
   ok: true;
   acked: number;
+}
+
+// ---- REQ-0324/0325/0326/0337: co-operative Troop wire shapes ----
+// A Troop is a room with visibility:'public': the HOST opens it seated in slot
+// 0, the other three seats stay null (open) until other players -- human or bot,
+// indistinguishably -- join. Filling the LAST seat auto-departs it (REQ-0325).
+// Server: server/services/troops.cjs + the /api/schedule/troops* routes in
+// server/routes/schedule.cjs. These mirror those shapes field-for-field.
+
+/** One SEATED seat of a Troop. `squadIndex` indexes `ownerId`'s OWN canvas --
+ * resolving it against your own squad names is only correct when ownerId is
+ * you. A FREE seat is `null`, not an object. */
+export interface ApiTroopSlot {
+  ownerId: string;
+  squadIndex: number;
+  joinedAt: string;
+}
+
+/** REQ-0326: the discrete disband record written onto a Troop when any seated
+ * member cancels. `releasedOwners` is the roster REQ-0327 notifies. */
+export interface ApiTroopDisbandEvent {
+  roomId: string;
+  reason: string;
+  releasedOwners: string[];
+  disbandedAt: string;
+}
+
+/** Full Troop state -- the body of every /api/schedule/troops* response's
+ * `troop` field. Deliberately NOT declared as an extension of ApiRoom: a
+ * Troop's free seats are `null` where a solo room's are `{squadIndex:null}`,
+ * so the two slot arrays are not assignable to one another. */
+export interface ApiTroop {
+  id: string;
+  ownerId: string;
+  /** == ownerId; kept as an explicit alias by the server, never removed. */
+  hostId: string;
+  dungeonId: string;
+  dungeonType?: 'default' | 'test_fixed';
+  level: number;
+  genSeed?: string;
+  drawSeed?: string;
+  visibility: 'public';
+  formationId: string;
+  cancelPolicy: ApiCancelPolicy;
+  /** four entries; `null` = a free seat still open to recruits. */
+  slots: (ApiTroopSlot | null)[];
+  /** troop-level lifecycle. 'active' == departed (a run is in flight). */
+  state: 'recruiting' | 'active' | 'canceled';
+  status: 'recruiting' | 'active' | 'canceled';
+  cancelRequested: boolean;
+  pendingSwap: ApiPendingSwap | null;
+  cooldownUntil: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastRunId: string | null;
+  lastRun?: ApiRoomLastRun | null;
+  /** REQ-0326: present once disbanded (or once a disband is pending on return). */
+  disbandEvent?: ApiTroopDisbandEvent;
+  disbandRequested?: boolean;
+}
+
+/** POST /api/schedule/troops body -- opens a Troop and seats the host in slot 0.
+ * `squadIndex` is REQUIRED (one of the host's own squads); `level` is the
+ * troop-level attackLv and is IMMUTABLE for the Troop's whole life (REQ-0325
+ * relies on exactly one). `dungeonId` omitted -> the same levelMin-gated random
+ * draw the solo path uses (REQ-0304). genSeed/drawSeed are dev-only (403 for a
+ * normal caller), identical to the /rooms + /sorties gate. */
+export interface ApiHostTroopBody {
+  dungeonId?: string;
+  level?: number;
+  formationId?: string;
+  cancelPolicy?: ApiCancelPolicy;
+  genSeed?: string;
+  drawSeed?: string;
+  squadIndex: number;
+}
+
+/** One row of GET /api/schedule/troops?state=recruiting -- the compact BROWSE
+ * projection (not a full ApiTroop). `seats` is a pre-rendered "k/4" string. */
+export interface ApiTroopBrowseRow {
+  roomId: string;
+  seats: string;
+  attackLv: number;
+  hostId: string;
+  ageSec: number;
+}
+
+export interface ApiTroopResponse {
+  ok: true;
+  troop: ApiTroop;
+}
+export interface ApiTroopsBrowseResponse {
+  ok: true;
+  troops: ApiTroopBrowseRow[];
 }

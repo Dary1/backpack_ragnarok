@@ -683,6 +683,40 @@ module.exports.run = async function run(h) {
     scheduleStorage.deleteRoom(own.body.troop.id);
   });
 
+  await AT('troop: the HOST may seat a SECOND squad of their own in their OWN troop (REQ-0337) -- only uid OVERLAP is refused, not the player', async () => {
+    // REQ-0337 rests entirely on this: the client opens a public Troop with the
+    // player's first squad and then POSTs .../join once per REMAINING squad they
+    // mustered, so that leaving 1-3 seats open IS the recruitment. Every existing
+    // troop test joins as a DIFFERENT player, so nothing pinned the same-player
+    // case -- and deployedUidSetsByOrigin's sameRoom bucket is exactly where it
+    // could silently start refusing.
+    const multiHost = playersFixture.createPlayer('TroopMultiSquadHost', []);
+    scheduleStorage.writeProfile(multiHost.playerId, makeTestCanvas());
+    const opened = await scheduleReq('POST', '/api/schedule/troops', multiHost.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1', squadIndex: 0 });
+    assert.strictEqual(opened.status, 200, 'host opens with squad 0: ' + JSON.stringify(opened.body));
+    const roomId = opened.body.troop.id;
+    // A DIFFERENT squad of the SAME player takes the next free seat.
+    const second = await scheduleReq('POST', '/api/schedule/troops/' + roomId + '/join', multiHost.token, { squadIndex: 1 });
+    assert.strictEqual(second.status, 200, 'the host must be able to seat a second squad of their own: ' + JSON.stringify(second.body));
+    const t = second.body.troop;
+    assert.strictEqual(t.slots[0].ownerId, multiHost.playerId);
+    assert.strictEqual(t.slots[1].ownerId, multiHost.playerId, 'both seats belong to the host');
+    assert.strictEqual(t.slots[1].squadIndex, 1);
+    assert.strictEqual(t.state, 'recruiting', 'a 2/4 troop is still recruiting -- it must NOT depart');
+    assert.strictEqual(t.slots[2], null, 'the remaining seats stay OPEN -- this is the recruitment');
+    assert.strictEqual(t.slots[3], null);
+    // ...and it is offered to everyone else as 2/4, which is what the fleet sees.
+    const browse = await browseTroops(troopHost.token);
+    const row = browse.body.troops.find((x) => x.roomId === roomId);
+    assert.ok(row, 'a part-mustered troop is still publicly recruiting');
+    assert.strictEqual(row.seats, '2/4');
+    // The SAME squad twice is still refused -- the gate blocks uid overlap.
+    const dup = await scheduleReq('POST', '/api/schedule/troops/' + roomId + '/join', multiHost.token, { squadIndex: 1 });
+    assert.strictEqual(dup.status, 409, 'the same squad twice must still 409: ' + JSON.stringify(dup.body));
+    assert.strictEqual(dup.body.reason, 'same_room_duplicate');
+    scheduleStorage.deleteRoom(roomId);
+  });
+
   await AT('troop: legacy-slot migration on read -- an ownerless { squadIndex } seat surfaces with ownerId = room.ownerId', async () => {
     const legacyHost = playersFixture.createPlayer('TroopLegacyHost', []);
     scheduleStorage.writeProfile(legacyHost.playerId, makeTestCanvas());

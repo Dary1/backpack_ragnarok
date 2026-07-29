@@ -18,16 +18,28 @@ interface TroopSlotsProps {
   onUnassign: (slotIndex: number) => void;
 }
 
+// REQ-0337: an empty slot no longer means "you still owe me a squad". Once the
+// player has seated at least one squad, the slots they leave empty ARE the
+// public recruitment -- so the ghost text must stop reading as a shortfall and
+// start reading as an open seat. Purely a copy switch on the SAME element (no
+// new control, no new layout); the slot stays droppable exactly as before, so a
+// player who changes their mind just fills it and the recruitment shrinks.
+function emptySlotKey(recruiting: boolean): TranslationKey {
+  return recruiting ? 'sortie.slot.openSeat' : 'sortie.slot.empty';
+}
+
 export function TroopSlots({ locale, assigned, entriesByIndex, onUnassign }: TroopSlotsProps) {
+  const filled = assigned.filter((x) => x != null).length;
+  const recruiting = filled >= 1 && filled < 4;
   return (
-    <div className="sortie-troop">
+    <div className="sortie-troop" data-testid="sortie-troop" data-recruiting={recruiting ? 'true' : 'false'}>
       {assigned.map((squadIndex, slot) => {
         const entry = squadIndex != null ? entriesByIndex.get(squadIndex) ?? null : null;
         const ord = t(locale, ORD_KEYS[slot] ?? ORD_KEYS[0]);
         return (
           <div
             key={slot}
-            className={`sortie-slot${entry ? ' is-filled' : ' is-empty'}`}
+            className={`sortie-slot${entry ? ' is-filled' : recruiting ? ' is-empty is-open-seat' : ' is-empty'}`}
             data-testid={`sortie-slot-${slot}`}
             tabIndex={0}
             onKeyDown={(e) => {
@@ -54,7 +66,7 @@ export function TroopSlots({ locale, assigned, entriesByIndex, onUnassign }: Tro
                 >✕</button>
               </>
             ) : (
-              <span className="sortie-slot-empty-ghost t-micro">{t(locale, 'sortie.slot.empty')}</span>
+              <span className="sortie-slot-empty-ghost t-micro">{t(locale, emptySlotKey(recruiting))}</span>
             )}
           </div>
         );

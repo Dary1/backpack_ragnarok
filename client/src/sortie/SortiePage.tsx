@@ -9,6 +9,8 @@ import {
   fetchDungeons,
   fetchMe,
   fetchRooms,
+  hostTroop,
+  joinTroop,
   type ApiDungeonsPayload,
   type ApiMe,
   type ApiRoom,
@@ -105,38 +107,84 @@ export function SortiePage({ locale, focusDungeonId }: SortiePageProps) {
   const assignedCount = assigned.filter((x) => x != null).length;
   const isAdmin = !!me && Array.isArray(me.roles) && me.roles.includes('item_admin');
 
+  // REQ-0337: the ONE button now has two destinations, chosen by how many of the
+  // four seats the player filled themselves -- no toggle, no second screen.
+  //
+  //   4 squads -> SOLO, exactly as before: POST /api/schedule/sorties creates a
+  //     visibility:'self' room, fills all four slots atomically and MARCHES.
+  //   1-3 squads -> the empty seats ARE the recruitment: POST /api/schedule/troops
+  //     opens a visibility:'public' Troop with the first squad seated in slot 0,
+  //     then one POST .../join per REMAINING squad of the player's own. The Troop
+  //     does NOT depart here -- it sits recruiting until other players (human, or
+  //     the reactive fleet) take the free seats; filling the fourth auto-departs it
+  //     server-side (REQ-0325). So this is 'recruit', never 'launch'.
+  //   0 squads -> nothing to do (the bar stays un-ready).
+  //
+  // The host CAN seat several of their own squads because the deploy gate only
+  // rejects the SAME squad twice in one room ('same_room_duplicate'); two
+  // DIFFERENT squads with no shared uids are legal seats for one owner.
   const onLaunch = useCallback(async () => {
-    if (assignedCount !== 4 || launching) return;
+    if (assignedCount < 1 || launching) return;
     const squadIndices = assigned.filter((x): x is number => x != null);
     setLaunching(true);
     setLaunchError(null);
     try {
-      // REQ-0304: NO dungeonId -- the player sets ONLY attackLv (= level); the
-      // server RANDOM-DRAWS the dungeon from those whose levelMin <= attackLv and
-      // returns it on the room, which SchedulePage reveals post-entry.
-      const { room } = await createSortie({
-        level,
-        formationId: formationId || undefined,
-        cancelPolicy: { immediate: advanced.cancelImmediate },
-        genSeed: isAdmin && advanced.genSeed ? advanced.genSeed : undefined,
-        squadIndices,
-      });
-      // Hand the new room off to SchedulePage (read once on its mount): it opens the
-      // monitor for this room, revealing the DRAWN dungeon (name + theme + banner).
-      try { sessionStorage.setItem('bp.watchRoom', room.id); } catch { /* private mode */ }
+      // REQ-0304: NO dungeonId on either path -- the player sets ONLY attackLv
+      // (= level); the server RANDOM-DRAWS the dungeon from those whose
+      // levelMin <= attackLv and returns it on the room/troop, which
+      // SchedulePage reveals post-entry.
+      let watchRoomId: string;
+      if (squadIndices.length === 4) {
+        const { room } = await createSortie({
+          level,
+          formationId: formationId || undefined,
+          cancelPolicy: { immediate: advanced.cancelImmediate },
+          genSeed: isAdmin && advanced.genSeed ? advanced.genSeed : undefined,
+          squadIndices,
+        });
+        watchRoomId = room.id;
+      } else {
+        const { troop } = await hostTroop({
+          level,
+          formationId: formationId || undefined,
+          cancelPolicy: { immediate: advanced.cancelImmediate },
+          genSeed: isAdmin && advanced.genSeed ? advanced.genSeed : undefined,
+          squadIndex: squadIndices[0],
+        });
+        watchRoomId = troop.id;
+        // Seat the player's REMAINING squads one at a time. If one is refused the
+        // Troop is still a perfectly valid recruitment (just with more seats open
+        // than intended), so we do NOT roll it back -- we report which squad was
+        // refused and stay on this page rather than navigating away from the
+        // error. The Troop is already visible on the Expeditions screen.
+        for (let i = 1; i < squadIndices.length; i++) {
+          try {
+            await joinTroop(troop.id, squadIndices[i]);
+          } catch (e) {
+            setLaunchError(t(locale, 'sortie.recruit.seatFailed', { n: i + 1 }) + friendlyScheduleError(locale, e));
+            return;
+          }
+        }
+      }
+      // Hand the new room/troop off to SchedulePage (read once on its mount): it
+      // opens the monitor for it, revealing the DRAWN dungeon (name + theme +
+      // banner) and -- for a Troop -- its live seat fill.
+      try { sessionStorage.setItem('bp.watchRoom', watchRoomId); } catch { /* private mode */ }
       setRoute('schedule');
     } catch (e) {
-      setLaunchError(t(locale, 'sortie.launch.failed') + friendlyScheduleError(locale, e));
+      const failedKey = squadIndices.length === 4 ? 'sortie.launch.failed' : 'sortie.recruit.failed';
+      setLaunchError(t(locale, failedKey) + friendlyScheduleError(locale, e));
     } finally {
       setLaunching(false);
     }
   }, [assignedCount, launching, assigned, level, formationId, advanced, isAdmin, locale]);
 
   // REQ-0304: pressing ENTER on the attackLv input commits the sortie (triggers the
-  // draw + entry) once the troop is fully mustered -- the ratified "set attackLv and
-  // press ENTER" gesture.
+  // draw + entry) once the troop is mustered -- the ratified "set attackLv and
+  // press ENTER" gesture. REQ-0337 relaxes the threshold from exactly-4 to at
+  // least-1, matching onLaunch: 4 marches solo, 1-3 opens a public recruitment.
   const onAttackLvEnter = useCallback(() => {
-    if (assignedCount === 4 && !launching) void onLaunch();
+    if (assignedCount >= 1 && !launching) void onLaunch();
   }, [assignedCount, launching, onLaunch]);
 
   return (

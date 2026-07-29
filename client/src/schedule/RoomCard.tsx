@@ -36,7 +36,8 @@
 // cancelRoom call) and every data-testid/class the E2E suite selects are
 // exactly as before.
 import { useEffect, useState } from 'react';
-import { cancelRoom as apiCancelRoom, type ApiRoom } from '../api';
+import { cancelRoom as apiCancelRoom, cancelTroop as apiCancelTroop, type ApiRoom } from '../api';
+import { isOwnSeat, isRecruiting, isTroopRoom, seatsTaken } from './seats'; // REQ-0337
 import { t, type TranslationKey } from '../i18n';
 import type { Locale } from '../store';
 import { useGameStore } from '../store';
@@ -59,7 +60,7 @@ interface RoomCardProps {
   onChanged: () => void | Promise<void>;
 }
 
-type RoomUiStatus = 'idle' | 'cooldown' | 'running' | 'cancelPending' | 'canceled';
+type RoomUiStatus = 'idle' | 'cooldown' | 'running' | 'cancelPending' | 'canceled' | 'recruiting';
 
 /** Derives the room's own friendly UI status (per the task brief's exact
  * mapping): 'running' = status:'active'; 'cancelPending' =
@@ -70,6 +71,13 @@ type RoomUiStatus = 'idle' | 'cooldown' | 'running' | 'cancelPending' | 'cancele
  * 'canceled' = status:'canceled'. */
 function deriveStatus(room: ApiRoom): RoomUiStatus {
   if (room.status === 'canceled') return 'canceled';
+  // REQ-0337: a Troop still gathering its four squads. Checked BEFORE the
+  // cancelRequested/active/cooldown branches: REQ-0324 deliberately parks a
+  // recruiting Troop's `status` OFF the solo run lanes ('recruiting', not
+  // 'open'), so without this it would fall through to the 'idle' default and
+  // read as a dormant solo room, which is exactly wrong -- it is waiting on
+  // PEOPLE, not on a cooldown.
+  if (isRecruiting(room)) return 'recruiting';
   // Checked BEFORE the plain 'active' -> 'running' mapping: a room that
   // is currently running but flagged cancelRequested (golden g,
   // cancelPolicy.immediate:false) should read as "cancel pending" to the
@@ -81,12 +89,13 @@ function deriveStatus(room: ApiRoom): RoomUiStatus {
   return 'idle';
 }
 
-const STATUS_KEY: Record<RoomUiStatus, 'schedule.statusIdle' | 'schedule.statusCooldown' | 'schedule.statusRunning' | 'schedule.statusCancelPending' | 'schedule.statusCanceled'> = {
+const STATUS_KEY: Record<RoomUiStatus, TranslationKey> = {
   idle: 'schedule.statusIdle',
   cooldown: 'schedule.statusCooldown',
   running: 'schedule.statusRunning',
   cancelPending: 'schedule.statusCancelPending',
   canceled: 'schedule.statusCanceled',
+  recruiting: 'schedule.statusRecruiting',
 };
 
 // REQ-0071: the mock numbers its four slots 壱/弐/参/肆 -- localized via
@@ -123,14 +132,27 @@ export function RoomCard({ room, locale, dungeonName, dungeonTypeName, expanded,
   }, []);
 
   const status = deriveStatus(room);
+  const troop = isTroopRoom(room);
+  // REQ-0337: the live seat fill, the ONE number that matters while a Troop
+  // recruits ("2/4"). Derived from the slots the 4s rooms poll already returns
+  // -- no extra fetch, no second poll loop.
+  const taken = seatsTaken(room);
   const cooldownRemainingMs = room.cooldownUntil ? Date.parse(room.cooldownUntil) - now : 0;
   const createdAtLabel = new Date(room.createdAt).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' });
 
+  // REQ-0337: a Troop MUST be disbanded through POST /api/schedule/troops/:id/
+  // cancel, never through the solo DELETE /api/schedule/rooms/:id this button has
+  // always sent. The solo path is owner-guarded and would "work" for the host --
+  // silently, and wrongly: it returns NO seats to the other members (their uids
+  // stay deploy-gated and market-frozen) and emits NO REQ-0327 troop_disbanded
+  // notification, so every recruit is stranded with no signal. Same button, same
+  // confirm row; only the endpoint differs.
   const runCancel = async () => {
     setConfirmingCancel(false);
     setCancelPending(true);
     try {
-      await apiCancelRoom(room.id);
+      if (troop) await apiCancelTroop(room.id);
+      else await apiCancelRoom(room.id);
       await onChanged();
     } finally {
       setCancelPending(false);
@@ -187,6 +209,13 @@ export function RoomCard({ room, locale, dungeonName, dungeonTypeName, expanded,
             {t(locale, 'schedule.nextRunIn', { time: formatCountdown(cooldownRemainingMs, locale) })}
           </span>
         ) : null}
+        {/* REQ-0337: seat fill, shown only while a Troop is actually recruiting --
+            once it departs the count is a constant 4/4 and says nothing. */}
+        {troop && status === 'recruiting' ? (
+          <span className="chip schedule-room-seats tnum" data-testid="schedule-room-seats">
+            {t(locale, 'schedule.room.seatsFilled', { taken, total: room.slots.length })}
+          </span>
+        ) : null}
         <span className="schedule-room-grow" aria-hidden="true" />
         {expanded ? <span className="schedule-room-watching t-micro">{t(locale, 'schedule.room.watching')}</span> : null}
       </div>
@@ -197,14 +226,28 @@ export function RoomCard({ room, locale, dungeonName, dungeonTypeName, expanded,
         {Array.from({ length: SQUAD_SLOTS }, (_, i) => {
           const slot = room.slots[i];
           const squadIndex = slot && slot.squadIndex != null ? slot.squadIndex : null;
-          const name = squadIndex != null ? squadNames[squadIndex] ?? `P${squadIndex + 1}` : null;
+          // REQ-0337: on a co-op Troop a seat's `squadIndex` indexes THAT SEAT
+          // OWNER's canvas, not the viewer's. Resolving someone else's index
+          // against our own `squadNames` would confidently print the wrong squad
+          // name, so a seat we do not own is labelled as a recruit instead.
+          // (Every room here came from listOwnRooms, so room.ownerId IS the
+          // viewer -- see schedule/seats.ts.)
+          const ownSeat = !troop || isOwnSeat(slot, room);
+          const name = squadIndex == null
+            ? null
+            : ownSeat
+              ? squadNames[squadIndex] ?? `P${squadIndex + 1}`
+              : t(locale, 'schedule.room.slotRecruit');
+          const emptyLabel = status === 'recruiting'
+            ? t(locale, 'schedule.room.slotOpenSeat')
+            : t(locale, 'schedule.room.slotEmpty');
           return (
             <span
               key={i}
-              className={`schedule-room-slot${name == null ? ' schedule-room-slot-empty' : ''}`}
+              className={`schedule-room-slot${name == null ? (status === 'recruiting' ? ' schedule-room-slot-empty schedule-room-slot-open' : ' schedule-room-slot-empty') : ''}${name != null && !ownSeat ? ' schedule-room-slot-recruit' : ''}`}
               data-testid={`schedule-room-slot-chip-${i}`}
             >
-              <b>{t(locale, ORD_KEYS[i])}</b>:{name ?? t(locale, 'schedule.room.slotEmpty')}
+              <b>{t(locale, ORD_KEYS[i])}</b>:{name ?? emptyLabel}
             </span>
           );
         })}

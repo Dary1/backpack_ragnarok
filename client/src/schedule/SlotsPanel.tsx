@@ -11,6 +11,7 @@
 import { useState } from 'react';
 import { assignSlot, swapSquad, type ApiRoom } from '../api';
 import { friendlyScheduleError } from './errors';
+import { isOwnSeat, isTroopRoom } from './seats'; // REQ-0337
 import { t } from '../i18n';
 import type { Locale } from '../store';
 import { useGameStore } from '../store';
@@ -75,14 +76,28 @@ export function SlotsPanel({ room, locale, rooms, onChanged }: SlotsPanelProps) 
   for (const r of rooms) {
     if (r.id === room.id) continue;
     if (r.status !== 'active') continue;
-    for (const sl of r.slots) if (sl && sl.squadIndex != null) otherActiveRoomSquads.add(sl.squadIndex);
+    // REQ-0337: only the VIEWER's own seats gate the viewer's dropdowns. On a
+    // co-op Troop the other three seats belong to other players and their
+    // squadIndex indexes THEIR canvas -- counting those here would pre-disable
+    // squads of the viewer's that are in fact perfectly free.
+    for (const sl of r.slots) if (isOwnSeat(sl, r)) otherActiveRoomSquads.add(sl.squadIndex);
   }
   // A squad already sitting in a DIFFERENT slot of THIS room (a duplicate
   // within the room -> same_room_duplicate 409).
   const usedInAnotherSlotOfThisRoom = (idx: number, slotIndex: number): boolean =>
-    room.slots.some((sl, j) => j !== slotIndex && !!sl && sl.squadIndex === idx);
+    room.slots.some((sl, j) => j !== slotIndex && isOwnSeat(sl, room) && sl.squadIndex === idx);
+
+  // REQ-0337: a co-op Troop's seats are NOT editable through this panel. Both
+  // endpoints it drives are the SOLO surface: PUT /rooms/:id/slots/:i writes a
+  // solo-shaped `{squadIndex}` slot, which would OVERWRITE a co-op seat's
+  // ownerId and silently reassign another player's seat to the host; and
+  // .../swap queues a solo swap. Seats on a Troop are taken and released only
+  // through /troops/:id/join and .../leave, by each seat's own owner. So the
+  // panel renders read-only here rather than offering an action that corrupts.
+  const troop = isTroopRoom(room);
 
   const handleSelect = async (slotIndex: number, value: string) => {
+    if (troop) return;
     if (value === '') return;
     const squadIndex = parseInt(value, 10);
     setPendingSlot(slotIndex);
@@ -109,12 +124,12 @@ export function SlotsPanel({ room, locale, rooms, onChanged }: SlotsPanelProps) 
       <h4 className="schedule-slots-title">{t(locale, 'schedule.slots.title')}</h4>
       {/* REQ-0168 U4(a): permanent explainer -- a run only auto-starts once
           all four slots hold four DIFFERENT squads. */}
-      <div className="schedule-slots-autostart-hint">{t(locale, 'schedule.slots.autoStartHint')}</div>
+      <div className="schedule-slots-autostart-hint">{troop ? t(locale, 'schedule.slots.troopHint') : t(locale, 'schedule.slots.autoStartHint')}</div>
       {squadNames.length === 0 ? <div className="schedule-slots-no-squads">{t(locale, 'schedule.slots.noSquads')}</div> : null}
       {/* REQ-0168 U4(b): fewer than 4 deployable squads is otherwise a
           silent dead-end -- point the player at the Backpacks screen with
           the exact shortfall. */}
-      {deployableCount < 4 ? (
+      {deployableCount < 4 && !troop ? (
         <div className="schedule-slots-need-squads" data-testid="schedule-slots-need-squads">
           <span>{t(locale, 'schedule.slots.needSquads', { n: 4 - deployableCount })}</span>
           <a className="schedule-slots-need-squads-link" href="#/backpacks">
@@ -125,7 +140,13 @@ export function SlotsPanel({ room, locale, rooms, onChanged }: SlotsPanelProps) 
       <div className="schedule-slots-grid">
         {Array.from({ length: SQUAD_SLOTS }, (_, slotIndex) => {
           const slot = room.slots[slotIndex];
-          const currentValue = slot && slot.squadIndex != null ? String(slot.squadIndex) : '';
+          // REQ-0337: on a Troop, only OUR OWN seats resolve against our squad
+          // list -- another owner's squadIndex indexes THEIR canvas, so binding
+          // the select to it would display (and, on any stray change, submit)
+          // the wrong squad entirely. Their seat renders as the inert
+          // placeholder instead.
+          const showValue = !troop || isOwnSeat(slot, room);
+          const currentValue = showValue && slot && slot.squadIndex != null ? String(slot.squadIndex) : '';
           const queued = room.pendingSwap && room.pendingSwap.slot === slotIndex ? room.pendingSwap : null;
           return (
             <div className="schedule-slot-card" key={slotIndex} data-testid={`schedule-slot-${slotIndex}`}>
@@ -133,11 +154,13 @@ export function SlotsPanel({ room, locale, rooms, onChanged }: SlotsPanelProps) 
               <select
                 className="schedule-select schedule-slot-select"
                 value={currentValue}
-                disabled={pendingSlot === slotIndex || squadNames.length === 0}
+                disabled={troop || pendingSlot === slotIndex || squadNames.length === 0}
                 onChange={(e) => void handleSelect(slotIndex, e.target.value)}
                 data-testid={`schedule-slot-select-${slotIndex}`}
               >
-                <option value="">{t(locale, 'schedule.slots.selectSquad')}</option>
+                {/* REQ-0337: on a Troop the select is inert -- a seat shows who
+                    holds it (or that it is open), and nothing here can change it. */}
+                <option value="">{troop ? t(locale, 'schedule.slots.troopSeatOpen') : t(locale, 'schedule.slots.selectSquad')}</option>
                 {squadNames.map((name, idx) => {
                   const deployable = deployableFlags[idx];
                   // REQ-0168 U7: a deployable squad already committed

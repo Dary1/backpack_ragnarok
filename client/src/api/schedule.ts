@@ -4,7 +4,10 @@
 import { scheduleJSON } from './http';
 import type {
   ApiCreateRoomBody,
+  ApiHostTroopBody,
   ApiSortieBody,
+  ApiTroop,
+  ApiTroopBrowseRow,
   ApiDungeonsPayload,
   ApiRoom,
   ApiRunView,
@@ -146,4 +149,72 @@ export function fetchSealComparison(sealId: string): Promise<ApiSealComparison> 
  * own settle (ApiError(403, 'seal_replay_locked') otherwise). */
 export function fetchSealReplay(sealId: string, playerId: string): Promise<ApiSealReplay> {
   return scheduleJSON(`/api/schedule/seals/${encodeURIComponent(sealId)}/runs/${encodeURIComponent(playerId)}`);
+}
+
+// ---- REQ-0337: co-operative Troop client API ----
+// Talks to server/routes/schedule.cjs's /api/schedule/troops* routes (business
+// logic in server/services/troops.cjs). Same conventions as every function
+// above: ApiError on non-2xx, authHeaders() spread in via scheduleJSON, a JSDoc
+// citing the exact server route. Auth is the ordinary X-Auth-Token -- a bot
+// account browses/joins through these EXACT endpoints, indistinguishably.
+//
+// NOTE the deliberate asymmetry with the solo /rooms* surface: a Troop is
+// created with ONE squad (the host's, seated in slot 0) and its remaining seats
+// are the recruitment. It is never launched by the client -- filling the fourth
+// seat auto-departs it server-side (REQ-0325).
+
+/** POST /api/schedule/troops -- opens a PUBLIC recruiting Troop and seats the
+ * caller in slot 0 with `body.squadIndex`. Atomic: a rejected host seating
+ * (deploy gate) deletes the freshly-created room, so a failed open leaves no
+ * idle Troop behind. Throws ApiError(409) with the same structured `reason`s
+ * the solo assign path uses -- map via friendlyScheduleError(). */
+export function hostTroop(body: ApiHostTroopBody): Promise<{ ok: true; troop: ApiTroop }> {
+  return scheduleJSON('/api/schedule/troops', { method: 'POST', body: JSON.stringify(body) });
+}
+
+/** GET /api/schedule/troops?state=recruiting[&attackLv=] -- browse OPEN public
+ * Troops that still have a free seat. Returns the compact browse projection,
+ * not full troops. This is the exact signal the reactive fleet polls. */
+export function browseTroops(opts?: { state?: string; attackLv?: number }): Promise<{ ok: true; troops: ApiTroopBrowseRow[] }> {
+  const qs = new URLSearchParams({ state: opts?.state ?? 'recruiting' });
+  if (opts?.attackLv != null) qs.set('attackLv', String(opts.attackLv));
+  return scheduleJSON(`/api/schedule/troops?${qs.toString()}`);
+}
+
+/** POST /api/schedule/troops/:id/join {squadIndex} -- takes the LOWEST free
+ * seat with one of the CALLER's own squads. The deploy gate runs against the
+ * joiner's own canvas. Filling the last seat auto-departs the Troop, so the
+ * returned troop may already be state:'active'. The host calls this too, to
+ * seat a SECOND/THIRD squad of their own in a Troop they just opened. */
+export function joinTroop(roomId: string, squadIndex: number): Promise<{ ok: true; troop: ApiTroop }> {
+  return scheduleJSON(`/api/schedule/troops/${encodeURIComponent(roomId)}/join`, {
+    method: 'POST',
+    body: JSON.stringify({ squadIndex }),
+  });
+}
+
+/** POST /api/schedule/troops/:id/leave -- frees the caller's seat before
+ * departure. 409s once the Troop has departed. */
+export function leaveTroop(roomId: string): Promise<{ ok: true; troop: ApiTroop }> {
+  return scheduleJSON(`/api/schedule/troops/${encodeURIComponent(roomId)}/leave`, { method: 'POST' });
+}
+
+/** POST /api/schedule/troops/:id/cancel -- REQ-0326. ANY seated member cancels
+ * and the WHOLE Troop disbands (all-or-nothing): no run in flight -> now; a dive
+ * in flight -> on return, after the current run settles its rewards. Every seat
+ * is returned and each released owner gets a REQ-0327 troop_disbanded
+ * notification.
+ *
+ * A Troop MUST be disbanded through here and never through the solo
+ * DELETE /api/schedule/rooms/:id -- that path is owner-guarded, returns no
+ * seats to the other members, and emits no disband notification. */
+export function cancelTroop(roomId: string): Promise<{ ok: true; troop: ApiTroop }> {
+  return scheduleJSON(`/api/schedule/troops/${encodeURIComponent(roomId)}/cancel`, { method: 'POST' });
+}
+
+/** GET /api/schedule/troops/:id -- full Troop state. Settles + lazily
+ * auto-restarts a DEPARTED troop on read (poll-driven, exactly like the solo
+ * /rooms scheduler); a still-recruiting Troop settles to a no-op. */
+export function getTroop(roomId: string): Promise<{ ok: true; troop: ApiTroop }> {
+  return scheduleJSON(`/api/schedule/troops/${encodeURIComponent(roomId)}`);
 }
