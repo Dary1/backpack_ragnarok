@@ -565,3 +565,12 @@ and the write-failure path, `ci.sh`'s exact construct under `set -euo pipefail`:
   / 0 failed / 1 skipped** — identical to the pre-REQ baseline. Top stages
   `[7/7]` 204.5 s, `[6.5/8]` 188.3 s, `[6.6/8]` 11.4 s, `[0.6/7]` ~2 s.
 - The run's own receipt: `scope=both tree=3a823e5f… seconds=487 source=tools/release.sh`.
+
+## Deploy record (2026-07-29)
+- Merged to master eb7e611 (--no-ff); master pushed through the gate itself at
+  10d4532a. First real acceptance: required `both`, receipt tree 00e82382,
+  issued by tools/release.sh.
+- The rejection path was also exercised for real on master before the gate ran:
+  `! [remote rejected] master -> master (pre-receive hook declined)`.
+- No service restart needed for this REQ (tools/ only).
+- built -> done.

@@ -359,3 +359,17 @@ Per test, artadmin in that gate run (was 14.9 s/test, now 6.6 s/test):
 - 2026-07-29 (A) implemented + measured; (B) implemented, swept over four
   poll/delay pairs, deliberate-regression checked; (C) root-caused from a live
   gate failure's trace and reproduced 2/2 under load. Full gate; reserved → built.
+
+## Deploy record (2026-07-29)
+- Merged to master 854e43d1 (--no-ff) with REQ-0343. Gate on the MERGED master:
+  `tools/release.sh` CI GREEN, 398.9 s, e2e 206/0/1 skipped, admin trio 8/1/28.
+- **Pushed through the new REQ-0343 gate** -- the first real push it accepted:
+  `1e6e2fd7..10d4532a master -> master`, required scope `both` computed by the
+  pushed tree over 29 changed paths, receipt tree 00e82382.
+- `systemctl --user restart backpack-api` (server/routes/public.cjs serves the
+  new ART_ADMIN_POLL_MS key). All services active, tunnel 200, /api/config still
+  returns both values non-empty.
+- Note for the record: the gate run BEFORE this merge failed on
+  artadmin.spec.ts:124 -- the very flake this REQ root-caused. It has not
+  recurred since (A) landed; artadmin now runs 8 passed in 52.7 s.
+- built -> done.
