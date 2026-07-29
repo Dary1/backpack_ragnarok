@@ -1,6 +1,8 @@
 # REQ-0337 — Client UI to host / browse / join a public co-op Troop
 
-- **State**: todo (spec written, ratified 2026-07-28, cleared to implement; queued).
+- **State**: built 2026-07-29 (client-only; gates green; NOT merged, NOT deployed,
+  awaiting user acceptance). See Outcome at the bottom -- the ratified scope was
+  CORRECTED during implementation by the owner; read that before the spec below.
 - **Program**: Reactive Test-Play Fleet — the missing HUMAN entry point.
 - **Depends on**: REQ-0324/0325/0326/0327 (all done + deployed live). Server troop
   endpoints already exist and are running; this REQ is CLIENT-ONLY.
@@ -43,7 +45,7 @@ notification toast (built). Browse returns `{roomId, seats:"k/4", attackLv, host
   (`hostTroop`/`browseTroops`/`joinTroop`/`leaveTroop`/`cancelTroop`/`getTroop`) and
   the DTO types in `shared/dto.ts` mirroring the server shapes.
 
-### Fuller (recommended, same REQ if scope allows)
+### Fuller -- DROPPED 2026-07-29 (unreachable, not deferred). See Outcome.
 - **Browse & join others' Troops.** A small co-op lobby (a tab/section on the
   expedition screen) listing `GET /troops?state=recruiting` (seats, attackLv, host,
   age), with a Join button (`POST .../join {squadIndex}`) and Leave. This lets a
@@ -72,3 +74,165 @@ notification toast (built). Browse returns `{roomId, seats:"k/4", attackLv, host
 - Wiring `bot/tests` into `tools/ci.sh` (separate housekeeping).
 - Any richer matchmaking/lobby (bands, filters) — deliberately omitted; the fleet
   is reactive and needs only host + browse/join.
+
+---
+
+# Outcome (2026-07-29)
+
+## Scope correction, made by the owner during implementation
+
+The spec above offered a "Minimum" (host) and a "Fuller" (host + browse/join),
+and marked Fuller *recommended*. The owner rejected that framing on two counts
+and was right on both.
+
+**1. Fuller is unreachable, not merely optional.** `bot/lib/allowlist.cjs`
+carries a compiled-in HARD_DENY:
+
+```js
+{ re: /^\/api\/schedule\/troops$/, denyMethods: ['POST'],
+  why: 'the fleet NEVER hosts -- it only reacts to a recruitment a player started' }
+```
+
+The fleet is a purely REACTIVE joiner: it can browse, join and leave, and is
+refused hosting by its own client before a request ever goes out. So a browse /
+join lobby would list bot-hosted troops that cannot exist. With one human on the
+box the list is permanently empty. Browse/join UI is therefore **dropped, not
+deferred** -- it becomes worth building the day a second human plays, and the
+API wrappers (`browseTroops`/`joinTroop`/`leaveTroop`) are already in place for
+that day. The asymmetry the owner named -- the fleet is passive, so only the
+HUMAN can be the active side -- is the actual design fact; the spec above had it
+backwards by treating both directions as symmetric halves of one feature.
+
+**2. Almost no new UI is warranted.** The owner's read: a player opens a room
+and others come in -- that is the whole feature. Verified, and it very nearly
+holds:
+
+- `services/rooms.cjs listOwnRooms` filters by `ownerId` ONLY, never by
+  `visibility`, so a hosted Troop already arrives in the ordinary rooms list.
+  **No new list, no new screen, no new route, no new poll loop.**
+- `runs.cjs settleRoomIfDue` is the SAME function `troops.cjs settleTroopIfDue`
+  delegates to (the latter just passes `profileCanvas = null`; per-owner canvases
+  are re-read inside the run engine). So the existing 4s `GET /rooms` poll
+  already settles and auto-restarts a departed Troop correctly. **No new server
+  work, confirmed rather than assumed.**
+- What could NOT be zero: nothing in the client reached `POST /troops` at all,
+  and the solo disband endpoint corrupts a Troop (below).
+
+The implemented shape adds **no toggle, no checkbox, no screen** -- only a
+change in what the existing single CTA does:
+
+| squads mustered | what the one button does |
+|---|---|
+| 4 | SOLO -- `POST /api/schedule/sorties`, unchanged |
+| 1-3 | `POST /api/schedule/troops` (host in slot 0) + one `POST .../join` per remaining squad; **the seats left empty ARE the recruitment** |
+| 0 | not ready |
+
+The owner also corrected the vocabulary: with 1-3 squads this is **募集**
+(recruit), NOT 出撃 (depart) -- the Troop does not move until its fourth seat
+fills (REQ-0325). The copy and the CTA follow that: "Open the call" / 「募集を
+かける」, never "march".
+
+## The NPC-ban checkbox -> REQ-0338
+
+The owner asked for an "NPC禁止" checkbox, default OFF. It is NOT in this REQ,
+because there is nothing under it: `npc` / `humansOnly` / `botsAllowed` return
+ZERO hits across `server/` and `shared/dto.ts`. A Troop carries
+`{visibility, hostId, state, slots, level}` and has no way to express who may
+sit down. Worse, a fleet account is an ordinary player (`p_01f30501d312`, ...)
+with no marker in `/api/me`'s roles -- REQ-0324's stated premise is "a bot
+account browses/joins EXACTLY like a human", so the server cannot currently
+tell them apart at all.
+
+Per this REQ's own ruling ("No new server work. If a gap is found server-side,
+split it into its own REQ") that work is **REQ-0338** (reserved 3418f09), which
+owns the flag, the fleet-side skip, and the checkbox together -- so the control
+never ships inert.
+
+## What was built
+
+- `shared/dto.ts` -- `ApiTroop` / `ApiTroopSlot` / `ApiTroopDisbandEvent` /
+  `ApiHostTroopBody` / `ApiTroopBrowseRow`, mirroring `services/troops.cjs`
+  field-for-field. `ApiRoom` widened where a hosted Troop makes the old
+  declarations untrue: `visibility: 'self' | 'public'`, `status` gains
+  `'recruiting'`, plus optional `state` / `hostId`, and `ApiRoomSlot` gains
+  optional `ownerId` / `joinedAt`.
+- `client/src/api/schedule.ts` -- `hostTroop` / `browseTroops` / `joinTroop` /
+  `leaveTroop` / `cancelTroop` / `getTroop`.
+- `client/src/sortie/` -- `SortiePage` picks solo vs recruit by squad count;
+  `LaunchBar` gains the third (recruit) state; `TroopSlots` re-reads an empty
+  slot as an open seat once the muster has begun.
+- `client/src/schedule/seats.ts` -- NEW. The single place that knows the two
+  seat shapes (see faults below).
+- `RoomCard` -- `recruiting` status, live `k/4` chip, recruit-held seats
+  labelled rather than mis-resolved, disband routed to the troop endpoint.
+  `SchedulePage` -- one line when a call is standing. `SlotsPanel` -- read-only
+  on a Troop.
+- i18n en+ja for every new string. CSS for the new states.
+
+## Two latent faults found and fixed (would have fired regardless of this UI)
+
+Because `listOwnRooms` never filtered on visibility, ANY Troop the player hosts
+lands in the ordinary rooms list -- so these were live the moment a troop was
+hosted by any means, including the raw-API test on 2026-07-28:
+
+1. **Crash.** `useSquadConflicts.deploymentFor` and
+   `useSquadDeployment.roomsFor` both did
+   `room.slots.some((s) => s.squadIndex === index)`. A Troop's FREE seat is
+   `null` (a solo room's is `{squadIndex:null}`), so this **throws a TypeError**
+   -- taking down the sortie page and the squad status board.
+2. **Silent wrong answer.** The same predicate matched ANOTHER seat owner's
+   `squadIndex` as the viewer's own squad, marking the player's squads deployed
+   because a stranger deployed theirs. `SlotsPanel`'s deploy-gate pre-disable
+   had the same flaw.
+
+Both now go through `schedule/seats.ts`, which is null-safe and owner-scoped
+(every room the client holds came from `listOwnRooms`, so `room.ownerId` IS the
+viewer).
+
+A third hazard was closed before it could fire: the disband button sent the solo
+`DELETE /rooms/:id`. On a Troop that **succeeds for the host** while returning no
+seats to the other members (their uids stay deploy-gated and market-frozen) and
+emitting no REQ-0327 `troop_disbanded` notification -- stranding every recruit,
+including the bots whose auto-seller keys off exactly that signal. It now sends
+`POST /troops/:id/cancel`. `SlotsPanel` is read-only on a Troop for the sibling
+reason: `PUT /rooms/:id/slots/:i` writes a solo-shaped `{squadIndex}` and would
+overwrite a co-op seat's `ownerId`.
+
+## Gates
+
+| gate | result |
+|---|---|
+| `cd client && pnpm exec tsc -b` | exit 0 |
+| `cd client && pnpm build` | exit 0 |
+| `node server/tests/api_test.cjs` | **223 passed, 0 failed** |
+| `cd client && pnpm exec oxlint` | 45 warnings, 0 errors -- identical to master |
+| `client/e2e/troop-host.spec.ts` | **authored, NOT run** (REQ-0217 freeze) |
+
+Server **source** is untouched. One server TEST was added, deliberately:
+REQ-0337's whole shape rests on the host seating a SECOND squad of their own in
+the troop they just opened, and every pre-existing troop test joins as a
+DIFFERENT player -- so the same-player path was unpinned, in exactly the bucket
+(`squads.cjs deployedUidSetsByOrigin`'s `sameRoom`) where it could start
+silently refusing. Now asserted, together with "a 2/4 troop stays recruiting"
+and "the same squad twice still 409s `same_room_duplicate`".
+
+## Commits (branch `req-0337-client-coop-troop-ui`)
+
+- `3418f09` docs: reserve REQ-0338-troop-humans-only-no-npc
+- `0846002` client can open a PUBLIC co-op Troop (+ the two latent fixes)
+- `0c4fe2c` e2e spec (authored, not run) + the host-second-squad server test
+
+## Still owed before this can move to `done`
+
+1. **Manual live check** -- host from the app, watch
+   `journalctl --user -u backpack-fleet -f` drip-join to 4/4, confirm departure.
+   This is the standing verification while the e2e freeze holds.
+2. Merge to master + deploy. Not done: `~/backpack_ragnarok` and the live
+   services are HANDS-OFF without a fresh go-ahead.
+3. User acceptance of the scope correction recorded above.
+
+## Follow-ups
+
+- **REQ-0338** -- the NPC-ban flag (server + fleet + the checkbox).
+- Browse/join UI, if and when a second human plays. Wrappers already exist.
+- Wiring `bot/tests` into `tools/ci.sh` (unchanged, still separate housekeeping).
