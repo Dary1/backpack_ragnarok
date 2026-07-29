@@ -78,7 +78,37 @@ async function fetchMeWithRetry(attempts = 3, delayMs = 500): Promise<ApiMe | nu
  * the dev player when dev_mode is true).
  */
 
+// REQ-0336: boot() is called as a FLOATING promise (main.tsx:25 -- `boot();`,
+// no .catch), and the only status:'error' it ever set was for a failed FETCH.
+// Anything that threw AFTER the data arrived -- engine.migrateState() on a
+// canvas the engine cannot hydrate is the reachable case -- rejected into
+// nothing: the snapshot stayed 'loading' forever and both boards sat on
+// "Loading board... / Loading inventory..." with no error, no boundary, no way
+// out. Reproduced while writing client/e2e/board-poisoned.spec.ts: a canvas
+// carrying one extra structurally-invalid BP wedges the app exactly there.
+//
+// That is a FOURTH shape of the freeze the owner keeps reporting, and the same
+// class as the others: an uncaught throw with nobody underneath it. Board.tsx
+// and InventoryBoard.tsx already render a "Board unavailable: {error}" branch
+// for status:'error' -- they were simply never reached. This wrapper reaches
+// them. A user with an unloadable save now sees what went wrong instead of an
+// eternal spinner.
 export async function boot(): Promise<void> {
+  try {
+    await bootInner();
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[backpack_ragnarok] boot failed after data load -- surfacing as status:error', e);
+    setSnapshot({
+      ...snapshot,
+      status: 'error',
+      source: 'error',
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+async function bootInner(): Promise<void> {
   // REQ-0041 fix -- boot-sequence auth race (found while adding
   // SlotsPanel.tsx's client-side isSquadDeployable gate, which was the
   // first thing in this app to actually notice its symptom): this

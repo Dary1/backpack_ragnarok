@@ -116,6 +116,7 @@ import { Settings } from './Settings';
 import { FirstRunGuide } from './guide/FirstRunGuide'; // REQ-0141
 import { ContextualHint } from './guide/ContextualHint'; // REQ-0141
 import { Tabs } from './Tabs';
+import { RenderErrorBoundary } from './RenderErrorBoundary'; // REQ-0336
 import { initRouting, setLocale, useGameStore } from './store';
 
 /** The inventory column's actual content (Tabs + board-wrap +
@@ -123,7 +124,7 @@ import { initRouting, setLocale, useGameStore } from './store';
  * rendered EITHER inline (normal Backpacks-page position, default) OR
  * via createPortal into a WarehouseTab-registered slot, with the exact
  * same JSX either way (no behavior fork -- see module comment above). */
-function InventoryColumn({ locale, ready }: { locale: ReturnType<typeof useGameStore>['locale']; ready: boolean }) {
+function InventoryColumn({ locale, ready, resetKey }: { locale: ReturnType<typeof useGameStore>['locale']; ready: boolean; resetKey: number }) {
   // REQ-0070: stagehead title row (ja shows the mock's EN sub-caption; the
   // key is empty for EN, so nothing doubles up) + the ornate MJOLNIR board
   // stage around the SAME always-mounted InventoryBoard. Structure-only
@@ -143,7 +144,19 @@ function InventoryColumn({ locale, ready }: { locale: ReturnType<typeof useGameS
         <i className="k br" />
         <i className="k bl" />
         <div className="board-gridbox">
-          <InventoryBoard />
+          {/* REQ-0336: the boards had NO error boundary. REQ-0285 closed this
+              class for the Monitor subtree only, and REQ-0284's post-mortem is
+              explicit that an uncaught throw here tears down the React ROOT --
+              a blank app, not a blank board. resetKey is the active inventory
+              page so switching tabs re-arms it. */}
+          <RenderErrorBoundary
+            locale={locale}
+            surface="inventory board"
+            testId="inventory-board-error"
+            resetKey={resetKey}
+          >
+            <InventoryBoard />
+          </RenderErrorBoundary>
         </div>
       </div>
       <div className="inventory-note">{t(locale, 'app.inventoryNote')}</div>
@@ -228,7 +241,17 @@ function App() {
               <i className="k br" />
               <i className="k bl" />
               <div className="board-gridbox">
-                <Board />
+                {/* REQ-0336: see the inventory board's note. resetKey is the
+                    active squad -- switching squads re-arms the boundary, so a
+                    single unrenderable squad never strands the whole view. */}
+                <RenderErrorBoundary
+                  locale={snapshot.locale}
+                  surface="canvas board"
+                  testId="canvas-board-error"
+                  resetKey={snapshot.state?.presets?.active ?? -1}
+                >
+                  <Board />
+                </RenderErrorBoundary>
                 <BoardCoords />
                 {/* REQ-0140: panel->board selection ring (DOM overlay, no
                     BoardRenderer change) + zero-BP guidance over the board. */}
@@ -259,7 +282,7 @@ function App() {
               visible gap either way). */}
           {inventorySlot === null ? (
             <div className="canvas-legacy-inv">
-              <InventoryColumn locale={snapshot.locale} ready={inventoryReady} />
+              <InventoryColumn locale={snapshot.locale} ready={inventoryReady} resetKey={snapshot.activeInvPage} />
             </div>
           ) : null}
           {/* REQ-0140: the MJOLNIR right-panel composition (inventory list +
@@ -289,7 +312,7 @@ function App() {
             visibility already naturally follows the Schedule/Warehouse
             tab being on-screen; no additional route-hidden bookkeeping is
             needed for the portaled copy). */}
-        {inventorySlot !== null ? createPortal(<InventoryColumn locale={snapshot.locale} ready={inventoryReady} />, inventorySlot) : null}
+        {inventorySlot !== null ? createPortal(<InventoryColumn locale={snapshot.locale} ready={inventoryReady} resetKey={snapshot.activeInvPage} />, inventorySlot) : null}
 
         {route === 'landing' ? <LandingPage locale={snapshot.locale} me={snapshot.me} /> : null}
         {route === 'schedule' ? <SchedulePage locale={snapshot.locale} /> : null}
