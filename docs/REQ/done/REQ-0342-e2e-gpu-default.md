@@ -108,3 +108,10 @@ speed-up with a correctness default would make the gate result mean less.
   (off master 41f6514).
 - 2026-07-29 implemented; T1-T4 verified including a forced-software abort;
   full gate green with E2E_GPU unset; reserved -> built.
+
+## Deploy record (2026-07-29)
+- Merged to master 7ade8dc (--no-ff). Gate before the merge: `tools/release.sh`
+  CI GREEN with E2E_GPU unset, e2e 206 passed / 0 failed / 1 skipped.
+- **No service restart, no dist change**: test config, test setup and a tools/
+  comment only -- nothing in the shipped bundle.
+- built -> done.
