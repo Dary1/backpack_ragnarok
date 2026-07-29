@@ -137,16 +137,60 @@ What that leaves, honestly:
   full gate.
 - **Something about the whole gate, not this test** — the failure happened as
   test #174 of 209 with three other workers, four api processes, chromium and a
-  GPU all live. Every reproduction here ran this test *alone* (×4). The next
-  cheap step, if it recurs, is a full `CI_SCOPE=both` gate with
-  `E2E_PROXY_TRACE=1` rather than more repetitions of one spec.
+  GPU all live, and every reproduction in this section ran the test *alone*
+  (×4). **§5 then closed this one too**: six traced full-suite runs, 1 260
+  executions, nothing.
 - **Something outside both processes** — the loopback or the box itself.
 
 Explicitly NOT on the list any more: "the api was quiet so it must have been
 the proxy" (§2), the keep-alive race as a first guess (§3), and anything about
 live streams or the cancel handler (this section).
 
-## 5. On recurrence — what to read, in order
+## 5. The whole suite, six times — and a real proxy bug found on the way
+
+§4 ended by naming the one condition every reproduction attempt had lacked: the
+other 208 tests. So the full suite was run six times, traced.
+
+| runs | tests each | failures | `socket hang up` | anomaly lines | socket closes traced |
+|---|---|---|---|---|---|
+| 6 (4 workers, `E2E_PROXY_TRACE=1`) | 210 | **0** | **0** | **0** | ~7 090 |
+
+**1 260 test executions under the failure's own conditions, no recurrence.**
+Runs 1-2 predate the header fix below, runs 3-6 include it; both halves are
+clean, so that fix is also gated by 1 260 executions rather than by argument.
+
+### The bug found on the way: hop-by-hop headers crossed the proxy
+
+`local-proxy.cjs` copied headers verbatim in BOTH directions —
+`{...creq.headers}` upstream and `pres.headers` straight into
+`cres.writeHead()`. Hop-by-hop fields describe ONE connection and must not be
+forwarded (RFC 9110 §7.6.1 / RFC 7230 §6.1), so the worker api's own connection
+terms were being handed to playwright as though they were the proxy's.
+Measured through a stub upstream, with the capitalisation as the tell:
+
+```
+before ->  connection: keep-alive    keep-alive: timeout=5     (lowercase --
+           node lowercases parsed headers, so these are the API's own bytes)
+after  ->  Connection: keep-alive    Keep-Alive: timeout=5     (node's own
+           emission, describing THIS hop)
+```
+
+Fixed by stripping the standard set plus whatever the sender listed in its own
+`Connection` header.
+
+**What this is NOT.** It is not the cause, and it is not claimed to be. It does
+not even remove the "both ends expire at 5000 ms" coincidence — after the fix
+the client is still told `timeout=5`, only now truthfully, by the proxy about
+itself, because node advertises exactly the `keepAliveTimeout` it enforces with
+no safety offset (node's behaviour everywhere, not this file's invention). And
+node's http *client* never parses `Keep-Alive: timeout=` at all — its
+free-socket budget comes from its agent's options — so for playwright this
+almost certainly changed no behaviour whatsoever. It is fixed because
+forwarding another hop's connection terms is wrong, and because an unfixed
+known-wrong proxy is a permanent confounder for every future investigation
+here.
+
+## 6. On recurrence — what to read, in order
 
 1. the run report — the proxy's stderr is piped into it now, so any
    `[e2e local-proxy][REQ-0347]` line sits next to the failing test;
@@ -161,12 +205,12 @@ keep-alive race after all, and §3 becomes wrong in a useful way. **No line at
 all** = the socket died before any request was parsed, which excludes both
 services. Every line carries the in-flight request list.
 
-Then re-run with `E2E_PROXY_TRACE=1` for the full connection census — and
-make that a **full `CI_SCOPE=both` gate**, not a repeat of one spec: §4 already
-spent 150 solo repetitions of the failing test for nothing, and the one thing
-the original failure had that none of them did is the other 208 tests.
+Then re-run with `E2E_PROXY_TRACE=1` for the full connection census. Note that
+this has now been done, six times over (§5), so a seventh identical attempt is
+not the next move: what is missing is a recurrence to look at, and the
+instrumentation exists precisely so that one occurrence is enough.
 
-## 6. What is NOT claimed
+## 7. What is NOT claimed
 
 That it is fixed, or that anything here caused it. One green re-run is not a
 diagnosis, and this project's REQ-0159 discipline says a red is either a real

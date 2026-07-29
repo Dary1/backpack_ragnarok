@@ -121,8 +121,19 @@ And the banner, from a normal scoped e2e run on this box:
 
 | file | change |
 |---|---|
-| `client/e2e/local-proxy.cjs` | the forensics block, per-request and per-socket bookkeeping, the anomaly lines, the banner, and the two experiment knobs |
+| `client/e2e/local-proxy.cjs` | the forensics block, per-request and per-socket bookkeeping, the anomaly lines, the banner, the two experiment knobs, and `stripHopByHop()` |
 | `client/playwright.config.ts` | `webServer.stdout`/`stderr` `'pipe'` — the proxy could not be heard at all before |
+
+## 4b. One actual fix, carried here
+
+Everything above is observation. One thing is not: `stripHopByHop()`.
+REQ-0347b's investigation found that this proxy forwarded hop-by-hop headers in
+both directions (RFC 9110 §7.6.1 / RFC 7230 §6.1) — the worker api's
+`Connection` / `Keep-Alive` terms were being handed to playwright as if they
+described the client's own hop. It is a conformance defect, it is fixed, and it
+is explicitly NOT claimed to be the cause of anything; REQ-0347b §5 carries the
+measurement, the scope and the reasons it probably changed no behaviour at all.
+It lands in this REQ because this REQ owns the file on this branch.
 
 ## 5. Gates
 
@@ -133,6 +144,7 @@ And the banner, from a normal scoped e2e run on this box:
 | synthetic anomaly probes | 3/3 lines produced (§3) |
 | used in anger | REQ-0347b's 836-trial keep-alive experiment ran entirely on these knobs |
 | port capture | fixed in REQ-0347b's traced runs: `localPort`/`remotePort` read `undefined` at `'close'` time (the socket has already released them), so they are now captured at `'connection'` |
+| full suite, traced, ×6 | 210 tests each, **1 260 executions, 0 failures, 0 anomaly lines**, ~7 090 socket closes traced (REQ-0347b §5) |
 | noise on a clean run | a full `CI_SCOPE=both` gate (209 e2e tests, 4 workers) left the anomaly log at **1 line — the banner, 0 anomalies**. That is the intended resting state: silence here is a statement, not an absence of wiring. |
 | `tools/ci.sh CI_SCOPE=both` | shared with REQ-0346 — same branch, same run |
 

@@ -153,6 +153,48 @@ function note(what, detail) {
   try { fs.appendFileSync(ANOMALY_LOG, line + '\n'); } catch { /* forensics are best-effort */ }
 }
 
+// REQ-0347b: hop-by-hop headers must NOT cross a proxy (RFC 9110 s7.6.1 /
+// RFC 7230 s6.1). This proxy copied BOTH directions verbatim -- `{...creq.headers}`
+// upstream, and `pres.headers` straight into cres.writeHead() -- so the worker
+// api's own connection terms were handed to playwright as if they were this
+// proxy's. Measured, and the CAPITALISATION is the tell:
+//
+//   before -> connection: keep-alive   keep-alive: timeout=5
+//             (lowercase: node lowercases parsed headers, so those are the
+//              upstream api's own bytes, copied straight through)
+//   after  -> Connection: keep-alive   Keep-Alive: timeout=5
+//             (node's own emission, describing THIS hop -- which is what a
+//              client is entitled to be told)
+//
+// HONEST SCOPE, so the record stays true:
+//  * a conformance defect found while investigating REQ-0347b. NOT claimed as
+//    the cause of that hang-up.
+//  * it does NOT remove the "both ends expire at 5000ms" coincidence. After
+//    the fix the client is still told timeout=5 -- but now truthfully, by the
+//    proxy about the proxy, because node advertises exactly the
+//    keepAliveTimeout it enforces with no safety offset. That is node's
+//    behaviour everywhere, not something this file invented.
+//  * and node's http CLIENT never parses `Keep-Alive: timeout=` at all (its
+//    free-socket budget comes from its agent's own options), so for playwright
+//    specifically this almost certainly changed no behaviour whatsoever.
+// It is fixed because forwarding another hop's connection terms is wrong.
+const HOP_BY_HOP = ['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade'];
+
+/** A copy of `headers` with every hop-by-hop field removed -- the fixed set
+ * above plus whatever the sender listed in its own `Connection` header, which
+ * is the extension mechanism the RFC defines. Framing is deliberately included:
+ * node's parser has already decoded the body by the time it reaches us, so the
+ * outgoing hop must re-frame it (which node does on its own) rather than
+ * inherit the incoming hop's `transfer-encoding`. */
+function stripHopByHop(headers) {
+  const drop = new Set(HOP_BY_HOP);
+  const conn = headers.connection || headers.Connection;
+  if (typeof conn === 'string') for (const t of conn.split(',')) drop.add(t.trim().toLowerCase());
+  const out = {};
+  for (const [k, v] of Object.entries(headers)) if (!drop.has(k.toLowerCase())) out[k] = v;
+  return out;
+}
+
 const server = http.createServer((creq, cres) => {
   const isApi = creq.url.startsWith('/api/') || creq.url === '/api';
   if (!isApi && (creq.url === "/app" || creq.url.startsWith("/app/"))) { serveAppStatic(creq, cres); return; } // REQ-0051
@@ -178,10 +220,11 @@ const server = http.createServer((creq, cres) => {
   });
   const preq = http.request(
     { host: HOST, port, method: creq.method, path: creq.url,
-      headers: { ...creq.headers, host: `${HOST}:${port}` } },
+      // REQ-0347b: the client's connection terms are for the client's hop only.
+      headers: { ...stripHopByHop(creq.headers), host: `${HOST}:${port}` } },
     (pres) => {
       upstreamAnswered = true;
-      cres.writeHead(pres.statusCode || 502, pres.headers);
+      cres.writeHead(pres.statusCode || 502, stripHopByHop(pres.headers)); // REQ-0347b
       pres.pipe(cres);
       // REQ-0347: the api answered and then dropped the body mid-flight.
       pres.on('aborted', () => note('UPSTREAM-ABORTED', `${where()} status=${pres.statusCode}`));
