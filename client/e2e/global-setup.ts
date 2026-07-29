@@ -76,15 +76,17 @@ function probeBoxLock(): void {
 // the suite's wall time plus a load flake, unnoticed, for four days.
 //
 // One probe launch per run (~0.5s) converts that silent tax into a printed
-// line. Warns by default; E2E_REQUIRE_GPU=1 turns the warning into an abort
-// (same seam shape as E2E_REQUIRE_WORKTREE above).
+// line. REQ-0342: ABORTS by default; E2E_ALLOW_CPU=1 downgrades it to a warning
+// (E2E_REQUIRE_GPU, REQ-0331's opt-in abort, is gone: it IS the default now).
 const GPU_PROBE_ARGS = [
   '--headless=new', '--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist',
   '--enable-features=Vulkan', '--ozone-platform=headless', '--no-sandbox',
 ];
 
 async function assertGpuRenderer(): Promise<void> {
-  if (process.env.E2E_GPU !== '1') return;
+  // REQ-0342: mirrors playwright.config.ts's USE_GPU -- only an explicit
+  // E2E_GPU=0 ("I mean to run on CPU") skips the probe.
+  if (process.env.E2E_GPU === '0') return;
   const { chromium } = await import('@playwright/test');
   const browser = await chromium.launch({ headless: false, args: GPU_PROBE_ARGS });
   try {
@@ -114,8 +116,19 @@ async function assertGpuRenderer(): Promise<void> {
       '  Fix -- stop every GPU holder (e.g. systemctl --user stop comfyui), then\n' +
       '  sudo rmmod nvidia_uvm nvidia_drm nvidia_modeset nvidia && sudo modprobe nvidia\n' +
       '  (or reboot the box), and restart the holders.';
-    if (process.env.E2E_REQUIRE_GPU === '1') throw new Error(msg + '\n  (E2E_REQUIRE_GPU=1 -> abort)');
-    console.warn('\n' + '='.repeat(78) + '\n' + msg + '\n' + '='.repeat(78) + '\n');
+    // REQ-0342: ABORT is the default now. REQ-0331 shipped this as a warning
+    // and the warning worked exactly as well as no check at all -- the box
+    // rendered on llvmpipe for four days with the banner printing on every
+    // run. A gate whose failure mode is 'scrolls past' is not a gate.
+    // E2E_ALLOW_CPU=1 is the deliberate, named way to proceed anyway.
+    if (process.env.E2E_ALLOW_CPU === '1') {
+      console.warn('\n' + '='.repeat(78) + '\n' + msg +
+        '\n  (E2E_ALLOW_CPU=1 -> proceeding on CPU by request)\n' + '='.repeat(78) + '\n');
+      return;
+    }
+    throw new Error(msg +
+      '\n  Set E2E_GPU=0 to run on CPU deliberately, or E2E_ALLOW_CPU=1 to accept this' +
+      '\n  fallback for one run. Neither is a fix -- see the repair steps above.');
   } finally {
     await browser.close();
   }
