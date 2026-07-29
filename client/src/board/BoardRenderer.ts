@@ -82,6 +82,7 @@ import { drawPOOutline } from './poOutline'; // REQ-0273: per-PO footprint outli
 import { OVERLAY } from './overlayPalette'; // REQ-0143: colourblind-safe overlay palette (single source, BS-G1)
 import { paintUsageRibbons, cellsBBoxPx, topRightCellBBoxPx, topLeftCellBBoxPx } from './usageRibbons'; // REQ-0287
 import { publishRibbonProbe, type UsageRibbonProbeEntry } from './usageRibbonProbe'; // REQ-0287
+import { countPaint } from './paintProbe'; // REQ-0345
 import { flash, paintNeutralReturn, pulseCellsSuccess, renderGhostAssembly, renderGhostBP, renderGhostPO } from './ghosts';
 import { notifyStateChanged } from '../store';
 import { clearItemTip, clearItemTipForBoard, showItemTip } from './itemTip';
@@ -102,6 +103,21 @@ import { traceUnit } from './linkTrace';
 function itemTex(textures: Map<string, Texture>, id: string, spriteKey: string): Texture | undefined {
   const res = resolveItemIcon(id, spriteKey, (k) => textures.has(k));
   return res.key ? textures.get(res.key) : undefined;
+}
+
+/** REQ-0345: count every frame this Application submits, at the one seam both
+ * producers share -- see paintProbe.ts for why nothing lower down the stack
+ * can be instrumented. Wraps the renderer INSTANCE's own `render`
+ * (Application.render() resolves `this.renderer` per call, so the Ticker's
+ * captured method reference still lands here), and must run AFTER app.init()
+ * -- `app.renderer` does not exist before that. */
+function countFrames(app: Application, boardKey: string): void {
+  const target = app.renderer as unknown as { render: (opts: unknown) => void };
+  const submit = target.render.bind(app.renderer);
+  target.render = (opts: unknown) => {
+    countPaint(boardKey);
+    submit(opts);
+  };
 }
 
 export interface BoardDeps {
@@ -297,6 +313,7 @@ export class BoardRenderer {
     // (Cells/items keep painting their own opaque fills on top, so board
     // content renders identically to the old flat #121212 backdrop.)
     await app.init({ canvas, width, height, backgroundAlpha: 0, antialias: true });
+    countFrames(app, boardIdKey(deps.ops.boardId));
     return new BoardRenderer(app, deps);
   }
 

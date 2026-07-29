@@ -6,6 +6,7 @@ import { loadSkinDefs, setBpSkinDefs } from '../board/skin/skinRegistry'; // REQ
 import { fetchSkinPrefs } from '../api/skins'; // REQ-0266
 import { setItemArtUrls } from '../board/itemArt'; // REQ-0133
 import { ribbonProbeFor } from '../board/usageRibbonProbe'; // REQ-0287
+import { paintCounts } from '../board/paintProbe'; // REQ-0345
 import { fetchMe, getStoredToken, resolveGameData, setStoredToken } from '../api';
 import type { ApiMe } from '../api';
 import { INVITE_HASH_RE, snapshot, setSnapshot } from './core';
@@ -310,6 +311,12 @@ async function bootInner(): Promise<void> {
     isSquadDeployable: (n: number) => engine.isSquadDeployable(state, n),
     // REQ-0287: per-board ownership-ribbon probe (canvas | inv:<page>).
     usageRibbonProbe: (boardKey: string) => ribbonProbeFor(boardKey),
+    // REQ-0345: frames each board Application has submitted, keyed by
+    // boardIdKey. Asserts BOTH directions of the on-demand rule: the count
+    // must climb when something visibly changed, and must not move at all
+    // while the boards sit idle (the pre-REQ-0345 ticker moved it ~60/s per
+    // board, forever, on every route).
+    boardPaints: () => paintCounts(),
   };
 }
 
