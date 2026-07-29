@@ -31,19 +31,20 @@
 //      pixel of the same hue.
 //
 // The claim pulse (ghosts.ts pulseCellsSuccess) is the third of those three
-// and has NO test here, deliberately, because it turns out it does not reach
-// the screen at all -- and did not before this REQ either. Measured on this
-// box through the real warehouse-claim flow (dev item_admin grant, claim
-// button, toast "Moved to your inventory." confirming the same-page branch
-// that calls pulseCellsSuccess): ZERO pixels of the pulse's #59d68a across 22
-// samples spanning the whole 2s window, both with autoStart:false and with
-// the Ticker put back. The cause is unrelated to this REQ and is written up
-// in docs/REQ/built/REQ-0345 -- the notifyStateChanged() on the line after
-// the pulse re-enters render(state), whose first act is
-// gTarget.removeChildren(). A test here would have been green theatre.
-// The paint path itself IS proven: delaying that one call by 600ms (a
-// throwaway diagnostic build) made the blinks appear and disappear on the
-// exact 330ms rhythm, 596 px per blink, with no Ticker running.
+// and is NOT tested here. It has its own spec, claim-pulse.spec.ts, because
+// it needs the real warehouse-claim flow (dev item_admin grant + a claim
+// press) rather than this file's local board fixture. REQ-0345 left it
+// untested for a stronger reason than scope: it did not reach the screen at
+// all, and had not before REQ-0345 either -- ZERO pixels of its #59d68a
+// across 22 samples spanning the whole 2s window, both with autoStart:false
+// and with the Ticker put back, so a test here would have been green
+// theatre. REQ-0346 root-caused that (the notifyStateChanged() on the line
+// after the pulse re-enters render(state), whose first act was
+// gTarget.removeChildren()), moved the pulse onto its own gPulse layer that
+// render(state) never clears, and brought the pixel assertion with it. The
+// paint path itself was already proven at the time: delaying that one call by
+// 600ms in a throwaway diagnostic build made the blinks appear and disappear
+// on the exact 330ms rhythm, 596 px per blink, with no Ticker running.
 import { test, expect, type Page } from '@playwright/test';
 import { bootApp, cx, cy } from './helpers';
 

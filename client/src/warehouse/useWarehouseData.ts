@@ -194,8 +194,10 @@ export function useWarehouseData(locale: Locale) {
       // inventoryRenderer.ts's doc for why a module-level accessor is
       // the seam here, per the REQ-0041 Pixi-instance reuse decision).
       // Only pulse if the placement landed on the CURRENTLY-DISPLAYED
-      // page -- pulseCellsSuccess draws into gTarget, which always
-      // reflects whatever page InventoryBoard.tsx's own ops-swap effect
+      // page -- pulseCellsSuccess draws into gPulse (REQ-0346; it drew
+      // into gTarget until then, which is why it never actually painted:
+      // the notifyStateChanged() below wiped it in the same frame), a
+      // layer of whichever page InventoryBoard.tsx's own ops-swap effect
       // last pointed the renderer at (activeInvPage). If the item landed
       // on a DIFFERENT page, pulsing cells there would be invisible (and
       // potentially misleading once the user switches there later) --
