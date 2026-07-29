@@ -137,3 +137,12 @@ a follow-up, not a prerequisite.
 - scoped e2e **199 passed / 0 failed / 1 skipped** (197 before; +2 = board-poisoned.spec.ts).
   Admin trio 8/1/28, registry 4/4.
 - Deliberate-regression check recorded in section 3.
+
+## Deploy record (2026-07-28)
+- Merged to master b0f4b8a (--no-ff). Gate before the merge: `tools/release.sh`
+  **CI GREEN**, 438.9 s, dist committed on the branch.
+- No service restart: no server path touched. web/app is served straight from
+  the checkout, so the merge IS the deploy. Verified live --
+  https://backpack-dev.qtie.jp/app/ serves assets/index-C995abFQ.js, which is
+  HEAD's committed bundle, and that bundle contains the new guard strings.
+- built -> done.
