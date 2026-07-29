@@ -57,8 +57,21 @@ writes nothing beyond its banner.
 
 The banner now records `keepAliveTimeout`, `headersTimeout`, `requestTimeout`,
 `http.globalAgent.keepAlive` and the node version, because the keep-alive
-hypothesis (see REQ-0347b §3) is only testable against the values actually in
-force, and node has moved these defaults between majors.
+hypothesis is only testable against the values actually in force, and node has
+moved these defaults between majors. Those printed values are what let
+REQ-0347b §3 test that hypothesis at all — and rule it out.
+
+Two knobs come with it, both no-ops unless explicitly set:
+
+- `E2E_PROXY_TRACE=1` — log EVERY socket close, not just errored ones, with the
+  socket's served-request count and age. This is the connection census: it is
+  what showed playwright pooling 8-20 requests per socket over 6-51 s, which is
+  what made REQ-0347b's negative result mean something instead of nothing.
+- `E2E_PROXY_KEEPALIVE_MS` — shrink the server's keep-alive boundary so the
+  reuse race is crossed hundreds of times a minute. Unset in every real run, so
+  node's 5000 ms default stands untouched; set, it turns a "wait for it to
+  happen again" investigation into a one-command experiment. REQ-0347b used it
+  for 800 of its 836 trials.
 
 **And a silent run is itself a result.** If a future hang-up produces no line
 here, the socket died between Playwright and this proxy without a request ever
@@ -108,7 +121,7 @@ And the banner, from a normal scoped e2e run on this box:
 
 | file | change |
 |---|---|
-| `client/e2e/local-proxy.cjs` | the forensics block, per-request and per-socket bookkeeping, the five anomaly lines, the banner |
+| `client/e2e/local-proxy.cjs` | the forensics block, per-request and per-socket bookkeeping, the anomaly lines, the banner, and the two experiment knobs |
 | `client/playwright.config.ts` | `webServer.stdout`/`stderr` `'pipe'` — the proxy could not be heard at all before |
 
 ## 5. Gates
@@ -118,6 +131,7 @@ And the banner, from a normal scoped e2e run on this box:
 | `node --check` + `oxlint` on the proxy | clean, 0 warnings |
 | `tsc -b` (client) | clean |
 | synthetic anomaly probes | 3/3 lines produced (§3) |
+| used in anger | REQ-0347b's 836-trial keep-alive experiment ran entirely on these knobs |
 | `tools/ci.sh CI_SCOPE=both` | shared with REQ-0346 — same branch, same run |
 
 Carried on branch `req-0346-claim-pulse` alongside REQ-0346: one e2e-harness

@@ -116,10 +116,13 @@ function apiPortFor(headers) {
 //     the single most likely way to produce a bare hang-up with no trace)
 //   - the client socket died before we answered         -> DOWNSTREAM-CLOSED
 //   - a pooled keep-alive socket died between requests  -> SOCKET-ERROR-CLOSE,
-//     with the number of requests it had already served. The leading
-//     hypothesis for a one-off hang-up is exactly this race (node's server
-//     closes an idle keep-alive connection at the instant the client reuses
-//     it), so the socket's served-count and age are logged with it.
+//     with the number of requests it had already served and its age. This was
+//     the first hypothesis (node's server closes an idle keep-alive connection
+//     at the instant the client reuses it) and REQ-0347b RULED IT OUT by
+//     experiment -- 836 trials straddling the boundary, including 600 under
+//     4-way parallelism on a loaded box, zero hang-ups. The line stays because
+//     the mechanism is still the one that would produce this symptom silently;
+//     it is now evidence AGAINST that reading rather than for it.
 //
 // And if a future hang-up leaves NO line here at all, that is a finding too:
 // the socket then died between Playwright and this proxy without ever
@@ -205,10 +208,15 @@ server.on('connection', (sock) => {
   sock[OPENED_AT] = Date.now();
   sock[REQ_COUNT] = 0;
   sock.on('close', (hadError) => {
-    // Only an ERRORED close is worth a line: an ordinary keep-alive expiry is
-    // the overwhelmingly common case and would drown the signal.
-    if (hadError) {
-      note('SOCKET-ERROR-CLOSE',
+    // Only an ERRORED close is worth a line by default: an ordinary keep-alive
+    // expiry is the overwhelmingly common case and would drown the signal.
+    // E2E_PROXY_TRACE=1 logs EVERY close instead -- how many requests each
+    // socket served and how long it lived. That is what proved the REQ-0347b
+    // probe was not vacuous (sockets serving 8-20 requests over 6-51s, i.e.
+    // playwright really does pool them), and it is the first thing to turn on
+    // if the hang-up recurs. Off by default: it is one line per connection.
+    if (hadError || process.env.E2E_PROXY_TRACE) {
+      note(hadError ? 'SOCKET-ERROR-CLOSE' : 'SOCKET-CLOSE',
         `served=${sock[REQ_COUNT]} age=${Date.now() - sock[OPENED_AT]}ms local=${sock.localPort} remote=${sock.remotePort}`);
     }
   });
@@ -221,6 +229,20 @@ server.on('clientError', (e, sock) => {
   try { sock.destroy(); } catch {}
 });
 
+// REQ-0347b: an experiment knob, unset in every real run (node's 5000ms
+// default then stands, unchanged). Setting it shrinks the keep-alive boundary
+// so the "server closes an idle pooled socket at the instant the client reuses
+// it" race is crossed hundreds of times a minute instead of once per idle gap
+// -- which is how that hypothesis was tested and RULED OUT (836 straddling
+// trials, 0 hang-ups; see docs/REQ/.../REQ-0347b). Kept because the next
+// investigator should be able to re-run that experiment in one command rather
+// than re-deriving it, and because a knob that is read only when explicitly
+// set cannot change a normal run.
+if (process.env.E2E_PROXY_KEEPALIVE_MS) {
+  server.keepAliveTimeout = Number(process.env.E2E_PROXY_KEEPALIVE_MS);
+  // node requires headersTimeout > keepAliveTimeout to stay meaningful.
+  server.headersTimeout = server.keepAliveTimeout + 60000;
+}
 server.listen(PORT, HOST, () => {
   // REQ-0347: the timeouts are in the banner because the keep-alive race
   // hypothesis is only testable against the values that were actually in
