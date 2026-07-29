@@ -31,6 +31,13 @@ export const commonEn = {
   // Invite banner (InviteBanner.tsx)
   'invite.welcome': 'Welcome, {name}!',
   'invite.dismiss': 'Dismiss',
+
+  // Contained render error (RenderErrorBoundary.tsx) -- REQ-0336. Deliberately
+  // generic: the same card fronts any surface that can fail to draw, and the
+  // point of the copy is that the REST of the app is still usable.
+  'render.error.title': 'This part could not be drawn',
+  'render.error.body': 'Something went wrong rendering this view. Nothing was lost, and the rest of the app is unaffected.',
+  'render.error.retry': 'Try again',
 } as const;
 
 export const commonJa = {
@@ -55,4 +62,8 @@ export const commonJa = {
 
   'invite.welcome': 'ようこそ、{name} さん！',
   'invite.dismiss': '閉じる',
+
+  'render.error.title': 'この部分を描画できませんでした',
+  'render.error.body': 'この表示の描画中に問題が発生しました。データは失われておらず、他の画面には影響ありません。',
+  'render.error.retry': '再試行',
 } as const;
