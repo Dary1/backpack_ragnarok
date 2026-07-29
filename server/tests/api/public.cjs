@@ -24,6 +24,78 @@ T('api: GET /api/health returns {ok,version}', () => {
   assert.strictEqual(typeof parsed.version, 'string');
 });
 
+// REQ-0341: GET /api/config. The route reads process.env on EVERY request
+// (server/routes/public.cjs), so these three drive it by mutating the
+// process env around the call and restoring afterwards -- no module eviction
+// needed. The values used here are obviously synthetic; the real ones are
+// never printed, committed or asserted anywhere.
+function withEnv(vars, fn) {
+  const saved = {};
+  for (const k of Object.keys(vars)) saved[k] = process.env[k];
+  try {
+    for (const k of Object.keys(vars)) {
+      if (vars[k] === undefined) delete process.env[k];
+      else process.env[k] = vars[k];
+    }
+    fn();
+  } finally {
+    for (const k of Object.keys(saved)) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  }
+}
+
+T('api: GET /api/config serves the PUBLIC supabase config from the server env, uncached (REQ-0341)', () => {
+  withEnv({ SUPABASE_URL: 'https://auth.test.invalid', SUPABASE_ANON_KEY: 'test-anon-key' }, () => {
+    const req = mockReq('GET', '/api/config');
+    const res = mockRes();
+    api.handle(req, res);
+    assert.strictEqual(res.statusCode, 200);
+    assert.deepStrictEqual(JSON.parse(res.body), {
+      supabaseUrl: 'https://auth.test.invalid',
+      supabaseAnonKey: 'test-anon-key',
+    });
+    // Rotating the anon key must not need a client rebuild; a cached
+    // response would quietly defeat that.
+    assert.strictEqual(res.headers['Cache-Control'], 'no-store');
+    assert.strictEqual(res.headers['Access-Control-Allow-Origin'], '*', 'still the standard sendJSON header set');
+  });
+});
+
+T('api: GET /api/config returns nulls with 200 when the server env carries no supabase config (REQ-0341)', () => {
+  withEnv({ SUPABASE_URL: undefined, SUPABASE_ANON_KEY: undefined }, () => {
+    const req = mockReq('GET', '/api/config');
+    const res = mockRes();
+    api.handle(req, res);
+    // NOT a 500: the client must degrade to the REQ-0118c "not configured"
+    // sign-in note, exactly as it did when the build had no env, rather than
+    // fail boot. This is the unconfigured-server contract.
+    assert.strictEqual(res.statusCode, 200);
+    assert.deepStrictEqual(JSON.parse(res.body), { supabaseUrl: null, supabaseAnonKey: null });
+  });
+});
+
+T('api: GET /api/config treats a blank env value as absent (REQ-0341)', () => {
+  withEnv({ SUPABASE_URL: '   ', SUPABASE_ANON_KEY: '' }, () => {
+    const req = mockReq('GET', '/api/config');
+    const res = mockRes();
+    api.handle(req, res);
+    assert.strictEqual(res.statusCode, 200);
+    // An EnvironmentFile line left as `SUPABASE_ANON_KEY=` is the realistic
+    // half-provisioned shape; it must read as "absent", not as a truthy
+    // empty string the client would hand to createClient().
+    assert.deepStrictEqual(JSON.parse(res.body), { supabaseUrl: null, supabaseAnonKey: null });
+  });
+});
+
+T('api: GET /api/config rejects a non-GET method by falling through (REQ-0341)', () => {
+  const req = mockReq('POST', '/api/config', '{}');
+  const res = mockRes();
+  api.handle(req, res);
+  assert.notStrictEqual(res.statusCode, 200, 'POST must not be served by the config route');
+});
+
 T('api: GET /api/content shape has items/sis/trees/scenario, item count matches live fixture', () => {
   const req = mockReq('GET', '/api/content');
   const res = mockRes();

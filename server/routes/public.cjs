@@ -9,9 +9,41 @@ const { getContent } = require('../lib/content.cjs');
 const { VERSION } = require('../lib/meta.cjs');
 const schedule = require('../schedule.cjs');
 
+// REQ-0341: the PUBLIC client config the browser needs before it can build
+// its Supabase client. Read from THIS process's environment on every request
+// (server/.env via the systemd unit's EnvironmentFile), never from a file
+// this repo tracks, and never logged.
+//
+// Absent or blank => null, with a 200. A 500 here would be wrong: the client
+// must degrade to the REQ-0118c "not configured" sign-in note exactly as it
+// did when the values were missing from the build, not crash boot.
+function envOrNull(name) {
+  const v = process.env[name];
+  if (typeof v !== 'string') return null;
+  const trimmed = v.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function publicClientConfig() {
+  return {
+    supabaseUrl: envOrNull('SUPABASE_URL'),
+    supabaseAnonKey: envOrNull('SUPABASE_ANON_KEY'),
+  };
+}
+
 function tryPublicRoutes(req, res, url, p) {
   if (p === '/api/health' && req.method === 'GET') {
     sendJSON(res, 200, { ok: true, version: VERSION });
+    return;
+  }
+
+  // REQ-0341: GET /api/config -- no auth, same posture as /api/health and
+  // /api/content above. Both values are PUBLIC client credentials (the anon
+  // key is designed to live in a browser); this endpoint exposes nothing a
+  // downloaded bundle did not already expose. no-store because the point of
+  // serving them at runtime is that a rotation needs no client rebuild.
+  if (p === '/api/config' && req.method === 'GET') {
+    sendJSON(res, 200, publicClientConfig(), { 'Cache-Control': 'no-store' });
     return;
   }
 
@@ -53,4 +85,4 @@ function tryPublicRoutes(req, res, url, p) {
 
   return false;
 }
-module.exports = { tryPublicRoutes };
+module.exports = { tryPublicRoutes, publicClientConfig };

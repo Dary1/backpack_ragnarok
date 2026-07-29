@@ -145,7 +145,29 @@ async function bootInner(): Promise<void> {
   // so a signed-in player's very first request already carries the Bearer
   // JWT. A no-op when Supabase is not configured (createSupabaseClient()
   // returns null), leaving the REQ-0037 flow byte-identical.
-  await initSupabaseAuth(createSupabaseClient());
+  //
+  // REQ-0341: createSupabaseClient() is now ASYNC -- it awaits GET
+  // /api/config instead of reading Vite-inlined env. That inserts one
+  // network round-trip between page load and the client's construction,
+  // which matters because the client is configured with detectSessionInUrl
+  // + flowType:'pkce' and must exist before the OAuth callback parameters
+  // are consumed or destroyed. It is safe here, and the reason is specific:
+  //   - PKCE returns its callback in the QUERY STRING (?code=...), not the
+  //     fragment. auth-js only treats a URL as a PKCE callback when
+  //     params.code AND a stored code-verifier are both present
+  //     (GoTrueClient _isPKCECallback), and it is auth-js itself that
+  //     removes the param afterwards, via
+  //     url.searchParams.delete('code') + history.replaceState.
+  //   - Nothing in this app ever writes location.search. setRoute() writes
+  //     only location.hash (store/routing.ts), setRouteReplacingHash() and
+  //     contentadmin's deep-link rewrite both rebuild the URL as
+  //     location.pathname + location.search + hash, and initRouting() only
+  //     READS the hash on load. So ?code= survives an arbitrary delay.
+  //   - The await still runs BEFORE fetchMe(), so the first /api/me carries
+  //     the Bearer JWT exactly as before; initSupabaseAuth() awaits
+  //     getSession(), which awaits auth-js's initializePromise and therefore
+  //     the URL detection itself.
+  await initSupabaseAuth(await createSupabaseClient());
   const me: ApiMe | null = await fetchMeWithRetry();
   if (me) setSnapshot({ ...snapshot, me });
 

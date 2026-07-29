@@ -146,13 +146,19 @@ them pass. Full rationale: server/README.md, "Suite membership".
 - Deployed artifact = the repo itself on the server box. Client ships as
   committed `web/app/` (rebuild via release.sh); server code is picked up
   by `systemctl --user restart backpack-api` (no build step).
-- REQ-0278: worktree client builds now CARRY the Supabase env. `client/.env.local`
-  (gitignored, main-only) is copied into a worktree by `tools/provision_worktree_env.sh`,
-  so a worktree's `web/app` is byte-identical to a main rebuild. This RETIRES the ad-hoc
-  `42238f8` "rebuild web/app on main at deploy" step (which existed only to re-inject env):
-  a merged worktree's committed `web/app` already carries it. `release.sh`'s rebuild stays
-  the serving invariant but is now env-CONFIRMING, not env-INJECTING; `ci.sh [6.1/7]`
-  (`tools/check_bundle_env.sh`) is the machine check that a deploy-bound bundle carries env.
+- REQ-0341: the client bundle carries NO Supabase env. `client/src/auth/client.ts`
+  fetches `GET /api/config` (`server/routes/public.cjs`) at runtime, so `web/app` is a
+  pure function of `client/src` and every tree builds the same bytes. This retires the
+  whole REQ-0278/0340 apparatus — `tools/provision_worktree_env.sh`,
+  `tools/check_bundle_env.sh`, `ci.sh [6.1/7]` and `client/.env.example` are DELETED —
+  and with them the `42238f8` "rebuild web/app on main at deploy" step. The deploy
+  dependency moved from build time to server config: `server/.env` must carry
+  `SUPABASE_URL` + `SUPABASE_ANON_KEY` and `backpack-api` must be restarted for a change
+  to take effect (systemd reads `EnvironmentFile` at start). Absent => the route serves
+  nulls and sign-in degrades to "not configured" (REQ-0118c). Upside: an anon-key
+  rotation no longer needs a client rebuild. The replacement checks are
+  `check_auth.mjs`'s source-level "no client/src file reads VITE_SUPABASE_*" tripwire
+  and `client/e2e/runtime-config.spec.ts`.
 - The repo accepts direct pushes (`receive.denyCurrentBranch=
   updateInstead`) BUT refuses while any collaborator has uncommitted
   edits in the worktree (e.g. the designer working in `web/redesign/`).
