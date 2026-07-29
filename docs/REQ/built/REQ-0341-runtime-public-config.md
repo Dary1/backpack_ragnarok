@@ -318,3 +318,24 @@ reaches a configured Supabase client.
    other source of config, and the assertion is not passing for free.
 5. The bundle committed by `tools/release.sh` at the end of the gate is that
    same env-less bundle.
+
+## Deploy record (2026-07-29)
+- Merged to master fa9e7df (--no-ff), immediately followed by
+  `systemctl --user restart backpack-api` in the same step. The window matters:
+  the merge publishes an env-LESS bundle and the old api process had no
+  /api/config, so a page load in between would have shown "not configured".
+  Measured window ~2 s; self-healing either way.
+- Live verification (values never printed):
+  - GET https://backpack-dev.qtie.jp/api/config -> supabaseUrl and supabaseAnonKey
+    both present and non-empty; `Cache-Control: no-store` confirmed on the direct
+    api GET.
+  - the served bundle assets/index-DVVa0rMO.js contains **0** occurrences of
+    VITE_SUPABASE and **1** of api/config -- the tracked artifact no longer
+    carries the env, which is the whole REQ.
+  - all four services active afterwards.
+- Noted, NOT a regression: HEAD /api/config returns 404, but so does
+  HEAD /api/health -- the router matches GET only, house-wide and pre-existing.
+- Not re-verified with a browser: the sign-in UI rendering the CONFIGURED
+  variant live. That path is covered by client/e2e/runtime-config.spec.ts in the
+  hermetic harness, including a watched negative control.
+- built -> done.
