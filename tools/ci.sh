@@ -382,22 +382,16 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   # arithmetic, no browser/Pixi -- same vite-ssrLoadModule rig as check_po_outline.
   stage "[5.9g/7] client squad-cell geometry convention (REQ-0286)"
   (cd client && node scripts/check_squad_cell_geom.mjs)
+  # REQ-0341: there is no [6.1/7] bundle-env tripwire any more, and there is no
+  # env to provision either. The client no longer reads VITE_SUPABASE_* at all
+  # (client/src/auth/client.ts fetches GET /api/config at runtime), so web/app is
+  # a pure function of client/src and cannot vary with client/.env.local. What
+  # replaced the tripwire is a SOURCE-level check inside [5.9/7]'s check_auth.mjs
+  # -- "no client/src file reads a VITE_SUPABASE_* value" -- plus
+  # client/e2e/runtime-config.spec.ts, which asserts in a real browser that the
+  # served bundle carries no such value AND still reaches a configured sign-in UI.
   stage "[6/7] client typecheck + build"
   (cd client && pnpm run build)
-  # REQ-0278, repaired by REQ-0340: web/app is a TRACKED artifact built from a
-  # GITIGNORED input (client/.env.local, main-only), so a worktree build bakes an
-  # env-LESS bundle and sign-in degrades to "not configured" (REQ-0118c). That
-  # shipped twice -- REQ-0266 (42238f8) and REQ-0337 (2517c83, hotfix e8f2b77) --
-  # the second time WITH this tripwire in place, because it exit-0'd whenever
-  # .env.local was absent: a free pass at exactly the accident condition, in a
-  # script whose header claimed "never a free PASS".
-  # Now: (A) the built bundle must carry non-empty VITE_SUPABASE_* -- env-INdependent,
-  # so it runs in every worktree; (B) an env-less tree must not have web/app dirty;
-  # (C) with env present, the bundle must carry THIS tree's host. --selftest proves
-  # (A) rejects an env-less bundle, so the gate is watched failing on every run.
-  stage "[6.1/7] client bundle Supabase-env tripwire (REQ-0278/0340)"
-  bash tools/check_bundle_env.sh --selftest
-  bash tools/check_bundle_env.sh
 else
   stage "[6/7] client typecheck + build SKIPPED"
 fi
