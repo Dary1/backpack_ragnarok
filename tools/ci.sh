@@ -384,13 +384,19 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   (cd client && node scripts/check_squad_cell_geom.mjs)
   stage "[6/7] client typecheck + build"
   (cd client && pnpm run build)
-  # REQ-0278: the committed-bundle path had no machine check that a worktree's
-  # freshly built web/app actually carries the Supabase env. A worktree missing the
-  # gitignored, main-only client/.env.local builds a degraded bundle (sign-in "not
-  # configured", REQ-0118c) that this same-tree build + the e2e proxy cannot see --
-  # the trap that bit the REQ-0266 deploy (42238f8). Present env-file -> assert the
-  # marker is in the built bundle; absent -> report not-applicable WITH a reason.
-  stage "[6.1/7] client bundle Supabase-env tripwire (REQ-0278)"
+  # REQ-0278, repaired by REQ-0340: web/app is a TRACKED artifact built from a
+  # GITIGNORED input (client/.env.local, main-only), so a worktree build bakes an
+  # env-LESS bundle and sign-in degrades to "not configured" (REQ-0118c). That
+  # shipped twice -- REQ-0266 (42238f8) and REQ-0337 (2517c83, hotfix e8f2b77) --
+  # the second time WITH this tripwire in place, because it exit-0'd whenever
+  # .env.local was absent: a free pass at exactly the accident condition, in a
+  # script whose header claimed "never a free PASS".
+  # Now: (A) the built bundle must carry non-empty VITE_SUPABASE_* -- env-INdependent,
+  # so it runs in every worktree; (B) an env-less tree must not have web/app dirty;
+  # (C) with env present, the bundle must carry THIS tree's host. --selftest proves
+  # (A) rejects an env-less bundle, so the gate is watched failing on every run.
+  stage "[6.1/7] client bundle Supabase-env tripwire (REQ-0278/0340)"
+  bash tools/check_bundle_env.sh --selftest
   bash tools/check_bundle_env.sh
 else
   stage "[6/7] client typecheck + build SKIPPED"
