@@ -118,9 +118,15 @@ export function flash(self: BoardRenderer, cells: Cell[] | undefined): void {
       const timer = setTimeout(() => {
         rect.destroy();
         self.flashTimers.delete(timer);
+        self.requestRender(); // REQ-0345: the outline is gone -- repaint without it
       }, FLASH_MS);
       self.flashTimers.add(timer);
     }
+    // REQ-0345: this function is one of the three that made the always-on
+    // Ticker load-bearing -- it mutates the scene graph and has never called
+    // render(). With the Ticker off it must paint itself, at both ends of the
+    // 350ms window: once to show the outline, once when the timer removes it.
+    self.requestRender();
   }
 
   /** REQ-0041 -- warehouse-claim placement pulse ("ピコンピコン"): a
@@ -156,12 +162,19 @@ export function pulseCellsSuccess(self: BoardRenderer, cells: Cell[] | undefined
         rect.visible = !rect.visible;
         if (elapsed >= CLAIM_PULSE_TOTAL_MS) {
           rect.destroy();
+          self.requestRender(); // REQ-0345: last blink -- repaint without the outline
           return;
         }
         currentTimer = setTimeout(blink, CLAIM_PULSE_BLINK_MS);
         self.flashTimers.add(currentTimer);
+        // REQ-0345: one paint per blink. Same reason as flash() above -- the
+        // Ticker used to draw the on/off toggle and nothing else ever will.
+        // Exact and cheap: the blinks are already setTimeout-driven, so this
+        // costs ~6 frames across the whole 2s pulse instead of ~120.
+        self.requestRender();
       };
       currentTimer = setTimeout(blink, CLAIM_PULSE_BLINK_MS);
       self.flashTimers.add(currentTimer);
     }
+    self.requestRender(); // REQ-0345: show the outline's first (visible) state
   }
