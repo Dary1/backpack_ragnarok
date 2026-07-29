@@ -456,6 +456,9 @@ if [ "${SKIP_E2E:-0}" != "1" ] && scope_has public; then
     # than the public tunnel) and GPU-accelerated rendering (ANGLE/Vulkan -> the
     # box's real GPU instead of CPU SwiftShader). Both are overridable: force the
     # old path with PLAYWRIGHT_BASE_URL=https://backpack-dev.qtie.jp E2E_GPU=0.
+    # REQ-0342: the E2E_GPU=1 below is now REDUNDANT (GPU is the config default)
+    # and is kept only so this line still reads as the explicit statement of
+    # intent it always was. Removing it would change nothing.
     (cd client && PLAYWRIGHT_BASE_URL="${PLAYWRIGHT_BASE_URL:-http://127.0.0.1:8803}" \
                   E2E_GPU="${E2E_GPU:-1}" \
                   E2E_PARALLEL="${E2E_PARALLEL:-4}" pnpm run e2e) # REQ-0083: 4 isolated-backend workers (E2E_PARALLEL=0 -> serial)

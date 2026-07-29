@@ -19,11 +19,16 @@ const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:8803';
 // fetches resolve, removing ~40ms/request of public-tunnel latency. The local
 // proxy IS the default (REQ-0217); a non-local base URL skips it.
 const USE_LOCAL_PROXY = BASE_URL.includes('127.0.0.1') || BASE_URL.includes('localhost');
-// REQ-0080: E2E_GPU=1 renders PixiJS WebGL on the box's real GPU (ANGLE/Vulkan ->
+// REQ-0080 (default flipped by REQ-0342): renders PixiJS WebGL on the box's real GPU (ANGLE/Vulkan ->
 // NVIDIA) instead of CPU SwiftShader. Verified renderer string on llmlocal:
 // "ANGLE (NVIDIA, Vulkan 1.4.329 (NVIDIA GeForce RTX 2080), NVIDIA)". Needs the
 // full chromium in --headless=new mode (hence headless:false + the explicit flag).
-const USE_GPU = process.env.E2E_GPU === '1';
+// REQ-0342: GPU is now the DEFAULT, not an opt-in. Opting IN was a mistake
+// shaped exactly like the bug it hid: a hand-typed run that forgot the flag
+// rendered on llvmpipe and merely looked slow. Any run that wants CPU must
+// now say so (E2E_GPU=0), and a run that gets CPU while asking for GPU is a
+// hard abort in global-setup, not a warning that scrolls past.
+const USE_GPU = process.env.E2E_GPU !== '0';
 const GPU_ARGS = USE_GPU
   ? ['--headless=new', '--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist',
      '--enable-features=Vulkan', '--ozone-platform=headless', '--no-sandbox']
