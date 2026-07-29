@@ -331,8 +331,10 @@ whose default is the number that was there before.
 | registry `[6.6/8]` | 4 / 4 | **4 / 4** |
 
 Stage wall, `CI_STAGE_TIMINGS`, against the same three harnesses re-run with
-`E2E_GPU=0` (which makes `gpu.ts` emit exactly the old `headless: true`, no args,
-no probe — a byte-equivalent reconstruction of the before state):
+`E2E_GPU=0` (which makes `gpu.ts` emit `headless: true`, an empty args list and
+no probe — behaviourally the before state, though not byte-identical: the
+original config carried no `launchOptions` key at all, this one carries an empty
+one):
 
 | harness | before (software) | after |
 |---|---|---|
