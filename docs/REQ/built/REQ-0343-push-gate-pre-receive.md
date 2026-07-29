@@ -546,6 +546,11 @@ and the write-failure path, `ci.sh`'s exact construct under `set -euo pipefail`:
   closed before anything was written; `push_gate_test.py` V8a caught a wrong
   *test* assumption (not a code defect) on the first run and was corrected.
   reserved -> built.
+- 2026-07-29 the two docs commits above (1d667a0, 8b11da8) moved the tree to
+  `cbeab9b4`, so the `3a823e5f` receipt no longer covers the branch tip -- confirmed
+  by running the installed hook against it, which rejects. That is §4 working, not a
+  defect: whoever merges this to master runs `tools/release.sh` on the merge result
+  and pushes that. No receipt for a tree nobody is publishing.
 
 ## Gate results (2026-07-29)
 - Syntax: `bash -n` clean on `tools/{ci,ci_scope,release,ci_receipt,pre_receive_gate,install_push_gate}.sh`.
