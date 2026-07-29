@@ -207,6 +207,7 @@ overwrite a co-op seat's `ownerId`.
 | `node server/tests/api_test.cjs` | **223 passed, 0 failed** |
 | `cd client && pnpm exec oxlint` | 45 warnings, 0 errors -- identical to master |
 | `client/e2e/troop-host.spec.ts` | **authored, NOT run** (REQ-0217 freeze) |
+| **manual live check vs the running fleet** | **PASS x3** -- see below |
 
 Server **source** is untouched. One server TEST was added, deliberately:
 REQ-0337's whole shape rests on the host seating a SECOND squad of their own in
@@ -222,14 +223,92 @@ and "the same squad twice still 409s `same_room_duplicate`".
 - `0846002` client can open a PUBLIC co-op Troop (+ the two latent fixes)
 - `0c4fe2c` e2e spec (authored, not run) + the host-second-squad server test
 
+## Live check vs the running fleet -- 2026-07-29, PASS
+
+**Method.** The branch build was served on `127.0.0.1:8899` by a throwaway proxy
+(`/app/*` -> this worktree's `web/app`, `/api/*` -> the LIVE api on `:8802`, the
+same one `backpack-fleet` polls). That exercises the NEW client against the real
+fleet **without redeploying `web/app`** -- `backpack-web` and every other live
+service were left untouched and verified still `active` afterwards. A headless
+Chromium drove the actual sortie UI as a player; no e2e harness was involved, so
+the REQ-0217 freeze is not implicated. Proxy stopped, port released.
+
+**What the UI did** (fresh guest `p_563d8b7cd48a`, one squad mustered):
+
+```
+CTA mode, 0 squads = solo      (button disabled)
+CTA mode, 1 squad  = recruit
+CTA label          = "Open the call ⚑"
+bar copy           = "Four squads make a troop -- you have mustered 3 fewer,
+                      so those seats go up publicly and anyone may take them."
+empty slot ghost   = "Open seat -- recruiting"
+card status chip   = "Recruiting"      seats chip = "1/4 seats"
+seat chips         = ["I:Slot4", "II:— open —", "III:— open —", "IV:— open —"]
+```
+
+**What the fleet did** -- three troops hosted from the app, all three filled and
+departed with no intervention:
+
+```
+04:27:17  target acquired: troop room_c446897703028e14 -- drip-joining / 30000ms
+04:27:18  joined p_01f30501d312 into troop (1 seat(s) filled by fleet)
+04:27:49  joined p_03895866236a into troop (2 seat(s) filled by fleet)
+04:28:19  joined p_03faaec30350 into troop (3 seat(s) filled by fleet)
+04:28:19  target room_c446897703028e14 done: troop_departed
+04:30:06  target acquired: troop room_b8209a7ab5b012e4
+04:30:07 / 04:30:39 / 04:31:10  joined -> troop_departed 04:31:10
+04:32:38  target acquired: troop room_8b965fd0d2ba3eac
+04:32:39 / 04:33:11 / 04:33:42  joined -> troop_departed 04:33:42
+```
+
+**The host's seat count climbing on its own**, read off the live DOM with no
+reload and no new poll loop (SchedulePage's existing 4s rooms poll only):
+
+```
+t+0s    recruiting | 2/4 seats
+t+35s   recruiting | 3/4 seats
+t+65s   running    | (chip gone -- correct: it is no longer recruiting)
+```
+
+That is the REQ's stated acceptance criterion met end to end: host from the app
+-> the fleet drip-joins -> 4/4 -> departs.
+
+### The live check earned its keep: a THIRD crash
+
+The first run threw, in the browser:
+
+```
+TypeError: Cannot read properties of null (reading 'squadIndex')
+```
+
+from `Monitor.tsx` -- twice (the squad-visual mount and the `squadNames`
+useMemo), same `room.slots.map(s => s.squadIndex)` fault as the two already
+fixed. `MonitorErrorBoundary` contained it (REQ-0285 earning ITS keep), so the
+app survived, but the **entire Watch pane was dead for any Troop**. The static
+sweep missed it because that file reads slots for RENDERING, not for gating;
+only a real browser on a real troop surfaced it. Fixed in `07e86f0`, and
+`isOwnSeat` was promoted to a **type guard** (`OwnSeat = ApiRoomSlot &
+{ squadIndex: number }`) so reading `.squadIndex` off an unguarded slot is now a
+compile error rather than a thing to remember. Re-run after the fix: clean --
+the only console noise left is two 404s for `/redesign/assets/*.jpg`, which the
+scratch proxy does not map and the live web server serves 200.
+
+### Live leftovers
+
+- Guest `p_563d8b7cd48a` ("REQ0337 LiveCheck") still exists on live. Harmless;
+  purge on request.
+- `room_b8209a7ab5b012e4` / `room_8b965fd0d2ba3eac` were cancelled mid-run, so
+  they carry `disbandRequested` and self-disband on return (REQ-0326's deferred
+  path) -- returning every bot's seat and firing its REQ-0327 notification.
+  `room_c446897703028e14` is already `canceled`.
+
 ## Still owed before this can move to `done`
 
-1. **Manual live check** -- host from the app, watch
-   `journalctl --user -u backpack-fleet -f` drip-join to 4/4, confirm departure.
-   This is the standing verification while the e2e freeze holds.
-2. Merge to master + deploy. Not done: `~/backpack_ragnarok` and the live
-   services are HANDS-OFF without a fresh go-ahead.
-3. User acceptance of the scope correction recorded above.
+1. Merge to master + deploy. NOT done: `~/backpack_ragnarok` and the live
+   services are HANDS-OFF without a fresh go-ahead. Note that for the client
+   this is one step -- `web/app` is tracked and IS the served docroot, so
+   merging to master deploys the bundle.
+2. User acceptance of the scope correction recorded above.
 
 ## Follow-ups
 
