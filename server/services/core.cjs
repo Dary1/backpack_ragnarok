@@ -387,6 +387,34 @@ function getScheduleContent() {
   return applyRegistryOverlay(fp);
 }
 
+/** REQ-0348: THE registry snapshot -- { kind -> { bare -> adopted DATA } } --
+ * exposed so the DISPLAY path (server/lib/content.cjs) overlays from this one
+ * snapshot instead of maintaining a second copy of its own.
+ *
+ * Before REQ-0348 both modules privately owned the identical thing under the
+ * identical names (registryData, registryAt, a 15s REGISTRY_TTL_MS,
+ * computeRegistryData, refreshRegistryData, a boot setImmediate warm), kept in
+ * step by hand -- this file said "Mirrors server/lib/content.cjs exactly" and
+ * "mirror lib/content.cjs REGISTRY_TTL_MS", and that module said the same back.
+ * The copies had already drifted, and the drift was a live defect: REQ-0211's
+ * per-kind try/catch isolation landed HERE only, so on the display path one
+ * kind whose pg enum was not yet migrated still rejected the whole promise and
+ * blanked EVERY kind's overlay. One snapshot means one isolation policy.
+ *
+ * What is deliberately NOT shared is the overlay APPLICATION. That genuinely
+ * differs -- this module overlays itemDefsById (which also carries the pilot
+ * dungeon/items.json entries), the display path overlays its own `items`
+ * section (which must NOT serve those), and the per-kind transforms differ too
+ * (skill_def's double reshape here, eff_en/eff_ja rendering there). Each
+ * consumer keeps its own applyRegistryOverlay over this shared snapshot.
+ *
+ * Same opportunistic TTL refresh as getScheduleContent(): synchronous, never
+ * awaited, hands back the warm object. */
+function getRegistrySnapshot() {
+  if (Date.now() - registryAt > REGISTRY_TTL_MS) { refreshRegistryData().catch(() => {}); }
+  return registryData;
+}
+
 // Warm the snapshot at boot so the first roll/simulation after a restart is
 // already registry-first (mirrors lib/content.cjs's setImmediate warm).
 setImmediate(() => { refreshRegistryData().catch(() => {}); });
@@ -609,6 +637,7 @@ module.exports = {
   loadJSON,
   getScheduleContent,
   refreshRegistryData, // REQ-0176: awaited by routes/content.cjs invalidateServedContent()
+  getRegistrySnapshot, // REQ-0348: the ONE registry snapshot; the display path overlays from it too
   getScheduleSources, // REQ-0176: authority-path source accounting
   listDungeonsAndFormations,
   REWARD_ROLL_TO_ITEM_ID,
