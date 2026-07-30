@@ -1,7 +1,8 @@
 // client/src/board/skin/bpSkinTexture.ts -- REQ-0266 (item 23b). The bridge
 // between the PURE compositor and PixiJS: decode a fill raster, composite once
-// per (cell-set, skin), upload as a Texture, hand back a positioned Sprite.
-// It lives here, not in BoardRenderer.ts: that file is hot, 1664 lines, and its
+// per (skin, cell-set SHAPE), upload as a Texture, hand back a positioned
+// Sprite. REQ-0350 is what made that "once" true -- see textureFor().
+// It lives here, not in BoardRenderer.ts: that file is hot and its
 // interaction invariants are pinned by e2e specs -- and none of this is renderer
 // logic. composite.ts stays pure and Node-callable for the three offline
 // harnesses, so DECODING is this module's job; the compositor sees only pixels.
@@ -24,6 +25,7 @@
 import { Sprite, Texture } from 'pixi.js';
 import { CELL, PAD } from '../geom';
 import { compositeSkin, declaresFillTexture, LAYER, type FillRaster } from './composite';
+import { countBpSkinCacheHit, countBpSkinComposite } from './bpSkinProbe';
 import type { BpSkinDef } from './skinRegistry';
 import type { Cell } from './autotile';
 
@@ -31,12 +33,26 @@ import type { Cell } from './autotile';
  * real background rather than the array edge. */
 const MARGIN = 1;
 /** Tiles are downsampled to two cells square: a bpskin artwork is authored at
- * 1024x1024 (art.cjs locks that), and tiled 1:1 at CELL=48 a BP would show a
+ * 1024x1024 (art.cjs locks that), and tiled 1:1 at CELL px a BP would show a
  * twentieth of the image and read as noise rather than as a material. */
 const TILE_PX = CELL * 2;
-/** A composite costs a distance transform and a BP rotation changes its cell
- * set, so the cache needs a cap. Wholesale eviction is fine -- the next render
- * rebuilds whatever is actually on screen. */
+/** A composite costs three distance transforms plus a full W*H pass, so the
+ * cache needs a cap.
+ *
+ * REQ-0350: the key is SHAPE-normalised (see textureFor), so the key space is
+ * (skin x shape) -- bounded and small -- rather than growing with every
+ * translation of a BP, and this cap is now close to unreachable in play.
+ *
+ * Eviction is LRU and deliberately does NOT destroy(). A Texture here may still
+ * be held by a Sprite parented in EITHER mounted board's gSkins: App.tsx keeps
+ * the canvas and inventory boards mounted together and this cache is
+ * module-global, so the old wholesale `destroy(true)` + clear() let one board's
+ * eviction destroy the OTHER board's on-screen texture -- and that board does
+ * not repaint until its own state changes, so it went on holding a destroyed
+ * texture. Dropping the map entry instead hands the Texture to Pixi's GCSystem,
+ * which unloads it only once nothing has drawn it for gcMaxUnusedTime; a sprite
+ * still on screen keeps touching it and so keeps it alive. Bounded map, and no
+ * way left to destroy a texture that something is still drawing. */
 const MAX_TEXTURES = 64;
 
 const rasters = new Map<string, FillRaster | null>();
@@ -82,15 +98,54 @@ export function fillRasterFor(def: BpSkinDef, onReady?: () => void): FillRaster 
   return rasters.get(url) || null;
 }
 
-/** Texture for one (cell-set, skin). Pixels outside the silhouette are made
+/** Texture for one (skin, cell-set SHAPE). Pixels outside the silhouette are made
  * fully TRANSPARENT: the compositor paints a solid background there, which is
- * right for an offline PNG and wrong for a board, where the grid must show. */
+ * right for an offline PNG and wrong for a board, where the grid must show.
+ *
+ * REQ-0350 -- two halves of one bug, both about this cache never actually
+ * saving the composite:
+ *
+ *  1. compositeSkin() ran BEFORE the cache lookup, so a hit still paid the full
+ *     composite: three Euclidean distance transforms plus a W*H per-pixel pass,
+ *     measured through the real module at 11.2ms (1x1) to 23.1ms (2x3 six-cell)
+ *     per BP at CELL=80. That was per render(state), per skinned BP, on BOTH
+ *     mounted boards -- and render(state) runs on every state change, every
+ *     squad switch, and on drag-arm (BoardRenderer.onGlobalPointerMove). Only
+ *     the Texture upload was ever being cached; the module header's "composite
+ *     once per (cell-set, skin)" was a statement of intent, not of behaviour.
+ *
+ *  2. the key carried ABSOLUTE cell coordinates, so moving or rotating a BP
+ *     minted a fresh entry for pixels that are byte-identical. The composite is
+ *     translation-invariant by construction: composite.ts takes r0/c0 to be the
+ *     cell set's own min row/col and works entirely in that relative frame, so
+ *     two translations of one shape yield identical rgba/layer/width/height and
+ *     differ only in r0/c0. Keying on absolute cells therefore thrashed a
+ *     64-entry cache during ordinary play, which is what kept the cost in (1)
+ *     recurring instead of amortising.
+ *
+ * r0/c0 are computed HERE, once, and serve both the normalised key and the
+ * caller's board placement. They are the same mins composite.ts takes, and
+ * check_bpskin.mjs pins both that equality and the translation-invariance the
+ * normalisation rests on -- if a future compositor stops being
+ * translation-invariant, that gate fails before this cache can serve a wrong
+ * texture. */
 function textureFor(cells: ReadonlyArray<Cell>, def: BpSkinDef, raster: FillRaster): { tex: Texture; r0: number; c0: number } | null {
   if (typeof document === 'undefined' || cells.length === 0) return null;
-  const key = def.id + '|r|' + cells.map((c) => c[0] + ',' + c[1]).sort().join(';');
-  const comp = compositeSkin(cells, def, def.palette.canvas || '#000000', { cellPx: CELL, margin: MARGIN }, raster);
+  const r0 = Math.min(...cells.map((cell) => cell[0]));
+  const c0 = Math.min(...cells.map((cell) => cell[1]));
+  const key = def.id + '|r|' + cells.map((cell) => (cell[0] - r0) + ',' + (cell[1] - c0)).sort().join(';');
   const hit = textures.get(key);
-  if (hit) return { tex: hit, r0: comp.r0, c0: comp.c0 };
+  if (hit) {
+    countBpSkinCacheHit();
+    // LRU touch: re-inserting moves this key to the end of the Map's insertion
+    // order, so the eviction below always takes the genuinely coldest entry
+    // rather than whatever happened to be inserted first.
+    textures.delete(key);
+    textures.set(key, hit);
+    return { tex: hit, r0, c0 };
+  }
+  countBpSkinComposite();
+  const comp = compositeSkin(cells, def, def.palette.canvas || '#000000', { cellPx: CELL, margin: MARGIN }, raster);
   const ctx = surface(comp.width, comp.height);
   if (!ctx) return null;
   const out = ctx.createImageData(comp.width, comp.height);
@@ -101,9 +156,15 @@ function textureFor(cells: ReadonlyArray<Cell>, def: BpSkinDef, raster: FillRast
   }
   ctx.putImageData(out, 0, 0);
   const tex = Texture.from(ctx.canvas);
-  if (textures.size >= MAX_TEXTURES) { for (const t of textures.values()) t.destroy(true); textures.clear(); }
+  // Bounded, LRU, and never destroy() -- see MAX_TEXTURES for why the old
+  // wholesale destroy+clear was a correctness bug across two live boards.
+  while (textures.size >= MAX_TEXTURES) {
+    const coldest = textures.keys().next().value;
+    if (coldest === undefined) break;
+    textures.delete(coldest);
+  }
   textures.set(key, tex);
-  return { tex, r0: comp.r0, c0: comp.c0 };
+  return { tex, r0, c0 };
 }
 
 /** A board-positioned Sprite of the BP body wearing `def`, or null when there is

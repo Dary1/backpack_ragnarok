@@ -7,6 +7,7 @@ import { fetchSkinPrefs } from '../api/skins'; // REQ-0266
 import { setItemArtUrls } from '../board/itemArt'; // REQ-0133
 import { ribbonProbeFor } from '../board/usageRibbonProbe'; // REQ-0287
 import { paintCounts } from '../board/paintProbe'; // REQ-0345
+import { bpSkinProbe, resetBpSkinProbe } from '../board/skin/bpSkinProbe'; // REQ-0350
 import { fetchMe, getStoredToken, resolveGameData, setStoredToken } from '../api';
 import type { ApiMe } from '../api';
 import { INVITE_HASH_RE, snapshot, setSnapshot } from './core';
@@ -317,6 +318,14 @@ async function bootInner(): Promise<void> {
     // while the boards sit idle (the pre-REQ-0345 ticker moved it ~60/s per
     // board, forever, on every route).
     boardPaints: () => paintCounts(),
+    // REQ-0350: BP-skin composite / cache-hit counters. Asserts BOTH directions
+    // of the cache rule, for the same reason boardPaints does: repeated
+    // render(state) over an unmoved board must add ZERO composites while the hit
+    // count climbs. Pre-REQ-0350 every render recomposited every skinned BP --
+    // three distance transforms plus a full W*H pass each -- because the cache
+    // was consulted AFTER compositeSkin() and keyed on ABSOLUTE cells.
+    bpSkinProbe: () => bpSkinProbe(),
+    resetBpSkinProbe: () => resetBpSkinProbe(),
   };
 }
 
