@@ -185,12 +185,62 @@ work.
    `routes/`, zero local `errToStatus`, zero literal `'method not allowed'`
    outside `route_kit.cjs`.
 
-## 8. Expected result
+## 8. Result (implemented 2026-07-30)
 
-Roughly **-300 to -400 lines** in `routes/`, +140 in `lib/route_kit.cjs`. 13
-auth-preamble copies -> 1, four error-status tables -> 1, 20 body handlers -> 1,
-49 405 literals -> 1, and the 401/413/400/405 wordings fixed in one place. The
-next REQ-0199-class auth fix becomes a one-file change.
+19 commits on `req-0349-route-kit-preamble-unify`, one per family plus the three
+separable decisions. `lib/route_auth.cjs` deleted; `lib/route_kit.cjs` is the one
+request preamble.
+
+| | before | after |
+|---|---|---|
+| inline auth preambles in `routes/` | 13 (10 files) | 0 |
+| `errToStatus` copies | 4, disagreeing on FORBIDDEN | 1 |
+| `readBody`+parse blocks | 20 | 0 (2 remain in art/content, out of scope) |
+| literal `'method not allowed'` | 49 | 1 (in the kit) |
+| 413 / body-read / bad-JSON wordings | 9 spellings | 3 constants |
+| `routes/` CODE lines (comments+blanks excluded) | 2,211 | 2,037 (**-174**) |
+| preamble module CODE lines | 40 (`route_auth`) | 110 (`route_kit`) |
+
+**The line-count prediction in the original spec was wrong and is corrected
+here.** It said "-300 to -400 lines in `routes/`"; the real figure is **-174 code
+lines**, and RAW total `routes/` line count fell only 3,372 -> 3,296 because ~100
+comment lines were added recording why each family's remaining oddity is
+deliberate (skins' tail-405 ordering, warehouse's two endpoints that genuinely
+differ on empty bodies, me.cjs's intentionally non-kit link resolver, art/content's
+superset error table). That trade is in keeping with this codebase's convention of
+recording decisions in place, but the spec should not have implied a large raw
+reduction: the win is that 13+4+20+49 duplicated decision points became 1 each,
+not that the tree got smaller.
+
+The next REQ-0199-class auth fix is now a one-file change.
+
+### Deliberately NOT done (recorded so it is not re-derived)
+
+- **`routes/art.cjs` / `routes/content.cjs` took only `methodGuard`.** Their body
+  reader is promise-based (async handlers), their `httpForCode` table is a strict
+  superset of the kit's (`DUPLICATE`, `DUPLICATE_SEED`, `ADOPTED_UNDELETABLE`,
+  `NO_ADOPTED`, `NOT_OK`, `BAD_SHAPE`, `BAD_JSON`), and their auth is an
+  item_admin ROLE gate. Reasons are in both files.
+- **`requireInt` was written then deleted** -- zero callers after the conversions.
+  Only 3 of the 17 inline checks sit in handlers with the try/catch seam the
+  validators throw into; the others are in `admin.cjs` (interleaved with two
+  different 500 wrappers) or are `public.cjs`/`schedule.cjs` query-param
+  coercions that return null and are not 400 sites at all. A partial reversal of
+  D3 as specced, on the evidence.
+- **`routes/public.cjs` needed no commit** -- no 405, no body reader, no auth
+  preamble. It was on the migration list in error.
+- **Wrong-method status codes were not touched.** `bio` and `dex` answer 404 for
+  a wrong method where everyone else answers 405. That is a real inconsistency
+  and a candidate REQ, but REQ-0349 changed no status codes.
+
+### Incidental finding: the parity-gate assertion count is not deterministic
+
+`api_test`'s "executed assertions: N (REQ-0145a sf parity gate)" line reported
+1947 / 1948 / 1949 / 1950 across otherwise identical runs of an unchanged tree --
+it settles at 1950 but the first runs after a `pnpm install` or a file touch come
+in lower. `229 passed, 0 failed` was stable throughout. Anything treating that
+assertion count as an invariant is treating a flaky number as a gate; worth its
+own small REQ.
 
 ## 9. Status log
 
@@ -200,3 +250,15 @@ next REQ-0199-class auth fix becomes a one-file change.
   greped; D1 reversed to "unify" on that evidence, D2 folded in, D3 reversed to
   "include the three helpers", migration order added, moved `draft -> todo`.
   Evidence gathered at `master` `e4b24dd0`.
+- 2026-07-30 — IMPLEMENTED on branch `req-0349-route-kit-preamble-unify` off
+  `master` `e4b24dd0`, 19 commits, `3d916bd1`..`a2156a07`. `api_test` green after
+  every single commit (229 passed / 0 failed), never once red mid-migration.
+  Final gates:
+  - `node tests/api_test.cjs` (files backend): **229 passed, 0 failed**
+  - `STORAGE_BACKEND=pg node tests/api_test.cjs`: **229 passed, 0 failed**, 1950
+    assertions
+  - `tools/ci.sh` full gate incl. the scoped hermetic e2e run: **CI GREEN**, 341s
+  - grep gate: zero `admin.resolveAuthFromRequest` in `routes/` code, zero local
+    `errToStatus`, zero literal `'method not allowed'` outside `route_kit.cjs`,
+    zero requires of the deleted `route_auth.cjs`
+  Moved `todo -> built`: code complete and green, NOT merged or deployed.
