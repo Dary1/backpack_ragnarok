@@ -280,6 +280,13 @@ stage "[4.69/7] bp-skin seed migration on a copied profile fixture (DB-free, REQ
 node server/tests/bpskin_migration_test.cjs
 stage "[4.695/7] e2e profile redirect -- dev-fallback isolation (DB-free, REQ-0214)"
 node server/tests/e2e_profile_redirect_test.cjs
+stage "[4.697/7] registry overlay: one snapshot, per-kind isolation, name-set subset (DB-free, REQ-0348)"
+# DB-free although it sets STORAGE_BACKEND=pg in-process: it stubs
+# storage.resolveAdoptedContentData, so no DATABASE_URL and no pg round trip.
+# Belongs in (A) FILES mode per the coverage map above -- it pins the snapshot
+# RULES, not any adopted content, so it is exactly the kind of test that must NOT
+# be moved into the pg block where it would prove less.
+node server/tests/registry_overlay_test.cjs
 stage "[4.71/7] UGC moderation verdict pipeline (DB-free, REQ-0144)"
 MODPY="${ART_KIT_PYTHON:-$HOME/backpack_ragnarok/.venv/bin/python}"
 if [ -x "$MODPY" ] && "$MODPY" -c 'import numpy,scipy,PIL' 2>/dev/null; then
