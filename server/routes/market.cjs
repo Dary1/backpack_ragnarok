@@ -25,8 +25,15 @@
 // createListing doc). Replays return the original outcome with
 // {replayed:true}; requests WITHOUT the header keep plain state-machine
 // semantics (double-buy -> 409 already_settled, etc.).
-const { sendJSON, readBody, getAuthToken } = require('../lib/http_util.cjs');
-const admin = require('../admin.cjs');
+// REQ-0349: the whole request preamble comes from lib/route_kit.cjs. The former
+// private errToStatus/sendMarketError below were one of FOUR hand-maintained
+// copies of the same code->status table, and this copy LACKED FORBIDDEN->403 (it
+// answered 500). The kit's shared table has it. Inert today -- the only
+// FORBIDDEN throwers in the server are services/seals.cjs, reached through the
+// schedule family -- so no current market response changes; the value is that
+// the divergence cannot come back.
+const { sendJSON } = require('../lib/http_util.cjs');
+const { resolveCallerOr401, methodGuard, withJsonBody, sendDomainError, RAW_BODY_MESSAGES } = require('../lib/route_kit.cjs');
 const storage = require('../storage.cjs');
 const market = require('../market.cjs');
 const ragnarok = require('../ragnarok.cjs'); // REQ-0066: furnace seasonal windowing
@@ -38,58 +45,37 @@ const MARKET_FURNACE_RE = /^\/api\/market\/furnace$/;
 const MARKET_LISTINGS_DEV_CLEAR_RE = /^\/api\/market\/listings\/dev\/clear-all$/;
 const MARKET_LISTINGS_FROM_WAREHOUSE_RE = /^\/api\/market\/listings\/from-warehouse$/; // REQ-0328
 
+// Byte-parity for both body readers in this file: they passed the raw readBody
+// error through (413 for TOO_LARGE, else 400) and used a BARE JSON.parse, so an
+// empty body has always been a 400 here. REQ-0349's unification commit keeps
+// allowEmpty and drops the raw-message preset.
+const BODY_WORDING = Object.assign({ allowEmpty: false }, RAW_BODY_MESSAGES);
+
 function tryMarketRoutes(req, res, url, p) {
   const marketMatch = p.match(MARKET_LISTINGS_RE) || p.match(MARKET_LISTING_WITHDRAW_RE) ||
     p.match(MARKET_LISTING_BUY_RE) || p.match(MARKET_FURNACE_RE) || p.match(MARKET_LISTINGS_DEV_CLEAR_RE) ||
     p.match(MARKET_LISTINGS_FROM_WAREHOUSE_RE);
   if (!marketMatch) return false;
 
-  // REQ-0199: resolve the caller EXACTLY like schedule/warehouse
-  // (lib/route_auth.cjs's resolveCallerOr401) and profile/me already do
-  // -- admin.resolveAuthFromRequest(req) tries a Supabase Bearer JWT
-  // FIRST (REQ-0118c precedence), then falls back to the REQ-0037
-  // X-Auth-Token path (+ the dev_mode no-token fallback). BEFORE this
-  // REQ this route called admin.resolveAuth(getAuthToken(req)) -- the
-  // X-Auth-Token-ONLY resolver -- so a JWT-authenticated player
-  // (Authorization: Bearer, NO X-Auth-Token) resolved to token=null ->
-  // dev_mode fallback -> the route acted as the WRONG player ('dev') and
-  // read the DEV player's inventory (live symptom: every market sell
-  // 404'd "item not found in your inventory"). `token` (the raw
-  // X-Auth-Token, may be undefined) is still read below SOLELY to
-  // compute callerIsDevFallback -- see that comment below.
-  const token = getAuthToken(req);
-  const resolved = admin.resolveAuthFromRequest(req);
-  if (!resolved.ok) {
-    sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason });
-    return;
-  }
-  const callerId = resolved.player.playerId;
-  // REQ-0066/routes-ragnarok.cjs-style E2E hook gate: true only when
-  // this request resolved via the dev_mode NO-TOKEN fallback -- same
-  // computation as routes/schedule.cjs's and routes/ragnarok.cjs's own
-  // callerIsDevFallback; used ONLY to gate /listings/dev/clear-all below.
-  // REQ-0214: keyed off the resolver's own resolution-path annotation
-  // (admin.resolveAuthFromRequest sets viaDevFallback), NOT a playerId
-  // comparison -- the e2e profile redirect (x-bpk-e2e-profile) swaps the
-  // playerId while remaining exactly this no-token dev_mode fallback.
-  const callerIsDevFallback = !token && resolved.viaDevFallback === true;
+  // REQ-0199: resolve the caller EXACTLY like schedule/warehouse and profile/me
+  // -- a Supabase Bearer JWT FIRST (REQ-0118c precedence), then the REQ-0037
+  // X-Auth-Token path (+ the dev_mode no-token fallback). BEFORE that REQ this
+  // route called admin.resolveAuth(getAuthToken(req)) -- the X-Auth-Token-ONLY
+  // resolver -- so a JWT-authenticated player (Authorization: Bearer, NO
+  // X-Auth-Token) resolved to token=null -> dev_mode fallback -> the route acted
+  // as the WRONG player ('dev') and read the DEV player's inventory (live
+  // symptom: every market sell 404'd "item not found in your inventory").
+  // REQ-0349: the sentence above used to sit directly on top of an inline COPY of
+  // lib/route_auth.cjs's resolveCallerOr401. It now calls it, so the next fix of
+  // REQ-0199's kind lands in one file instead of four. callerIsDevFallback (the
+  // REQ-0214 annotation-keyed dev_mode-no-token test, used ONLY to gate
+  // /listings/dev/clear-all below) comes off the same context.
+  const ctx = resolveCallerOr401(req, res);
+  if (!ctx) return;
+  const { callerId, callerIsDevFallback } = ctx;
   // Optional Idempotency-Key (node:http lowercases header names).
   const rawIdem = req.headers['idempotency-key'];
   const idemKey = typeof rawIdem === 'string' && rawIdem ? rawIdem : undefined;
-
-  // Same code->status mapping + structured-reason threading as
-  // routes/schedule.cjs's sendScheduleError (REQ-0041 convention).
-  function errToStatus(e) {
-    if (e.code === 'NOT_FOUND') return 404;
-    if (e.code === 'CONFLICT') return 409;
-    if (e.code === 'BAD_REQUEST') return 400;
-    return 500;
-  }
-  function sendMarketError(e) {
-    const body = { ok: false, error: e.message };
-    if (typeof e.reason === 'string') body.reason = e.reason;
-    sendJSON(res, errToStatus(e), body);
-  }
 
   // ---- POST /api/market/listings/dev/clear-all (E2E hook, mirrors
   // routes/ragnarok.cjs's /order/dev/force-rebuild + /einherjar/dev/clear
@@ -101,7 +87,7 @@ function tryMarketRoutes(req, res, url, p) {
   // poisons any later exact-count browse assertion. GATED to the
   // dev_mode no-token fallback caller ONLY; a real guest token gets 403.
   if (p.match(MARKET_LISTINGS_DEV_CLEAR_RE)) {
-    if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+    if (!methodGuard(req, res, 'POST')) return;
     if (!callerIsDevFallback) {
       sendJSON(res, 403, { ok: false, error: 'forbidden: listings/dev/clear-all is only available to the dev_mode fallback caller (test-control seam, not a real player action)' });
       return;
@@ -109,7 +95,7 @@ function tryMarketRoutes(req, res, url, p) {
     try {
       const cleared = market.devClearAllListings();
       sendJSON(res, 200, { ok: true, cleared });
-    } catch (e) { sendMarketError(e); }
+    } catch (e) { sendDomainError(res, e); }
     return;
   }
 
@@ -121,16 +107,13 @@ function tryMarketRoutes(req, res, url, p) {
   // {warehouseRowId, price:{tm,qty}}. Same Idempotency-Key posture as
   // POST /api/market/listings above.
   if (p.match(MARKET_LISTINGS_FROM_WAREHOUSE_RE)) {
-    if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
-    readBody(req, (err, bodyStr) => {
-      if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
-      let body;
-      try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+    if (!methodGuard(req, res, 'POST')) return;
+    withJsonBody(req, res, BODY_WORDING, (body) => {
       try {
         const { listing, replayed } = market.createListingFromWarehouse(callerId, body, idemKey);
         const view = market.deriveView(listing, market.sellerViewContext(callerId), Date.now());
         sendJSON(res, 200, { ok: true, dtoVersion: market.MARKET_DTO_VERSION, replayed, listing: market.toListingDto(listing, view, null) });
-      } catch (e) { sendMarketError(e); }
+      } catch (e) { sendDomainError(res, e); }
     });
     return;
   }
@@ -144,14 +127,11 @@ function tryMarketRoutes(req, res, url, p) {
           q: url.searchParams.get('q') || undefined,
         });
         sendJSON(res, 200, { ok: true, dtoVersion: market.MARKET_DTO_VERSION, tms: market.liveTmIds(), listings });
-      } catch (e) { sendMarketError(e); }
+      } catch (e) { sendDomainError(res, e); }
       return;
     }
     if (req.method === 'POST') {
-      readBody(req, (err, bodyStr) => {
-        if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
-        let body;
-        try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+      withJsonBody(req, res, BODY_WORDING, (body) => {
         try {
           // Eligibility is validated against the caller's LAST-SAVED
           // canvas (same "read the saved profile" posture the gacha
@@ -162,30 +142,30 @@ function tryMarketRoutes(req, res, url, p) {
           const { listing, replayed } = market.createListing(callerId, body, canvas, idemKey);
           const view = market.deriveView(listing, market.sellerViewContext(callerId), Date.now());
           sendJSON(res, 200, { ok: true, dtoVersion: market.MARKET_DTO_VERSION, replayed, listing: market.toListingDto(listing, view, null) });
-        } catch (e) { sendMarketError(e); }
+        } catch (e) { sendDomainError(res, e); }
       });
       return;
     }
-    sendJSON(res, 405, { ok: false, error: 'method not allowed' });
+    methodGuard(req, res, ['GET', 'POST']); // neither matched above, so this sends the 405
     return;
   }
 
   // ---- POST /api/market/listings/:id/withdraw ----
   const withdrawMatch = p.match(MARKET_LISTING_WITHDRAW_RE);
   if (withdrawMatch) {
-    if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+    if (!methodGuard(req, res, 'POST')) return;
     const listingId = decodeURIComponent(withdrawMatch[1]);
     try {
       const { listing, replayed } = market.withdrawListing(callerId, listingId, idemKey);
       sendJSON(res, 200, { ok: true, dtoVersion: market.MARKET_DTO_VERSION, replayed, listing: market.toListingDto(listing, { state: listing.state, suspended: false }, null) });
-    } catch (e) { sendMarketError(e); }
+    } catch (e) { sendDomainError(res, e); }
     return;
   }
 
   // ---- POST /api/market/listings/:id/buy ----
   const buyMatch = p.match(MARKET_LISTING_BUY_RE);
   if (buyMatch) {
-    if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+    if (!methodGuard(req, res, 'POST')) return;
     const listingId = decodeURIComponent(buyMatch[1]);
     try {
       const { listing, receipt, replayed } = market.buyListing(callerId, listingId, idemKey);
@@ -193,13 +173,13 @@ function tryMarketRoutes(req, res, url, p) {
         ok: true, dtoVersion: market.MARKET_DTO_VERSION, replayed, receipt,
         listing: market.toListingDto(listing, { state: listing.state, suspended: false }, null),
       });
-    } catch (e) { sendMarketError(e); }
+    } catch (e) { sendDomainError(res, e); }
     return;
   }
 
   // ---- GET /api/market/furnace ----
   if (p.match(MARKET_FURNACE_RE)) {
-    if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+    if (!methodGuard(req, res, 'GET')) return;
     try {
       // REQ-0066: seasonal windowing -- the burn total is windowed from
       // the CURRENT season's start (content/live/seasons.json via the
@@ -216,7 +196,7 @@ function tryMarketRoutes(req, res, url, p) {
         furnace: { totals: furnace.totals, since: furnace.since },
         season: cs.season ? { index: cs.season.index, name: cs.season.name } : null,
       });
-    } catch (e) { sendMarketError(e); }
+    } catch (e) { sendDomainError(res, e); }
     return;
   }
 
