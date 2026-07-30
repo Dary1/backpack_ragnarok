@@ -16,48 +16,43 @@
 //                                 card reads the dismantle facade
 //                                 directly server-side rather than
 //                                 round-tripping through this route.
-const { sendJSON, readBody, MAX_BODY_BYTES } = require('../lib/http_util.cjs'); // REQ-0199: getAuthToken dropped (JWT-first resolver reads the req itself)
-const admin = require('../admin.cjs');
+// REQ-0349: the whole request preamble -- caller resolution, the 405 guard,
+// the JSON body read, and the domain-error mapping -- comes from
+// lib/route_kit.cjs. This file's former private errToStatus/sendDismantleError
+// were one of FOUR hand-maintained copies of the same code->status table; the
+// kit's copy also maps FORBIDDEN->403, which this one did not. Inert here
+// (nothing reachable from /api/dismantle throws FORBIDDEN -- the only throwers
+// are services/seals.cjs, on the schedule family), see the kit's CODE_TO_STATUS
+// note. sendJSON is still needed directly for this file's own 400 validation
+// replies until REQ-0349's validator commit.
+const { sendJSON } = require('../lib/http_util.cjs');
+const { resolveCallerOr401, methodGuard, withJsonBody, sendDomainError } = require('../lib/route_kit.cjs');
 const storage = require('../storage.cjs');
 const dismantle = require('../dismantle.cjs');
 
 const DISMANTLE_RE = /^\/api\/dismantle$/;
 const DISMANTLE_LEDGER_RE = /^\/api\/dismantle\/ledger$/;
 
-function errToStatus(e) {
-  if (e.code === 'NOT_FOUND') return 404;
-  if (e.code === 'CONFLICT') return 409;
-  if (e.code === 'BAD_REQUEST') return 400;
-  return 500;
-}
-function sendDismantleError(res, e) {
-  const body = { ok: false, error: e.message };
-  if (typeof e.reason === 'string') body.reason = e.reason;
-  sendJSON(res, errToStatus(e), body);
-}
-
 function tryDismantleRoutes(req, res, url, p) {
   const dismantleMatch = p.match(DISMANTLE_RE);
   const ledgerMatch = p.match(DISMANTLE_LEDGER_RE);
   if (!dismantleMatch && !ledgerMatch) return false;
 
-  // REQ-0199: JWT-first caller resolution (a Supabase Bearer JWT, else
-  // the REQ-0037 X-Auth-Token path + dev_mode fallback) -- was
-  // admin.resolveAuth(getAuthToken(req)), the X-Auth-Token-ONLY resolver,
-  // which mis-resolved a Bearer-JWT-only player to the dev_mode fallback
-  // and dismantled from the WRONG (dev) canvas. dismantle has no dev-only
-  // test hook, so there is no callerIsDevFallback flag here and the raw
-  // X-Auth-Token is no longer needed at all.
-  const resolved = admin.resolveAuthFromRequest(req);
-  if (!resolved.ok) {
-    sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason });
-    return;
-  }
-  const callerId = resolved.player.playerId;
+  // REQ-0199: JWT-first caller resolution (a Supabase Bearer JWT, else the
+  // REQ-0037 X-Auth-Token path + dev_mode fallback) -- was
+  // admin.resolveAuth(getAuthToken(req)), the X-Auth-Token-ONLY resolver, which
+  // mis-resolved a Bearer-JWT-only player to the dev_mode fallback and
+  // dismantled from the WRONG (dev) canvas. REQ-0349: that resolution is now
+  // the kit's, shared with every family, so the next fix of its kind lands
+  // once. dismantle has no dev-only test hook, so it reads only callerId off
+  // the returned context (callerIsDevFallback/callerCanSetGenSeed unused).
+  const ctx = resolveCallerOr401(req, res);
+  if (!ctx) return;
+  const callerId = ctx.callerId;
 
   // ---- GET /api/dismantle/ledger ----
   if (ledgerMatch) {
-    if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+    if (!methodGuard(req, res, 'GET')) return;
     const doc = storage.readDismantleLedger(callerId);
     const rawCounts = (doc && doc.counts) || {};
     const entries = Object.keys(rawCounts).map((itemId) => ({
@@ -70,20 +65,12 @@ function tryDismantleRoutes(req, res, url, p) {
   }
 
   // ---- POST /api/dismantle ----
-  if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
-  readBody(req, (err, bodyStr) => {
-    if (err) {
-      if (err.code === 'TOO_LARGE') {
-        sendJSON(res, 413, { ok: false, error: 'request body exceeds ' + MAX_BODY_BYTES + ' bytes' });
-        return;
-      }
-      sendJSON(res, 400, { ok: false, error: 'invalid request body' });
-      return;
-    }
-    let body;
-    try { body = bodyStr ? JSON.parse(bodyStr) : {}; }
-    catch (e) { sendJSON(res, 400, { ok: false, error: 'malformed JSON body' }); return; }
-
+  if (!methodGuard(req, res, 'POST')) return;
+  // REQ-0349 byte-parity: `badJson` carries this family's pre-REQ wording --
+  // 'malformed JSON body' where every other family says 'invalid JSON body'.
+  // The 413/read-failure wordings already match the kit's defaults, so they
+  // need no override. The unification commit deletes this bag.
+  withJsonBody(req, res, { badJson: 'malformed JSON body' }, (body) => {
     const itemUid = body && body.itemUid;
     const kind = body && body.kind;
     if (typeof itemUid !== 'string' || !itemUid) {
@@ -97,7 +84,7 @@ function tryDismantleRoutes(req, res, url, p) {
     try {
       const result = dismantle.dismantleItem(callerId, itemUid, kind);
       sendJSON(res, 200, result);
-    } catch (e) { sendDismantleError(res, e); }
+    } catch (e) { sendDomainError(res, e); }
   });
 }
 
