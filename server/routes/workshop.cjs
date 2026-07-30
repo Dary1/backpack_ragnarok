@@ -9,7 +9,7 @@
 const { sendJSON } = require('../lib/http_util.cjs');
 // sendScheduleError is the kit's sendDomainError: identical body, one shared
 // code->status table instead of four hand-maintained copies.
-const { resolveCallerOr401, loadOwnCanvas, methodGuard, withJsonBody, sendDomainError, RAW_BODY_MESSAGES } = require('../lib/route_kit.cjs');
+const { resolveCallerOr401, loadOwnCanvas, methodGuard, withJsonBody, sendDomainError } = require('../lib/route_kit.cjs');
 const schedule = require('../schedule.cjs');
 
 const WORKSHOP_GACHA_RE = /^\/api\/workshop\/gacha$/; // REQ-0042
@@ -34,7 +34,7 @@ function tryWorkshopRoutes(req, res, url, p) {
     // finalizeClaimingItemsForCanvas).
     if (p.match(WORKSHOP_GACHA_RE)) {
       if (!methodGuard(req, res, 'POST')) return;
-      withJsonBody(req, res, RAW_BODY_MESSAGES, (body) => {
+      withJsonBody(req, res, {}, (body) => {
         const kind = typeof body.kind === 'string' ? body.kind : 'common_bp';
         try {
           const canvas = loadOwnCanvas(callerId);

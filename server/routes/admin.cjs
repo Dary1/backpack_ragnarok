@@ -15,11 +15,9 @@ const { invalidateContentCache, registryServedKindFor } = require('../lib/conten
 const admin = require('../admin.cjs');
 const schedule = require('../schedule.cjs');
 
-// Byte-parity: both body readers here used a bare JSON.parse (so an empty body
-// has always been a 400) and this 'body read failed: <msg>' wording; their 413
-// already matches the kit's default. The unification commit drops readFail and
-// keeps allowEmpty.
-const ADMIN_BODY = { readFail: (e) => 'body read failed: ' + e.message, allowEmpty: false };
+// Both body readers here used a bare JSON.parse, so an empty body has always
+// been a 400. Real behaviour, not a wording override -- it stays.
+const ADMIN_BODY = { allowEmpty: false };
 
 const ADMIN_ITEM_RE = /^\/api\/admin\/item\/([^/]+)$/;
 const ADMIN_WAREHOUSE_GRANT_RE = /^\/api\/admin\/warehouse\/grant$/; // REQ-0041 feedback 1: dev grant

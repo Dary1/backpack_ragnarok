@@ -66,11 +66,7 @@ function tryDismantleRoutes(req, res, url, p) {
 
   // ---- POST /api/dismantle ----
   if (!methodGuard(req, res, 'POST')) return;
-  // REQ-0349 byte-parity: `badJson` carries this family's pre-REQ wording --
-  // 'malformed JSON body' where every other family says 'invalid JSON body'.
-  // The 413/read-failure wordings already match the kit's defaults, so they
-  // need no override. The unification commit deletes this bag.
-  withJsonBody(req, res, { badJson: 'malformed JSON body' }, (body) => {
+  withJsonBody(req, res, {}, (body) => {
     const itemUid = body && body.itemUid;
     const kind = body && body.kind;
     if (typeof itemUid !== 'string' || !itemUid) {

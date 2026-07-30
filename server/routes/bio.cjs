@@ -19,10 +19,7 @@ const bio = require('../services/bio.cjs');
 // REQ-0349: that resolution is now lib/route_kit.cjs's resolveCallerOr401, so
 // the parity is structural rather than copied. The wrong-method reply stays a
 // 404 'not found' (not the kit's 405) -- that is this family's pre-REQ-0349
-// behaviour and REQ-0349 changes no status codes. Byte-parity: this family's own
-// 'bad body' / 'invalid json' wordings ride on withJsonBody as data until
-// REQ-0349's unification commit.
-const BODY_WORDING = { readFail: 'bad body', badJson: 'invalid json' };
+// behaviour and REQ-0349 changes no status codes.
 const BIO_RE = /^\/api\/bio\/([^/]+)$/;
 const BIO_NAME_RE = /^\/api\/bio\/([^/]+)\/name$/;
 const I18N = {
@@ -68,7 +65,7 @@ function tryBioRoutes(req, res, url, p) {
     const ctx = resolveCallerOr401(req, res);
     if (!ctx) return;
     const uid = decodeURIComponent(mName[1]);
-    withJsonBody(req, res, BODY_WORDING, (body) => {
+    withJsonBody(req, res, {}, (body) => {
       const name = body && typeof body.name === 'string' ? body.name.trim() : '';
       if (!name) { sendJSON(res, 400, { ok: false, error: 'name required' }); return; }
       const doc = bio.recordRename(uid, name);

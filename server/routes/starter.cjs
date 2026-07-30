@@ -10,7 +10,7 @@
 // false when not matched.
 // REQ-0349: was lib/route_auth.cjs, which is now a thin shim over this module.
 const { sendJSON } = require("../lib/http_util.cjs");
-const { resolveCallerOr401, methodGuard, withJsonBody, RAW_BODY_MESSAGES } = require("../lib/route_kit.cjs");
+const { resolveCallerOr401, methodGuard, withJsonBody } = require("../lib/route_kit.cjs");
 const storage = require("../storage.cjs");
 
 // The four starter units. Mirrors content/live/starter_units.json ids -- a
@@ -43,9 +43,7 @@ function tryStarterRoutes(req, res, url, p) {
     if (!ctx) return;
     const callerId = ctx.callerId;
     if (!methodGuard(req, res, "POST")) return;
-    // Byte-parity: RAW_BODY_MESSAGES is the kit preset for the sites that passed
-    // the raw readBody error straight through (413 for TOO_LARGE, else 400).
-    withJsonBody(req, res, RAW_BODY_MESSAGES, (body) => {
+    withJsonBody(req, res, {}, (body) => {
       const unit = typeof body.unit === "string" ? body.unit : null;
       if (!unit || STARTER_UNIT_IDS.indexOf(unit) === -1) {
         sendJSON(res, 400, { ok: false, error: "unknown starter unit: " + String(unit) });

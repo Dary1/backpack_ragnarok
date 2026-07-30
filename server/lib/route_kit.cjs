@@ -16,10 +16,12 @@
 //
 // MIGRATION DISCIPLINE (REQ-0349): each family moved onto this module in its own
 // commit with its CURRENT response wording passed in as data (the `opts` bag on
-// withJsonBody), so every migration commit changes zero response bytes and
-// server/tests/api/* needs no edit. The wording unification is a separate,
-// later, individually revertable commit that deletes those overrides and lets
-// the defaults below apply. See docs/REQ/todo/REQ-0349-route-kit-preamble-unify.md.
+// withJsonBody), so every migration commit changed zero response bytes and
+// server/tests/api/* needed no edit. The wording unification was then a single
+// separate commit that deleted those overrides and let the defaults below apply --
+// and all 229 api_test cases stayed green through it, confirming that none of the
+// nine former body-handling wordings was ever part of an asserted contract.
+// See docs/REQ/todo/REQ-0349-route-kit-preamble-unify.md.
 const { sendJSON, readBody, getAuthToken, MAX_BODY_BYTES } = require('./http_util.cjs');
 const admin = require('../admin.cjs');
 const storage = require('../storage.cjs');
@@ -165,11 +167,12 @@ const BODY_TOO_LARGE = 'request body exceeds ' + MAX_BODY_BYTES + ' bytes';
 const BODY_READ_FAILED = 'invalid request body';
 const BODY_BAD_JSON = 'invalid JSON body';
 
-// A message option is either a string, or a function(err) for the sites that
-// currently pass the raw error through. RAW_BODY_MESSAGES is the preset for
-// those (the `err.code === 'TOO_LARGE' ? 413 : 400` one-liner shape).
-function rawErrMessage(e) { return e.message; }
-const RAW_BODY_MESSAGES = { tooLarge: rawErrMessage, readFail: rawErrMessage };
+// A message option is either a string or a function(err). Both existed for the
+// migration, so a family could carry its pre-REQ-0349 wording as data and change
+// zero response bytes while moving onto this module. After the unification commit
+// NO family overrides anything, and the hook is kept only because a future
+// endpoint with a genuinely different cap (the way routes/skins.cjs has a
+// genuinely different maxBytes) should not have to fork withJsonBody.
 function pickMessage(override, fallback, e) {
   if (typeof override === 'function') return override(e);
   if (typeof override === 'string') return override;
@@ -282,7 +285,7 @@ module.exports = {
   resolveCallerContext, resolveCallerOr401, resolveCallerOptional,
   methodGuard, METHOD_NOT_ALLOWED,
   domainErrToStatus, sendDomainError, CODE_TO_STATUS,
-  withJsonBody, RAW_BODY_MESSAGES, BODY_TOO_LARGE, BODY_READ_FAILED, BODY_BAD_JSON,
+  withJsonBody, BODY_TOO_LARGE, BODY_READ_FAILED, BODY_BAD_JSON,
   badRequest, requireString, requireInt, requireEnum,
   loadOwnCanvas, requireOwnCanvas,
 };

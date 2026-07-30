@@ -84,18 +84,10 @@ function trySkinsRoutes(req, res, url, p) {
   }
 
   if (req.method === 'PUT') {
-    // Byte-parity: this family's pre-REQ-0349 wordings ride along as data --
-    // 'request body too large' (its 413 differs from every other family's
-    // 'exceeds N bytes') and 'body read failed: <msg>'. `maxBytes` is the
-    // REQ-0266 tighter-than-MAX_BODY_BYTES cap, whose own 413 wording the kit
-    // reproduces exactly. The unification commit drops the two overrides and
-    // keeps maxBytes.
-    const wording = {
-      tooLarge: 'request body too large',
-      readFail: (e) => 'body read failed: ' + e.message,
-      maxBytes: MAX_SKINS_BODY_BYTES,
-    };
-    withJsonBody(req, res, wording, (patch) => {
+    // maxBytes is the REQ-0266 cap, deliberately TIGHTER than the shared
+    // MAX_BODY_BYTES readBody enforces (see its definition above). The 413/400
+    // wordings are now the kit's.
+    withJsonBody(req, res, { maxBytes: MAX_SKINS_BODY_BYTES }, (patch) => {
       try { storage.validateSkinPrefsPatch(patch, skinDefsById()); }
       catch (e) { sendJSON(res, 400, { ok: false, error: e.message }); return; }
       try {

@@ -17,13 +17,13 @@ const { humanizeEventText } = require('../lib/humanize.cjs');
 // exactly that, and it is reachable only from here.
 const {
   resolveCallerOr401, loadOwnCanvas, requireOwnCanvas,
-  methodGuard, withJsonBody, sendDomainError, RAW_BODY_MESSAGES,
+  methodGuard, withJsonBody, sendDomainError,
 } = require('../lib/route_kit.cjs');
-// Byte-parity for the 8 body readers below. SIX used a bare JSON.parse(bodyStr),
-// so an empty body has always been a 400 for those; TWO guarded with
-// `if (bodyStr)` and tolerate one. Both behaviours are preserved -- the
-// unification commit drops only the raw-message preset, never allowEmpty.
-const BODY_STRICT = Object.assign({ allowEmpty: false }, RAW_BODY_MESSAGES);
+// Of the 8 body readers below, SIX used a bare JSON.parse(bodyStr) -- an empty
+// body has always been a 400 for those -- and TWO guarded with `if (bodyStr)`
+// and tolerate one. Both behaviours are preserved. This is real behaviour, not a
+// wording override.
+const BODY_STRICT = { allowEmpty: false };
 const storage = require('../storage.cjs');
 const schedule = require('../schedule.cjs');
 
@@ -327,7 +327,7 @@ function tryScheduleRoutes(req, res, url, p) {
         sendJSON(res, 403, { ok: false, error: 'forbidden: dev/backdate is only available to the dev_mode fallback caller (test-control seam, not a real player action)' });
         return;
       }
-      withJsonBody(req, res, RAW_BODY_MESSAGES, (body) => {
+      withJsonBody(req, res, {}, (body) => {
         try {
           const room = schedule.getOwnRoomOr404(roomId, callerId);
           const run = schedule.devBackdateActiveRun(room, body.extraSecsIntoPast);
@@ -370,7 +370,7 @@ function tryScheduleRoutes(req, res, url, p) {
     // public seal meta (genSeed withheld) + the shareToken (== sealId).
     if (p.match(SCHEDULE_SEAL_MINT_RE)) {
       if (!methodGuard(req, res, 'POST')) return;
-      withJsonBody(req, res, RAW_BODY_MESSAGES, (body) => {
+      withJsonBody(req, res, {}, (body) => {
         try {
           const seal = schedule.mintSeal(callerId, body);
           sendJSON(res, 200, { ok: true, seal: schedule.publicSealMeta(seal), shareToken: seal.sealId });

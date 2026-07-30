@@ -10,7 +10,7 @@
 const { sendJSON } = require('../lib/http_util.cjs');
 // sendScheduleError is the kit's sendDomainError: identical body, one shared
 // code->status table instead of four hand-maintained copies.
-const { resolveCallerOr401, methodGuard, withJsonBody, sendDomainError, RAW_BODY_MESSAGES } = require('../lib/route_kit.cjs');
+const { resolveCallerOr401, methodGuard, withJsonBody, sendDomainError } = require('../lib/route_kit.cjs');
 const schedule = require('../schedule.cjs');
 
 const WAREHOUSE_RE = /^\/api\/warehouse$/;
@@ -43,7 +43,7 @@ function tryWarehouseRoutes(req, res, url, p) {
         sendJSON(res, 403, { ok: false, error: 'forbidden: dev/backdate-claim is only available to the dev_mode fallback caller (test-control seam, not a real player action)' });
         return;
       }
-      withJsonBody(req, res, RAW_BODY_MESSAGES, (body) => {
+      withJsonBody(req, res, {}, (body) => {
         if (!body.itemUid) { sendJSON(res, 400, { ok: false, error: 'itemUid is required' }); return; }
         try {
           const item = schedule.devBackdateClaimedWarehouseItem(callerId, body.itemUid, body.extraSecsIntoPast);
@@ -100,8 +100,8 @@ function tryWarehouseRoutes(req, res, url, p) {
       // allowEmpty:false -- this handler used a BARE JSON.parse(bodyStr), so an
       // empty body has always been a 400 here. Note dev/backdate-claim above
       // guarded with `if (bodyStr)` and so tolerates one: the two endpoints in
-      // this same file genuinely differed, and REQ-0349 preserves both.
-      withJsonBody(req, res, Object.assign({ allowEmpty: false }, RAW_BODY_MESSAGES), (body) => {
+      // this same file genuinely differ, and REQ-0349 preserves both.
+      withJsonBody(req, res, { allowEmpty: false }, (body) => {
         if (typeof body.itemUid !== 'string' || !body.itemUid) {
           sendJSON(res, 400, { ok: false, error: 'itemUid is required' }); return;
         }

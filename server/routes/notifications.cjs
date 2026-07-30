@@ -12,12 +12,9 @@
 //   POST /api/notifications/ack {ids:[]} -> { ok, acked }
 // REQ-0349: the request preamble (caller resolution, the 405 guard, the JSON
 // body read) comes from lib/route_kit.cjs instead of being open-coded here.
-// Byte-parity: this family's own 'bad body' / 'invalid json' wordings are passed
-// as data on withJsonBody until REQ-0349's unification commit.
 const { sendJSON } = require('../lib/http_util.cjs');
 const { resolveCallerOr401, methodGuard, withJsonBody } = require('../lib/route_kit.cjs');
 const notifications = require('../services/notifications.cjs');
-const BODY_WORDING = { readFail: 'bad body', badJson: 'invalid json' };
 
 function tryNotificationsRoutes(req, res, url, p) {
   if (p === '/api/notifications') {
@@ -34,7 +31,7 @@ function tryNotificationsRoutes(req, res, url, p) {
     if (!methodGuard(req, res, 'POST')) return;
     const ctx = resolveCallerOr401(req, res);
     if (!ctx) return;
-    withJsonBody(req, res, BODY_WORDING, (body) => {
+    withJsonBody(req, res, {}, (body) => {
       const ids = Array.isArray(body.ids) ? body.ids : [];
       const acked = notifications.ack(ctx.callerId, ids);
       sendJSON(res, 200, { ok: true, acked });

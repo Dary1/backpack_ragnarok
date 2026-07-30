@@ -33,7 +33,7 @@
 // schedule family -- so no current market response changes; the value is that
 // the divergence cannot come back.
 const { sendJSON } = require('../lib/http_util.cjs');
-const { resolveCallerOr401, methodGuard, withJsonBody, sendDomainError, RAW_BODY_MESSAGES } = require('../lib/route_kit.cjs');
+const { resolveCallerOr401, methodGuard, withJsonBody, sendDomainError } = require('../lib/route_kit.cjs');
 const storage = require('../storage.cjs');
 const market = require('../market.cjs');
 const ragnarok = require('../ragnarok.cjs'); // REQ-0066: furnace seasonal windowing
@@ -45,11 +45,9 @@ const MARKET_FURNACE_RE = /^\/api\/market\/furnace$/;
 const MARKET_LISTINGS_DEV_CLEAR_RE = /^\/api\/market\/listings\/dev\/clear-all$/;
 const MARKET_LISTINGS_FROM_WAREHOUSE_RE = /^\/api\/market\/listings\/from-warehouse$/; // REQ-0328
 
-// Byte-parity for both body readers in this file: they passed the raw readBody
-// error through (413 for TOO_LARGE, else 400) and used a BARE JSON.parse, so an
-// empty body has always been a 400 here. REQ-0349's unification commit keeps
-// allowEmpty and drops the raw-message preset.
-const BODY_WORDING = Object.assign({ allowEmpty: false }, RAW_BODY_MESSAGES);
+// Both body readers in this file used a BARE JSON.parse, so an empty body has
+// always been a 400 here. Real behaviour, not a wording override -- it stays.
+const BODY_WORDING = { allowEmpty: false };
 
 function tryMarketRoutes(req, res, url, p) {
   const marketMatch = p.match(MARKET_LISTINGS_RE) || p.match(MARKET_LISTING_WITHDRAW_RE) ||

@@ -57,13 +57,11 @@ function tryProfileRoutes(req, res, url, p) {
     }
 
     if (req.method === 'PUT') {
-      // Byte-parity: `readFail` carries this family's 'body read failed: <msg>'
-      // wording (its 413 already matches the kit's default), and allowEmpty:false
-      // reproduces the bare JSON.parse(bodyStr) this handler used -- an EMPTY
-      // body has always been a 400 here, and a saved canvas of {} must not
-      // become reachable by sending no body.
-      const wording = { readFail: (e) => 'body read failed: ' + e.message, allowEmpty: false };
-      withJsonBody(req, res, wording, (canvas) => {
+      // allowEmpty:false reproduces the bare JSON.parse(bodyStr) this handler
+      // used -- an EMPTY body has always been a 400 here, and a saved canvas of
+      // {} must not become reachable by sending no body. NOT a wording override:
+      // it is real behaviour and it stays.
+      withJsonBody(req, res, { allowEmpty: false }, (canvas) => {
         try {
           const doc = storage.writeProfile(effectivePlayerId, canvas);
           // REQ-0041 two-phase claim: this is THE single writer for a
