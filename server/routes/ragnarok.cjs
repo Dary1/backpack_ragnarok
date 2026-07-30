@@ -28,8 +28,14 @@
 // content, but S5's "resolveAuth everywhere" wins -- ALL ragnarok
 // routes are token-gated uniformly (the season strip only renders
 // inside the authenticated shell anyway).
-const { sendJSON, getAuthToken } = require('../lib/http_util.cjs');
-const admin = require('../admin.cjs');
+// REQ-0349: the request preamble comes from lib/route_kit.cjs. The former
+// private errToStatus/sendRagnarokError below were the last of FOUR copies of
+// the same code->status table, and like the market copy it LACKED
+// FORBIDDEN->403 (it answered 500). Inert today -- the only FORBIDDEN throwers
+// are services/seals.cjs, on the schedule family -- so no current ragnarok
+// response changes.
+const { sendJSON } = require('../lib/http_util.cjs');
+const { resolveCallerOr401, methodGuard, sendDomainError } = require('../lib/route_kit.cjs');
 const ragnarok = require('../ragnarok.cjs');
 
 const RAGNAROK_SEASON_RE = /^\/api\/ragnarok\/season$/;
@@ -58,55 +64,30 @@ function tryRagnarokRoutes(req, res, url, p) {
     || p.match(RAGNAROK_DEVOTION_RE);
   if (!matched) return false;
 
-  // REQ-0199: resolve the caller EXACTLY like schedule/warehouse
-  // (lib/route_auth.cjs's resolveCallerOr401) and profile/me already do
-  // -- admin.resolveAuthFromRequest(req) tries a Supabase Bearer JWT
-  // FIRST (REQ-0118c precedence), then falls back to the REQ-0037
-  // X-Auth-Token path (+ the dev_mode no-token fallback). BEFORE this
-  // REQ this route called admin.resolveAuth(getAuthToken(req)) -- the
-  // X-Auth-Token-ONLY resolver -- so a JWT-authenticated player
-  // (Authorization: Bearer, NO X-Auth-Token) resolved to token=null ->
-  // dev_mode fallback -> the route acted as the WRONG player ('dev').
-  // `token` (the raw X-Auth-Token, may be undefined) is still read below
-  // SOLELY to compute callerIsDevFallback -- see that comment below.
-  const token = getAuthToken(req);
-  const resolved = admin.resolveAuthFromRequest(req);
-  if (!resolved.ok) {
-    sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason });
-    return;
-  }
-  const callerId = resolved.player.playerId;
-  // REQ-0066 E2E hook gate: true only when this request resolved via the
-  // dev_mode NO-TOKEN fallback -- exact same computation and rationale
-  // as routes/schedule.cjs's callerIsDevFallback (see that file's
-  // comment); used ONLY to gate /order/dev/force-rebuild below.
-  // REQ-0214: keyed off the resolver's own resolution-path annotation
-  // (admin.resolveAuthFromRequest sets viaDevFallback), NOT a playerId
-  // comparison -- the e2e profile redirect (x-bpk-e2e-profile) swaps the
-  // playerId while remaining exactly this no-token dev_mode fallback.
-  const callerIsDevFallback = !token && resolved.viaDevFallback === true;
+  // REQ-0199: resolve the caller EXACTLY like schedule/warehouse and profile/me
+  // -- a Supabase Bearer JWT FIRST (REQ-0118c precedence), then the REQ-0037
+  // X-Auth-Token path (+ the dev_mode no-token fallback). BEFORE that REQ this
+  // route called admin.resolveAuth(getAuthToken(req)) -- the X-Auth-Token-ONLY
+  // resolver -- so a JWT-authenticated player (Authorization: Bearer, NO
+  // X-Auth-Token) resolved to token=null -> dev_mode fallback -> the route acted
+  // as the WRONG player ('dev').
+  // REQ-0349: the sentence above used to sit directly on top of an inline COPY of
+  // lib/route_auth.cjs's resolveCallerOr401. It now calls it.
+  // callerIsDevFallback (the REQ-0214 annotation-keyed dev_mode-no-token test,
+  // NOT a playerId comparison, so it follows the x-bpk-e2e-profile redirect)
+  // comes off the same context; it gates /order/dev/force-rebuild and
+  // /einherjar/dev/clear below.
+  const ctx = resolveCallerOr401(req, res);
+  if (!ctx) return;
+  const { callerId, callerIsDevFallback } = ctx;
   // Optional Idempotency-Key (node:http lowercases header names) --
   // same minimal pattern routes/market.cjs introduced.
   const rawIdem = req.headers['idempotency-key'];
   const idemKey = typeof rawIdem === 'string' && rawIdem ? rawIdem : undefined;
 
-  // Same code->status mapping + structured-reason threading as
-  // routes/market.cjs (REQ-0041 convention).
-  function errToStatus(e) {
-    if (e.code === 'NOT_FOUND') return 404;
-    if (e.code === 'CONFLICT') return 409;
-    if (e.code === 'BAD_REQUEST') return 400;
-    return 500;
-  }
-  function sendRagnarokError(e) {
-    const body = { ok: false, error: e.message };
-    if (typeof e.reason === 'string') body.reason = e.reason;
-    sendJSON(res, errToStatus(e), body);
-  }
-
   // ---- GET /api/ragnarok/season ----
   if (p.match(RAGNAROK_SEASON_RE)) {
-    if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+    if (!methodGuard(req, res, 'GET')) return;
     try {
       const cs = ragnarok.currentSeason();
       sendJSON(res, 200, {
@@ -116,13 +97,13 @@ function tryRagnarokRoutes(req, res, url, p) {
         season: cs.season,
         derived: cs.derived,
       });
-    } catch (e) { sendRagnarokError(e); }
+    } catch (e) { sendDomainError(res, e); }
     return;
   }
 
   // ---- GET /api/ragnarok/order ----
   if (p.match(RAGNAROK_ORDER_RE)) {
-    if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+    if (!methodGuard(req, res, 'GET')) return;
     try {
       const view = ragnarok.orderView(callerId, {
         top: url.searchParams.get('top') || undefined,
@@ -130,7 +111,7 @@ function tryRagnarokRoutes(req, res, url, p) {
         q: url.searchParams.get('q') || undefined,
       });
       sendJSON(res, 200, Object.assign({ ok: true, dtoVersion: ragnarok.RAGNAROK_DTO_VERSION }, view));
-    } catch (e) { sendRagnarokError(e); }
+    } catch (e) { sendDomainError(res, e); }
     return;
   }
 
@@ -144,7 +125,7 @@ function tryRagnarokRoutes(req, res, url, p) {
   // feature -- it never touches any einherjar record, only the order
   // cache's derived standings.
   if (p.match(RAGNAROK_ORDER_DEV_FORCE_REBUILD_RE)) {
-    if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+    if (!methodGuard(req, res, 'POST')) return;
     if (!callerIsDevFallback) {
       sendJSON(res, 403, { ok: false, error: 'forbidden: order/dev/force-rebuild is only available to the dev_mode fallback caller (test-control seam, not a real player action)' });
       return;
@@ -152,13 +133,13 @@ function tryRagnarokRoutes(req, res, url, p) {
     try {
       const doc = ragnarok.devForceRebuildOrder();
       sendJSON(res, 200, { ok: true, rebuiltAt: doc.rebuiltAt, total: doc.entries.length });
-    } catch (e) { sendRagnarokError(e); }
+    } catch (e) { sendDomainError(res, e); }
     return;
   }
 
   // ---- GET /api/ragnarok/einherjar?player= ----
   if (p.match(RAGNAROK_EINHERJAR_RE)) {
-    if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+    if (!methodGuard(req, res, 'GET')) return;
     try {
       // ?player= defaults to the caller. Any REGISTERED player may be
       // queried (hall records are public data, same visibility as the
@@ -175,7 +156,7 @@ function tryRagnarokRoutes(req, res, url, p) {
         playerId,
         einherjar: ragnarok.listEinherjar(playerId),
       });
-    } catch (e) { sendRagnarokError(e); }
+    } catch (e) { sendDomainError(res, e); }
     return;
   }
 
@@ -191,7 +172,7 @@ function tryRagnarokRoutes(req, res, url, p) {
   // a real guest token gets 403, never 200. Test-control seam, not a
   // gameplay feature.
   if (p.match(RAGNAROK_EINHERJAR_DEV_CLEAR_RE)) {
-    if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+    if (!methodGuard(req, res, 'POST')) return;
     if (!callerIsDevFallback) {
       sendJSON(res, 403, { ok: false, error: 'forbidden: einherjar/dev/clear is only available to the dev_mode fallback caller (test-control seam, not a real player action)' });
       return;
@@ -199,25 +180,25 @@ function tryRagnarokRoutes(req, res, url, p) {
     try {
       const deleted = ragnarok.devClearEinherjarRecords(callerId);
       sendJSON(res, 200, { ok: true, deleted });
-    } catch (e) { sendRagnarokError(e); }
+    } catch (e) { sendDomainError(res, e); }
     return;
   }
 
   // ---- GET /api/ragnarok/devotion/preview/:squadIndex ----
   const previewMatch = p.match(RAGNAROK_DEVOTION_PREVIEW_RE);
   if (previewMatch) {
-    if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+    if (!methodGuard(req, res, 'GET')) return;
     try {
       const preview = ragnarok.previewDevotion(callerId, parseSquadIndex(previewMatch[1]));
       sendJSON(res, 200, Object.assign({ ok: true, dtoVersion: ragnarok.RAGNAROK_DTO_VERSION }, preview));
-    } catch (e) { sendRagnarokError(e); }
+    } catch (e) { sendDomainError(res, e); }
     return;
   }
 
   // ---- POST /api/ragnarok/devotion/:squadIndex ----
   const devoteMatch = p.match(RAGNAROK_DEVOTION_RE);
   if (devoteMatch) {
-    if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+    if (!methodGuard(req, res, 'POST')) return;
     try {
       // No request body: the squad index + Idempotency-Key header are
       // the entire input (the rite has no parameters -- the mock's
@@ -230,7 +211,7 @@ function tryRagnarokRoutes(req, res, url, p) {
         einherjar: ragnarok.einherjarDto(record),
         blast: record.blast,
       });
-    } catch (e) { sendRagnarokError(e); }
+    } catch (e) { sendDomainError(res, e); }
     return;
   }
 
