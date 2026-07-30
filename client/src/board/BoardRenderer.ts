@@ -213,6 +213,37 @@ export class BoardRenderer {
   gUnits = new Container();
   gChain = new Container();
   gTarget = new Container();
+  /** REQ-0346: the claim pulse's OWN layer -- the one board layer that
+   * render(state) does NOT clear.
+   *
+   * ghosts.ts pulseCellsSuccess() used to draw into gTarget, and so never
+   * reached the screen once in its life. Both of its call sites
+   * (useWarehouseData.ts's handleClaim, WorkshopPage.tsx's roll) call
+   * notifyStateChanged() on the very next line; that re-enters render(state),
+   * whose first act is gTarget.removeChildren(). The blink was destroyed in
+   * the same frame it was created -- measured through the real warehouse-claim
+   * flow at 0 pixels of its #59d68a across the whole 2s window, identically
+   * with REQ-0345's frame loop off and with the old Ticker put back.
+   *
+   * The fix is a LAYER, not a reordering, because that keeps render(state) the
+   * SINGLE authority over gTarget (REQ-0346's stated preference): the pulse is
+   * a timer-owned overlay with a lifetime of its own, independent of any game
+   * state, so it gets a container of its own rather than borrowing one whose
+   * contents are a pure function of the state. Delaying the callback instead
+   * would have made a product callback's ordering load-bearing for a visual --
+   * the same class of invisible coupling that hid this bug in the first place.
+   *
+   * NOTHING may ever add this container to render(state)'s removeChildren()
+   * list -- a state-driven repaint mid-pulse must leave the blink standing.
+   * Its children are removed by exactly two things: the pulse's own final
+   * rect.destroy() (Pixi v8 detaches a destroyed child from its parent), and
+   * setOps()'s explicit sweep when this board changes identity out from under
+   * an in-flight pulse.
+   *
+   * Above gTarget (a claim cue must read OVER a drop-target tint) and below
+   * gCarry (a drag ghost still owns the topmost pixel). Purely decorative:
+   * eventMode 'none', set in the constructor alongside its neighbours. */
+  gPulse = new Container();
   gCarry = new Container();
   // REQ-0042: BP move-handle badge layer -- MUST render above gItems
   // (PO art), which is the whole point of the handle (grab a BP even
@@ -268,6 +299,7 @@ export class BoardRenderer {
       this.gUnits,
       this.gChain,
       this.gTarget,
+      this.gPulse, // REQ-0346: above the drop tint, below the drag ghost -- see field comment
       this.gCarry
     );
     // PixiJS v8 hit-testing note (REQ-0027 T0.2 interaction bug fix): once
@@ -290,15 +322,16 @@ export class BoardRenderer {
     // EventBoundary._interactivePrune() excludes it -- and its subtree --
     // from hit-testing entirely, regardless of add-order. gBeams (beam
     // lines/arrowheads/dud marks), gSkins (REQ-0266 BP skin composites),
-    // gTarget (drop-target tint/rings, reject-flash), and gCarry (drag
-    // ghost sprites) never host a listener anywhere in this file, so the
-    // whole group is marked here;
+    // gTarget (drop-target tint/rings, reject-flash), gPulse (REQ-0346
+    // claim pulse), and gCarry (drag ghost sprites) never host a listener
+    // anywhere in this file, so the whole group is marked here;
     // gBase/gItems/gSock/gUnits mix interactive hit objects with
     // decorative art and are annotated per-node at each creation site
     // below instead.
     this.gBeams.eventMode = 'none';
     this.gSkins.eventMode = 'none'; // REQ-0266
     this.gTarget.eventMode = 'none';
+    this.gPulse.eventMode = 'none'; // REQ-0346
     this.gCarry.eventMode = 'none';
     this.app.stage.addChild(this.root);
     this.app.stage.eventMode = 'static';
@@ -399,6 +432,13 @@ export class BoardRenderer {
     cancelCarry();
     this.gCarry.removeChildren();
     this.gTarget.removeChildren();
+    // REQ-0346: an in-flight claim pulse names CELLS on the page that received
+    // the item. Once this board points at different ops it is drawing a
+    // different page, so those same cells now mean something else and the blink
+    // would be highlighting the wrong squares. Sweep it for the same reason the
+    // carry above is cancelled. Its blink timers keep running against detached
+    // (then destroyed) Graphics, which is harmless -- destroy() is idempotent.
+    this.gPulse.removeChildren();
     // REQ-0345: the caller is still expected to render(state) right after
     // (InventoryBoard.tsx's ops-swap effect does), but that is an unenforced
     // contract and the Ticker used to cover for it within one frame. Ask for
@@ -487,6 +527,11 @@ export class BoardRenderer {
     this.gUnits.removeChildren();
     this.gChain.removeChildren();
     this.gTarget.removeChildren();
+    // REQ-0346: gPulse is DELIBERATELY absent from this list, and must stay
+    // absent. It exists precisely so that this method -- which BOTH claim-pulse
+    // call sites re-enter on the very next line via notifyStateChanged() --
+    // cannot destroy the blink it was just asked to show. See that field's own
+    // comment for the measurement that made it a separate layer.
 
     const container = ops.container(state);
     const cbp = ops.cellBPMap(state);
