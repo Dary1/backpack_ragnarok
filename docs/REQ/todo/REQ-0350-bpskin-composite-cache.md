@@ -1,8 +1,9 @@
 # REQ-0350 — the BP-skin cache never actually cached the composite
 
 ## Status
-draft — spec written 2026-07-30, cleared by the user the same day. See §7 for
-the gate results recorded at implementation.
+built — 2026-07-30. All gates green; NOT merged and NOT deployed. Awaiting user
+acceptance. Commits: `dcd1cb2c` (spec), `d4c44e85` (reserved→todo), `f4867de5`
+(implementation + gates). See §7.
 
 `bpSkinTexture.ts`'s module header promised "composite once per (cell-set,
 skin)". It composited on **every** `render(state)`, for **every** skinned BP, on
