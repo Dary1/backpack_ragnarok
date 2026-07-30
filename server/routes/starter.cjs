@@ -8,7 +8,7 @@
 // from its own /api/content starterUnits copy, mirroring the gacha pattern).
 // GET /api/starter/claims returns the caller ledger. Token-gated. Returns
 // false when not matched.
-// REQ-0349: was lib/route_auth.cjs, which is now a thin shim over this module.
+// REQ-0349: was lib/route_auth.cjs, which this module replaced.
 const { sendJSON } = require("../lib/http_util.cjs");
 const { resolveCallerOr401, methodGuard, withJsonBody } = require("../lib/route_kit.cjs");
 const storage = require("../storage.cjs");

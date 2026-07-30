@@ -3,7 +3,7 @@
 // Workshop gacha HTTP surface (REQ-0042), split out of the combined
 // routes/schedule.cjs (origin lines 472-499 @ commit 9d4bc89, body
 // verbatim). Shares the whole request preamble via lib/route_kit.cjs
-// (REQ-0349; was lib/route_auth.cjs, now a shim over it); dispatched
+// (REQ-0349; replaced lib/route_auth.cjs); dispatched
 // right after schedule -> warehouse in the exact slot the combined
 // module occupied. Returns false when not matched.
 const { sendJSON } = require('../lib/http_util.cjs');

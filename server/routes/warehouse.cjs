@@ -4,7 +4,7 @@
 // clear-debris seams), split out of the combined routes/schedule.cjs
 // (origin lines 343-405, 432-470 @ commit 9d4bc89, bodies verbatim).
 // Shares the whole request preamble via lib/route_kit.cjs (REQ-0349;
-// was lib/route_auth.cjs, now a shim over it); the router dispatches
+// replaced lib/route_auth.cjs); the router dispatches
 // schedule -> warehouse -> workshop consecutively in the exact slot the
 // combined module occupied. Returns false when not matched.
 const { sendJSON } = require('../lib/http_util.cjs');

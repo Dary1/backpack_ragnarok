@@ -5,8 +5,8 @@
 // schedule/warehouse/workshop module split into three route files
 // (origin lines 125-341, 407-430 @ commit 9d4bc89, bodies verbatim);
 // the shared request preamble + canvas helpers live in lib/route_kit.cjs
-// (REQ-0349; was lib/route_auth.cjs, now a shim over it) and are used by
-// all three. Returns false when not matched (router then tries
+// (REQ-0349; replaced lib/route_auth.cjs) and are used by all three.
+// Returns false when not matched (router then tries
 // warehouse -> workshop in the same slot the combined module occupied).
 const { sendJSON, sendText } = require('../lib/http_util.cjs');
 const { humanizeEventText } = require('../lib/humanize.cjs');
