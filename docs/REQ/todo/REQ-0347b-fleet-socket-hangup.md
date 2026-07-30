@@ -1,14 +1,23 @@
 # REQ-0347b — Unexplained `socket hang up` from a fleet worker api
 
 ## Status
-todo — **two** occurrences (see §6), NOT reproduced, NOT diagnosed. Four
-hypotheses have been tested and ruled out, and the rate has been estimated well
-enough to say that further reproduction attempts are a bad investment. The REQ
-stays open with the instrumentation (REQ-0347a) in place, because one future
-occurrence is now enough to name the closer.
+done — closed 2026-07-30 on the user's call, as **INVESTIGATED, NOT
+EXPLAINED**. Takes effect on the board when this branch merges.
 
-Split from REQ-0347 because its capture half could reach `built` and this half
-cannot.
+> **Read this before treating it as solved.** The original question — why that
+> one DELETE hung up — has no answer in here. What closed is the *work item*,
+> not the question. Six mechanisms were tested and ruled out (§3, §4, §5, §8),
+> three real defects were found and fixed on the way (§5, §8, all carried by
+> REQ-0347a), the recurrence rate was measured (§7), and the forensics are now
+> captured automatically on every run. What remains needs a **third
+> occurrence**, which no amount of work here can produce. §10 says why that is
+> a reason to close rather than to keep a queue slot warm.
+>
+> **If it recurs: do not reopen this. File a fresh REQ and read §9 first.**
+
+This REQ carries no code of its own — everything it caused lives in REQ-0347a,
+which stays `built` until merge. Split from REQ-0347 because that REQ's capture
+half could reach `built` while this half could not.
 
 ---
 
@@ -351,12 +360,45 @@ nobody was ever going to have set a flag in advance for a 1-in-100-gates event;
 the next natural occurrence now arrives with its own forensics already on disk.
 `E2E_PROXY_TRACE=1` still mirrors the census to stderr for interactive work.
 
-## 10. What is NOT claimed
+## 10. Why this closes without an answer
+
+The REQ was filed for one purpose, stated in its own last section: *"so the
+second occurrence is recognised as a pattern rather than re-investigated from
+scratch."* Closing it does not cost that purpose, and keeping it open no longer
+buys it. Three reasons, in order of weight:
+
+1. **The mechanism that recognises a pattern here is `grep`, not a folder.**
+   Occurrence #1 was found (§6) by searching the REQ corpus — and it was sitting
+   in **`done/`**, in REQ-0142, a REQ about link-trace diagnostics that mentions
+   the hang-up in one line of its gate results. `done/` demonstrably hides
+   nothing from the search that matters. This file, which says `socket hang up`
+   in its title, will be found faster than that one was.
+2. **`todo/` actively misleads.** PROJECT.md defines it as "ratified and
+   cleared; ready to implement, waiting in the queue", with default execution
+   order ascending by number. Nothing in here is implementable. An agent walking
+   the queue in order would pick it up and re-derive "there is nothing to do" —
+   which is precisely the waste this REQ exists to prevent. Leaving it there
+   would make the file self-defeating.
+3. **The next occurrence no longer needs a prepared investigator.** The
+   connection census is written on every run with no flag to set (REQ-0347a), so
+   the third occurrence arrives with its own forensics already on disk. That was
+   the whole point of the capture half, and it is done.
+
+What a future reader owes this file: read §9, then §6 and §7 — the suspect list,
+the two occurrences, and the rate — before spending a single box-hour. Then file
+a new REQ against the fresh evidence rather than editing this history.
+
+## 11. What is NOT claimed
 
 That it is fixed, or that anything here caused it. One green re-run is not a
 diagnosis, and this project's REQ-0159 discipline says a red is either a real
 defect or a stale gate. Nothing in §3 was *fixed* — a hypothesis was falsified,
-which is cheaper and worth more than a speculative mitigation shipped as a
-cure. This stays open because the pattern is now recognised (§6) but not explained —
-exactly the position `artadmin.spec.ts:124` was in before REQ-0344 root-caused
-it, having been dismissed as noise first.
+which is cheaper and worth more than a speculative mitigation shipped as a cure.
+The three defects that WERE fixed (§5's hop-by-hop forwarding, §8's infinite
+hang and its two misleading log lines) are each stated in their own section as
+not being the cause.
+
+So this closes in the position `artadmin.spec.ts:124` was in before REQ-0344
+root-caused it: pattern recognised, cause unknown, dismissed by nobody. The
+difference is that :124 had to be re-investigated from scratch when it came
+back, and this will not.
