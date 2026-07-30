@@ -187,6 +187,10 @@ function pickMessage(override, fallback, e) {
  *                              read (routes/skins.cjs's MAX_SKINS_BODY_BYTES);
  *                              its 413 wording follows the same 'exceeds N
  *                              bytes' shape.
+ *   allowEmpty false          - treat an EMPTY body as bad JSON instead of {}.
+ *                              Reproduces a bare JSON.parse(bodyStr), which is
+ *                              what routes/profile.cjs's canvas PUT has always
+ *                              done. Default true (an empty body parses to {}).
  * cb(body, bodyStr) runs only on success. An empty body parses to {}, matching
  * every pre-REQ-0349 call site (both the `bodyStr ? JSON.parse(bodyStr) : {}`
  * and the `JSON.parse(bodyStr || '{}')` spellings).
@@ -207,8 +211,14 @@ function withJsonBody(req, res, opts, cb) {
       return;
     }
     let body;
-    try { body = bodyStr ? JSON.parse(bodyStr) : {}; }
-    catch (e) { sendJSON(res, 400, { ok: false, error: pickMessage(o.badJson, BODY_BAD_JSON, e) }); return; }
+    try {
+      // allowEmpty:false reproduces a bare JSON.parse(bodyStr): an EMPTY body
+      // throws, i.e. answers the bad-JSON 400 rather than yielding {}. Load-
+      // bearing for routes/profile.cjs, where a saved canvas of {} must not be
+      // reachable by sending no body at all.
+      if (!bodyStr && o.allowEmpty === false) throw new SyntaxError('Unexpected end of JSON input');
+      body = bodyStr ? JSON.parse(bodyStr) : {};
+    } catch (e) { sendJSON(res, 400, { ok: false, error: pickMessage(o.badJson, BODY_BAD_JSON, e) }); return; }
     cb(body, bodyStr);
   });
 }
