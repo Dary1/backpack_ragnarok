@@ -5,10 +5,21 @@
 // contentCache = null -> invalidateContentCache() (same effect, the
 // cache is module-private in lib/content.cjs now). Returns false when
 // not matched.
-const { sendJSON, readBody, getAuthToken, MAX_BODY_BYTES } = require('../lib/http_util.cjs');
+// REQ-0349: the 405 guard, the JSON body read and the opportunistic caller
+// resolution come from lib/route_kit.cjs. This family's own 403 gate stays
+// admin.isItemAdminToken(getAuthToken(req)): an item_admin ROLE check is not
+// caller resolution, so the kit has no opinion on it.
+const { sendJSON, getAuthToken } = require('../lib/http_util.cjs');
+const { resolveCallerOptional, methodGuard, withJsonBody } = require('../lib/route_kit.cjs');
 const { invalidateContentCache, registryServedKindFor } = require('../lib/content.cjs');
 const admin = require('../admin.cjs');
 const schedule = require('../schedule.cjs');
+
+// Byte-parity: both body readers here used a bare JSON.parse (so an empty body
+// has always been a 400) and this 'body read failed: <msg>' wording; their 413
+// already matches the kit's default. The unification commit drops readFail and
+// keeps allowEmpty.
+const ADMIN_BODY = { readFail: (e) => 'body read failed: ' + e.message, allowEmpty: false };
 
 const ADMIN_ITEM_RE = /^\/api\/admin\/item\/([^/]+)$/;
 const ADMIN_WAREHOUSE_GRANT_RE = /^\/api\/admin\/warehouse\/grant$/; // REQ-0041 feedback 1: dev grant
@@ -45,22 +56,7 @@ function tryAdminRoutes(req, res, url, p) {
       });
       return;
     }
-    readBody(req, (err, bodyStr) => {
-      if (err) {
-        if (err.code === 'TOO_LARGE') {
-          sendJSON(res, 413, { ok: false, error: 'request body exceeds ' + MAX_BODY_BYTES + ' bytes' });
-        } else {
-          sendJSON(res, 400, { ok: false, error: 'body read failed: ' + err.message });
-        }
-        return;
-      }
-      let body;
-      try {
-        body = JSON.parse(bodyStr);
-      } catch (e) {
-        sendJSON(res, 400, { ok: false, error: 'invalid JSON body' });
-        return;
-      }
+    withJsonBody(req, res, ADMIN_BODY, (body) => {
       try {
         const merged = admin.applyAdminEdit(itemId, body);
         invalidateContentCache(); // force a fresh read on the next /api/content (mtime already changed too)
@@ -73,7 +69,7 @@ function tryAdminRoutes(req, res, url, p) {
     return;
   }
   if (adminItemMatch) {
-    sendJSON(res, 405, { ok: false, error: 'method not allowed' });
+    methodGuard(req, res, 'PUT'); // path matched but the method did not, so this sends the 405
     return;
   }
 
@@ -102,22 +98,7 @@ function tryAdminRoutes(req, res, url, p) {
       sendJSON(res, 403, { ok: false, error: 'forbidden: missing/invalid token or not an item_admin' });
       return;
     }
-    readBody(req, (err, bodyStr) => {
-      if (err) {
-        if (err.code === 'TOO_LARGE') {
-          sendJSON(res, 413, { ok: false, error: 'request body exceeds ' + MAX_BODY_BYTES + ' bytes' });
-        } else {
-          sendJSON(res, 400, { ok: false, error: 'body read failed: ' + err.message });
-        }
-        return;
-      }
-      let body;
-      try {
-        body = JSON.parse(bodyStr);
-      } catch (e) {
-        sendJSON(res, 400, { ok: false, error: 'invalid JSON body' });
-        return;
-      }
+    withJsonBody(req, res, ADMIN_BODY, (body) => {
       // REQ-0042: this route now supports a 2nd grant shape --
       // {tm:'lrdst', qty:999} -- alongside the original {itemId:'blade'}
       // shape, dispatching on which field is present rather than forking
@@ -136,8 +117,12 @@ function tryAdminRoutes(req, res, url, p) {
             sendJSON(res, 400, { ok: false, error: 'unknown tm id "' + body.tm + '"' });
             return;
           }
-          const resolved = admin.resolveAuthFromRequest(req); // REQ-0217: honor the e2e profile redirect (x-bpk-e2e-profile), never grant to the live dev profile from a test run
-          const targetPlayerId = resolved.ok ? resolved.player.playerId : admin.readDevUser().playerId;
+          // REQ-0217: honor the e2e profile redirect (x-bpk-e2e-profile), never
+          // grant to the live dev profile from a test run. OPPORTUNISTIC -- an
+          // unresolvable caller falls back to the dev user rather than 401ing --
+          // so this takes the kit's resolveCallerOptional, not resolveCallerOr401.
+          const ctx = resolveCallerOptional(req);
+          const targetPlayerId = ctx ? ctx.callerId : admin.readDevUser().playerId;
           const result = schedule.grantTmQty(targetPlayerId, body.tm, body.qty);
           if (!result.ok) {
             sendJSON(res, 409, { ok: false, error: 'warehouse full' });
@@ -167,8 +152,11 @@ function tryAdminRoutes(req, res, url, p) {
         // The caller's OWN playerId (resolved from the token, same as
         // every other authenticated route -- never trusts a client-
         // supplied id) is who the grant lands in the warehouse for.
-        const resolved = admin.resolveAuthFromRequest(req); // REQ-0217: honor the e2e profile redirect (x-bpk-e2e-profile), never grant to the live dev profile from a test run
-        const targetPlayerId = resolved.ok ? resolved.player.playerId : admin.readDevUser().playerId;
+        // REQ-0217: honor the e2e profile redirect (x-bpk-e2e-profile), never
+        // grant to the live dev profile from a test run. Opportunistic, same as
+        // the tm branch above.
+        const ctx = resolveCallerOptional(req);
+        const targetPlayerId = ctx ? ctx.callerId : admin.readDevUser().playerId;
         const result = schedule.grantWarehouseItem(targetPlayerId, body.itemId);
         if (!result.ok) {
           sendJSON(res, 409, { ok: false, error: 'warehouse full' });
@@ -182,7 +170,7 @@ function tryAdminRoutes(req, res, url, p) {
     return;
   }
   if (adminWarehouseGrantMatch) {
-    sendJSON(res, 405, { ok: false, error: 'method not allowed' });
+    methodGuard(req, res, 'POST'); // path matched but the method did not, so this sends the 405
     return;
   }
 
