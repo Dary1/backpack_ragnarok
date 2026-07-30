@@ -26,7 +26,7 @@
 // note. sendJSON is still needed directly for this file's own 400 validation
 // replies until REQ-0349's validator commit.
 const { sendJSON } = require('../lib/http_util.cjs');
-const { resolveCallerOr401, methodGuard, withJsonBody, sendDomainError } = require('../lib/route_kit.cjs');
+const { resolveCallerOr401, methodGuard, withJsonBody, sendDomainError, requireString, requireEnum } = require('../lib/route_kit.cjs');
 const storage = require('../storage.cjs');
 const dismantle = require('../dismantle.cjs');
 
@@ -67,19 +67,14 @@ function tryDismantleRoutes(req, res, url, p) {
   // ---- POST /api/dismantle ----
   if (!methodGuard(req, res, 'POST')) return;
   withJsonBody(req, res, {}, (body) => {
-    const itemUid = body && body.itemUid;
-    const kind = body && body.kind;
-    if (typeof itemUid !== 'string' || !itemUid) {
-      sendJSON(res, 400, { ok: false, error: 'itemUid (string) is required' });
-      return;
-    }
-    if (kind !== 'po' && kind !== 'si') {
-      sendJSON(res, 400, { ok: false, error: "kind must be 'po' or 'si'" });
-      return;
-    }
     try {
-      const result = dismantle.dismantleItem(callerId, itemUid, kind);
-      sendJSON(res, 200, result);
+      // REQ-0349 D3: requireString's GENERATED wording is already this route's
+      // ('itemUid (string) is required'), so it needs no override; the kind check
+      // keeps its own phrasing through requireEnum's message argument. Both throw
+      // BAD_REQUEST into the sendDomainError below -- same 400, same body.
+      const itemUid = requireString(body && body.itemUid, 'itemUid');
+      const kind = requireEnum(body && body.kind, 'kind', ['po', 'si'], "kind must be 'po' or 'si'");
+      sendJSON(res, 200, dismantle.dismantleItem(callerId, itemUid, kind));
     } catch (e) { sendDomainError(res, e); }
   });
 }

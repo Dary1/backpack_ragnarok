@@ -10,7 +10,7 @@
 const { sendJSON } = require('../lib/http_util.cjs');
 // sendScheduleError is the kit's sendDomainError: identical body, one shared
 // code->status table instead of four hand-maintained copies.
-const { resolveCallerOr401, methodGuard, withJsonBody, sendDomainError } = require('../lib/route_kit.cjs');
+const { resolveCallerOr401, methodGuard, withJsonBody, sendDomainError, requireString } = require('../lib/route_kit.cjs');
 const schedule = require('../schedule.cjs');
 
 const WAREHOUSE_RE = /^\/api\/warehouse$/;
@@ -102,10 +102,11 @@ function tryWarehouseRoutes(req, res, url, p) {
       // guarded with `if (bodyStr)` and so tolerates one: the two endpoints in
       // this same file genuinely differ, and REQ-0349 preserves both.
       withJsonBody(req, res, { allowEmpty: false }, (body) => {
-        if (typeof body.itemUid !== 'string' || !body.itemUid) {
-          sendJSON(res, 400, { ok: false, error: 'itemUid is required' }); return;
-        }
         try {
+          // REQ-0349 D3: wording preserved verbatim -- this route says 'itemUid is
+          // required' where dismantle says 'itemUid (string) is required', and
+          // validation text is domain text, which REQ-0349 does not rewrite.
+          requireString(body.itemUid, 'itemUid', 'itemUid is required');
           // REQ-0041 two-phase claim: this route no longer touches
           // profileCanvas or calls storage.writeProfile AT ALL (see
           // schedule.cjs's claimWarehouseItem doc for the full BUG #3

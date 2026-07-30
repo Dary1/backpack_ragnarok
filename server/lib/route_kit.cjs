@@ -229,35 +229,37 @@ function withJsonBody(req, res, opts, cb) {
 // ---------------------------------------------------------------------------
 // request-shape validators
 // ---------------------------------------------------------------------------
-// REQ-0349 D3: the three shapes behind the 17 inline `typeof x !== 'string'` /
-// Number.isInteger / Number.isFinite checks in routes/. They THROW a
-// BAD_REQUEST-coded error so a handler already wrapped in try/catch +
-// sendDomainError needs no extra branch. Deliberately NOT a schema framework:
-// declarative per-route request schemas are a design decision and do not belong
-// inside a mechanical migration.
+// REQ-0349 D3: the shapes behind the inline `typeof x !== 'string'` checks in
+// routes/. They THROW a BAD_REQUEST-coded error, so a handler already wrapped in
+// try/catch + sendDomainError needs no extra branch -- and that seam is exactly
+// the limit of where they apply. Of the 17 inline checks the audit counted, only
+// the 3 sitting in handlers that ALREADY had the seam were converted. The rest
+// were left alone on purpose:
+//   * routes/admin.cjs's two are interleaved with two different 500 wrappers, so
+//     hoisting them into a throw would change which failures map to 400 vs 500;
+//   * routes/public.cjs's three and routes/schedule.cjs's one are local
+//     query-param coercions that return null -- they are not 400 sites at all;
+//   * routes/art.cjs's six and routes/content.cjs's three are out of scope (see
+//     those files' own REQ-0349 notes).
+// A requireInt() was written for this module and then DELETED, because after the
+// conversions it had no caller: dead code in a module every family imports is
+// worse than a duplicated typeof check.
+// Deliberately NOT a schema framework either: declarative per-route request
+// schemas are a design decision and do not belong inside a mechanical migration.
 function badRequest(message, reason) {
   const e = new Error(message);
   e.code = 'BAD_REQUEST';
   if (reason) e.reason = reason;
   return e;
 }
-/** Non-empty string, else BAD_REQUEST. */
-function requireString(v, name) {
-  if (typeof v !== 'string' || !v) throw badRequest(name + ' (string) is required');
+/** Non-empty string, else BAD_REQUEST. `message` overrides the generated text
+ *  where a family's existing wording differs from it. */
+function requireString(v, name, message) {
+  if (typeof v !== 'string' || !v) throw badRequest(message || (name + ' (string) is required'));
   return v;
 }
-/** Integer, optionally range-checked, else BAD_REQUEST. Accepts a numeric
- *  string so URL segments and JSON numbers validate the same way. */
-function requireInt(v, name, range) {
-  const n = typeof v === 'string' && /^-?\d+$/.test(v) ? parseInt(v, 10) : v;
-  if (!Number.isInteger(n)) throw badRequest(name + ' (integer) is required');
-  const r = range || {};
-  if (typeof r.min === 'number' && n < r.min) throw badRequest(name + ' must be >= ' + r.min);
-  if (typeof r.max === 'number' && n > r.max) throw badRequest(name + ' must be <= ' + r.max);
-  return n;
-}
 /** One of `allowed`, else BAD_REQUEST. `message` overrides the generated text
- *  for the families whose current wording is asserted by api_test. */
+ *  where a family's existing wording differs from it. */
 function requireEnum(v, name, allowed, message) {
   if (allowed.indexOf(v) === -1) {
     throw badRequest(message || (name + ' must be one of ' + allowed.join('|')));
@@ -286,6 +288,6 @@ module.exports = {
   methodGuard, METHOD_NOT_ALLOWED,
   domainErrToStatus, sendDomainError, CODE_TO_STATUS,
   withJsonBody, BODY_TOO_LARGE, BODY_READ_FAILED, BODY_BAD_JSON,
-  badRequest, requireString, requireInt, requireEnum,
+  badRequest, requireString, requireEnum,
   loadOwnCanvas, requireOwnCanvas,
 };
