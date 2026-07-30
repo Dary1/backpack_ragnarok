@@ -209,13 +209,68 @@ engine. That is §3.
 7. Byte-parity spot check: capture `GET /api/content` under `STORAGE_BACKEND=pg`
    with a non-empty registry before and after, and diff.
 
-## 8. Expected result
+## 8. Result (implemented 2026-07-30)
 
-`lib/content.cjs` loses ~90 lines and all registry state; `services/core.cjs`
-is largely untouched. Duplicated invariants go 2 copies -> 1, the second
-`REGISTRY_TTL_MS` / `servedCache` / warm-on-boot disappears, and §1.2 is fixed
-without a targeted patch. `services/core.cjs` stays a grab-bag (audit item P3)
-and is not addressed here.
+Three commits on `req-0348-registry-overlay-unify`.
+
+### §3's design was too broad; the implemented one is narrower and here is why
+
+§3 said to delete `lib/content.cjs`'s overlay engine outright and have
+`items`/`sis`/`tms`/`units`/`packs` derive from `core.getScheduleContent()` the
+way `monstersFromCore()` already does. **That would have changed the served
+payload.** `core.cjs:162-163` builds `itemDefsById` from live_items **+ the pilot
+`dungeon/items.json` overlay** + starter_items, whereas `lib/content.cjs`'s
+`items` section is live_items + starter_items and deliberately carries no pilot
+entries. Deriving `items` from core would have leaked the batch-002 demo items
+into `/api/content`. The `*FromCore` doctrine works for monsters/gimics/unit_skins
+precisely because those sections have no display-side file payload of their own
+to conflict with.
+
+So what is shared is **the snapshot**, not the overlay application:
+
+- **Deleted from `lib/content.cjs`:** `registryData`, `registryAt`,
+  `REGISTRY_TTL_MS`, `computeRegistryData`, the async body of
+  `refreshRegistryData`, and the registry half of the TTL/boot-warm policy.
+- **Added to `services/core.cjs`:** `getRegistrySnapshot()` — the one snapshot,
+  with the one opportunistic-TTL policy.
+- **Kept per-consumer:** `applyRegistryOverlay`, `servedCache`, `registryIsEmpty`,
+  `REGISTRY_KIND_BY_SECTION`, and the display transforms. These genuinely differ
+  (different base payloads, section names, and per-kind transforms) and sharing
+  them would change output.
+
+That is a smaller unification than §3 promised, but it is the whole of the part
+that was **broken**: §1.2's un-migrated REQ-0211 isolation lived entirely in the
+deleted copy.
+
+### Numbers
+
+| | before | after |
+|---|---|---|
+| snapshot implementations | 2 (drifted) | 1 |
+| `REGISTRY_TTL_MS` constants | 2, kept equal by hand | 1 |
+| boot warm-on-`setImmediate` for the registry | 2 | 1 |
+| per-kind isolation policy | 1 of 2 copies had it | 1, applies to both paths |
+| `lib/content.cjs` CODE lines | 337 | 321 |
+| `services/core.cjs` CODE lines | 306 | 311 |
+
+Raw diff is +260/-28 across four files, but 170 of the added lines are the new
+test and most of the rest is the comment recording why the overlay application is
+NOT shared — the next person to read this will otherwise re-derive §3's broader
+plan and break `/api/content`. §8's "~-90 lines" prediction was wrong in both
+direction and magnitude; the win is one snapshot, not fewer lines.
+
+### Byte parity, measured
+
+`GET /api/content`'s five overlaid sections dumped from the real pg registry (95
+entities from registry, 20 file fallback) before and after: **70,196 bytes,
+`cmp`-identical**.
+
+### `services/core.cjs` is still a grab-bag
+
+Audit item P3 (path constants + content loader + registry overlay + i18n labels +
+reward mapping + engine factory + `genId` + slot helpers in one 620-line module)
+is untouched and remains a candidate REQ. It did NOT shrink here — it gained
+`getRegistrySnapshot`.
 
 ## 9. Status log
 
@@ -224,3 +279,31 @@ and is not addressed here.
 - 2026-07-30 — audit claims re-verified: two withdrawn (§1.3), design replaced
   with the `*FromCore` collapse, D1/D2 resolved, moved `draft -> todo`.
   Evidence gathered at `master` `e4b24dd0`.
+- 2026-07-30 — IMPLEMENTED on branch `req-0348-registry-overlay-unify` off
+  `master` `e4b24dd0`. §3's design narrowed during implementation (see §8) after
+  the pilot-items conflict was found; §8 rewritten with the result. Gates:
+  - `node tests/api_test.cjs` (files): **229 passed, 0 failed**
+  - `STORAGE_BACKEND=pg node tests/api_test.cjs`: **229 passed, 0 failed**
+  - `content_serving_test` 9/0, `schedule_serving_test` 13/0,
+    `verify_content_registry_parity_test` 3/0, `contentagg_test` 5/0,
+    `content_test` 18/0 (all pg)
+  - new `tests/registry_overlay_test.cjs`: 5/0, wired into `ci.sh [4.697/7]`.
+    **Verified to have teeth** — run against `master`'s pre-fix
+    `lib/content.cjs`, assertions 2 and 3 fail with exactly the §1.2 symptom
+    (`items.registry == 0` because one rejected `await` blanked all five
+    sections).
+  - byte parity: the five overlaid sections `cmp`-identical before/after against
+    the real pg registry (70,196 bytes)
+  - `tools/ci.sh` full gate incl. scoped hermetic e2e: **CI GREEN**, 336s
+  Moved `todo -> built`: code complete and green, NOT merged or deployed.
+
+### Follow-ups this REQ deliberately did not take
+
+- `routes/content.cjs:87-88`'s `invalidateServedContent()` still awaits two
+  functions that are now the same one (`lib/content.cjs`'s delegates to core's).
+  Harmless and idempotent; collapsing it touches the adopt/edit/delete/patch
+  determinism contract, so it wants its own small REQ rather than a drive-by.
+- The `monster_pack` gap (`routes/content.cjs:24` `KINDS` has 11 kinds, the
+  serving list has 10, so `monster_pack` adoptions reach nothing) is untouched,
+  as scoped in §4.
+- `services/core.cjs`'s low cohesion (audit P3) — see §8.
