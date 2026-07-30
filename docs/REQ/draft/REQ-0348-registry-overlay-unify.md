@@ -1,6 +1,6 @@
-# REQ-0348 — Unify the registry-overlay engine (display path + authority path)
+# REQ-0348 — Collapse the registry overlay to ONE engine (extend the `*FromCore` doctrine to all served kinds)
 
-**Status:** Draft (blocked on decision D1 below)
+**Status:** Todo (decisions resolved 2026-07-30; cleared to implement)
 **Reserved:** 2026-07-30
 **Slug:** registry-overlay-unify
 **Origin:** API code audit, 2026-07-30 (whole-`server/` review; no prior REQ)
@@ -11,16 +11,14 @@
 ## 1. Problem
 
 The "registry adopted variant -> live-file entry -> absent" resolution chain is
-implemented **twice**, independently, in two modules that must agree but have no
-shared code:
+implemented **twice**, independently, under the same private names, in two
+modules that must agree but share no code:
 
 | | display path | authority path |
 |---|---|---|
 | module | `server/lib/content.cjs` | `server/services/core.cjs` |
-| public entry | `getContent()` (`:525`) | `getScheduleContent()` (`:384`) |
-| serves | `GET /api/content`, Dex cards | the gacha roll, the run simulation, market, warehouse |
-
-Both modules privately define the same eight things, under the same names:
+| public entry | `getContent()` `:525` | `getScheduleContent()` `:384` |
+| serves | `GET /api/content`, Dex cards | gacha roll, run simulation, market, warehouse |
 
 | concept | `lib/content.cjs` | `services/core.cjs` |
 |---|---|---|
@@ -31,140 +29,165 @@ Both modules privately define the same eight things, under the same names:
 | snapshot refresher | `refreshRegistryData()` `:336` | `refreshRegistryData()` `:321` |
 | empty test | `registryIsEmpty()` `:342` | `registryIsEmpty()` `:327` |
 | overlay + memo | `applyRegistryOverlay()` `:365`, `servedCache` `:364` | `applyRegistryOverlay()` `:360`, `servedCache` `:351` |
-| boot warm | `setImmediate(...)` `:553` | `setImmediate(...)` `:392` |
+| source accounting | `getContentSources()` `:393` | `getScheduleSources()` `:403` |
+| boot warm | `setImmediate` `:553` | `setImmediate` `:392` |
 
-The two copies carry cross-references in their comments (`core.cjs:283` says
-"mirror lib/content.cjs REGISTRY_TTL_MS"; `core.cjs:390` says "mirrors
-lib/content.cjs's setImmediate warm"), i.e. the duplication is known and was
-maintained by hand. **It has already drifted in three independent ways.**
+The duplication is known and hand-maintained: `core.cjs:257` says "Mirrors
+server/lib/content.cjs exactly", `:283` "mirror lib/content.cjs
+REGISTRY_TTL_MS", `:359` "Same precedence as lib/content.cjs", `:391` "mirrors
+lib/content.cjs's setImmediate warm".
 
-### 1.1 Divergence A — kind coverage (three lists, three lengths)
+### 1.1 The codebase already has the right answer — applied to the newer kinds only
 
-There are three separate hard-coded kind lists that all have to agree:
+`lib/content.cjs` does **not** overlay everything itself. Three sections of
+`/api/content` are derived from the authority path instead, each applying only
+the display reshape (`withBackCompatI18n`) on top of `core.getScheduleContent()`:
 
-- `routes/content.cjs:24` `KINDS` — **11** kinds (admin-writable)
-- `services/core.cjs:269` `REGISTRY_KINDS` — **10** kinds (reaches the game)
-- `lib/content.cjs:312` `REGISTRY_KIND_BY_SECTION` — **5** kinds (reaches display)
+- `monstersFromCore()` `:457` — REQ-0208, `payload.monsters` + `payload.monster_skills`
+- `gimicsFromCore()` `:485` — REQ-0211, `payload.gimics` + `payload.gimic_skills`
+- `unitSkinsFromCore()` `:513` — REQ-0266, `payload.unit_skins`
 
-`core.cjs:269` already carries a warning about exactly this failure mode
-("a kind in one list and not the other never reaches serving, the
-`monster_pack` bug"), and `monster_pack` is still in `KINDS` but in neither
-serving list. The five kinds the display path does **not** overlay —
-`monster_def`, `skill_def`, `gimic`, `dungeon`, `unit_skin` — are adopted in the
-admin UI and take effect in the game, while `/api/content` and the Dex keep
-serving the live-file version. That is a silent display/authority mismatch.
+`lib/content.cjs:310` states the doctrine explicitly: those kinds come from
+"that same core path ... so neither kind ever joins this module's own overlay."
 
-### 1.2 Divergence B — per-kind failure isolation (REQ-0211 fix applied to one copy only)
+So there are two coexisting mechanisms for one job. The `*FromCore` derivation
+(single engine, one source of truth) is the **newer** and correct one; the
+private 5-kind overlay engine (`po_def`, `si_def`, `tm_def`, `unit_def`,
+`gacha_pack`) is the **legacy** leftover it has been progressively replacing,
+three REQs so far, without the last five kinds ever being migrated.
+
+### 1.2 Consequence — REQ-0211's isolation fix exists in only one engine
 
 REQ-0211 hit a real outage: a content kind whose pg enum value was not yet
-migrated onto the DB made `storage.resolveAdoptedContentData()` throw
-`invalid input value for enum content_kind`, which rejected the whole
-`computeRegistryData()` promise and **blanked every kind's overlay**. The fix —
-a per-kind `try/catch` so only the failing kind degrades to file-served — was
-applied to `services/core.cjs:293-318` **only**.
+migrated made `storage.resolveAdoptedContentData()` throw `invalid input value
+for enum content_kind`, rejecting the whole `computeRegistryData()` promise and
+**blanking every kind's overlay**. The fix — a per-kind `try/catch` so only the
+failing kind degrades to file-served — was applied to `services/core.cjs:293-318`
+**only**.
 
 `lib/content.cjs:317-335` still has the unguarded shape: five bare `await`s in
 one object literal, no per-kind guard. `refreshRegistryData()`'s outer `catch`
-keeps the *last* snapshot, so the display path does not 500 — it silently serves
-a stale or empty overlay for **all** kinds while the game path keeps 9 of 10.
-The REQ-0211 outage is therefore still live on the display path.
+keeps the *last* snapshot, so `/api/content` does not 500 — it silently serves a
+stale or empty overlay for **all five** of its kinds while the core-derived
+sections keep working. This is the live residue of the REQ-0211 outage, and it
+exists purely because there are two engines.
 
-### 1.3 Divergence C — circular lazy require
+Deleting the second engine fixes it by construction. That is the whole argument
+for this REQ.
 
-The two modules require each other lazily to paper over a load-time cycle:
+### 1.3 Corrections to the original audit (2026-07-30)
 
-- `lib/content.cjs:251, 458, 486, 514` -> `require('../services/core.cjs')`
-- `services/core.cjs:296` and `lib/content.cjs:267, 321` -> `require('../storage.cjs')`
-- `services/market/lib.cjs:166, 171` -> `require('../core.cjs')`
+Two claims in the first draft of this spec were checked and did **not** hold.
+Recorded so nobody re-derives them:
 
-`lib/content.cjs:458/486/514` justify the lazy require as "keeps standalone tool
-imports of this module light", but `:251` has no such note and exists purely
-because the cycle cannot be resolved at load time. A cycle between the display
-and authority content loaders is the structural cause of A and B: neither module
-can own the shared concept, so both copy it.
+- **"Divergence A: the display path is missing 5 kinds, so adoptions reach the
+  game but not the Dex."** WRONG. `monster_def`, `skill_def`, `gimic` and
+  `unit_skin` all reach `/api/content` via the `*FromCore` sections in §1.1, and
+  `dungeon` is not a `/api/content` section at all (dungeon listing is
+  `routes/public.cjs` + `core.listDungeonsAndFormations`). There is **no live
+  display/authority content mismatch**. The real defect is structural (two
+  engines) plus §1.2.
+- **"Divergence C: `lib/content.cjs` and `services/core.cjs` require each other
+  lazily to break a cycle."** WRONG. `services/core.cjs` does **not** require
+  `lib/content.cjs` — it requires `lib/content_files.cjs` (`:42`), a different
+  module; every other mention is a comment. The dependency is **one-directional**
+  (`lib/content.cjs -> services/core.cjs`, lazily at `:251, 458, 486, 514`) and
+  the lazy-ness is justified in place ("keeps standalone tool imports light").
+  **This makes the fix easier, not harder** — §3 can point the dependency the way
+  it already points, with no cycle to unwind.
+- Still open but **out of scope**: `monster_pack` is in `routes/content.cjs:24`
+  `KINDS` (admin-writable, 11 kinds) but in no serving list, so its adoptions
+  reach nothing. `core.cjs:269` already documents this as "the `monster_pack`
+  bug". Reconciling the admin-writable list against the serving list is its own
+  REQ; this one must not silently change which kinds are adoptable.
 
 ## 2. Goal
 
-One overlay engine. Each consumer supplies only what is genuinely
-consumer-specific: **its kind list**, **its file-payload key mapping**, and
-**its per-kind transform**. Nothing else is duplicated, and the cycle is broken.
+**One overlay engine, in `services/core.cjs`.** `lib/content.cjs` keeps zero
+registry state and becomes what it already is for three sections: a display
+projection over `core.getScheduleContent()`.
 
-## 3. Proposed design
+## 3. Design — extend `*FromCore` to `items` / `sis` / `tms` / `units` / `packs`
 
-New module `server/services/registry_overlay.cjs` (name TBD; it is storage-
-adjacent, not schedule-adjacent, so `server/lib/registry_overlay.cjs` is the
-alternative — see D2). It owns, generically:
+Delete from `lib/content.cjs`: `REGISTRY_KIND_BY_SECTION` `:312`, `registryData`
+`:313`, `registryAt` `:314`, `REGISTRY_TTL_MS` `:315`, `computeRegistryData`
+`:317`, `registryIsEmpty` `:342`, `overlaySection` `:359`, `servedCache` `:364`,
+`applyRegistryOverlay` `:365`, `sourceAccountingFor` `:387`, and the
+`refreshRegistryData` warm at `:553`.
 
-```
-makeRegistryOverlay({ kinds, namesFor, transforms, ttlMs })
-  -> { getSnapshot(), refresh(), isEmpty(), apply(filePayload), sources() }
-```
+Keep and reuse: `servedEffEntry` `:352` (eff render + `withBackCompatI18n`) and
+`servedTmEntry` `:358` — these are the genuine display transform and the ONLY
+thing that differs between the two paths.
 
-- `kinds` — the kind list for this consumer.
-- `namesFor(kind, filePayload)` — which file-payload map's key set to ask the
-  registry for (replaces `REGISTRY_MAP_BY_KIND` / `REGISTRY_KIND_BY_SECTION`).
-- `transforms[kind]` — the per-kind reshape. This is the ONE genuinely different
-  axis: the display path applies `servedEffEntry` / `servedTmEntry`
-  (`lib/content.cjs:352, 358` — eff render + `withBackCompatI18n`); the authority
-  path applies identity for most kinds and the `skill_def` double-reshape
-  (`skillMechanicsFrom` / `skillNamesFrom`, `core.cjs:338, 341`). Both express
-  cleanly as a transform map.
-- `ttlMs`, snapshot vars, `servedCache` identity memo, per-kind `try/catch`
-  isolation, boot warm, "never throw / keep last snapshot" contract, and the
-  `{registry, fallback_file, file_only_names[]}` source accounting all live in
-  the shared module — written ONCE, with REQ-0211's isolation as the only
-  behaviour.
+`getContent()` `:525` then becomes uniform: every registry-backed section is
+`overlay-from-core + display transform`, the same shape `monstersFromCore` already
+has. `core.cjs`'s `REGISTRY_KINDS` `:269` becomes the single serving kind list;
+its per-kind `try/catch` becomes the only isolation behaviour; its `servedCache`
+identity memo serves both paths.
 
-`lib/content.cjs` and `services/core.cjs` each keep a module-level instance and
-delegate. Both keep their existing public names (`refreshRegistryData`,
-`getContentSources` / `getScheduleSources`) so `routes/content.cjs:87-88` and
-`:381-382` need no change. The new module depends on `storage.cjs` only, so the
-`content.cjs <-> core.cjs` cycle for overlay purposes disappears; the remaining
-`lib/content.cjs:251` -> `core.cjs` call (`dungeonDefsById` key set) is
-re-expressed as a `namesFor` closure and reviewed separately.
+`refreshRegistryData` and `getContentSources` stay **exported** from
+`lib/content.cjs` as delegations to core, so `routes/content.cjs:87-88` and
+`:381-382` need no change (the same facade discipline as `storage.cjs` REQ-0145a
+sb and `schedule.cjs` REQ-0047 c). After this REQ, `routes/content.cjs:87-88`
+awaits two functions that are one function — collapsing that call site is a
+tidy-up commit at the end, not a separate REQ.
+
+### 3.1 Why this is byte-parity-able
+
+Same `storage.resolveAdoptedContentData` call, same raw adopted entries, same
+overlay precedence (registry last, `core.cjs:353-359` and `lib/content.cjs:365`
+already document identical precedence). Only the transform differs, and it moves
+across unchanged.
+
+**The one hazard, checked:** the two paths ask the registry for different name
+sets. `core.cjs:162-169` builds `itemDefsById` from live_items **+ pilot
+(`dungeon/items.json`) + starter_items**; `lib/content.cjs:96-110` builds `ITEMS`
+from live_items **+ starter_items** (no pilot). Core's `po_def` name set is
+therefore a **superset** of the display path's — so reading core's snapshot can
+never miss a name the display path needs. This direction must be **asserted by a
+test**, not assumed, because a future file added to the display payload only
+would silently lose its overlay.
 
 ## 4. Scope
 
-**In:** `server/lib/content.cjs`, `server/services/core.cjs`, new
-`registry_overlay` module, tests. **Out:** `routes/content.cjs` `KINDS` (the
-admin-writable list — reconciling it with the serving list is its own REQ),
-`storage.resolveAdoptedContentData` (unchanged), the art-URL overlay
-(`refreshArtUrls`, a different DB-derived cache — mentioned only because it
-shares the 15 s TTL), REQ-0349's route-layer work.
+**In:** `server/lib/content.cjs`, `server/services/core.cjs` (mostly unchanged —
+it becomes the sole owner), tests. **Out:** `routes/content.cjs:24` `KINDS` and
+the `monster_pack` gap (own REQ), `storage.resolveAdoptedContentData`
+(unchanged), the art-URL cache `refreshArtUrls` (a different DB-derived map that
+merely shares the 15 s TTL — explicitly not touched), REQ-0349's route work.
 
-## 5. Behaviour change — this REQ is a bug fix, not a pure refactor
+## 5. Decisions — RESOLVED 2026-07-30
 
-The mechanical unification (one engine, two configs) is behaviour-preserving.
-Two consequences are **not**:
+The original draft asked whether the display path should adopt the authority
+path's 10 kinds (a) or keep 5 and unify the engine only (b). **Both options were
+premised on the mistaken §1.3 reading and are withdrawn.** With the `*FromCore`
+doctrine understood, the thorough option is neither: it is to **finish the
+migration the codebase already started three times** and delete the second
+engine. That is §3.
 
-1. **B is fixed on the display path** (per-kind isolation). Strictly an
-   improvement, no decision needed.
-2. **A changes what `/api/content` serves** if the display path adopts the
-   authority path's 10 kinds. Adopted `monster_def` / `skill_def` / `gimic` /
-   `dungeon` / `unit_skin` variants would begin reaching the Dex and the client
-   content payload. This is the intent of the registry, but it is an observable
-   payload change and it breaks the "byte-identical to the pre-REQ payload"
-   parity contract that `lib/content.cjs:365` and `core.cjs:361` both assert.
+- **D1 — RESOLVED: delete `lib/content.cjs`'s overlay engine; all served kinds
+  derive from core.** No payload change is intended (§3.1), so this ships behind
+  the existing byte-parity gate rather than needing a client audit. It removes
+  the duplicated invariants outright instead of leaving two configured copies.
+- **D2 — RESOLVED: the shared module lives in `services/core.cjs`, no new file.**
+  The original draft proposed extracting a third module
+  (`registry_overlay.cjs`) and asked `lib/` vs `services/`. Rejected: with the
+  dependency already one-directional (§1.3) a new module would add an indirection
+  layer to justify a symmetry that does not exist. The authority path is the
+  natural owner — it has the wider kind list, the isolation fix, and the
+  synchronous-snapshot constraint. Extracting later stays possible if a third
+  consumer ever appears.
 
-## 6. Decisions required before implementation
+## 6. Invariants that must not break
 
-- **D1 (blocking).** Does the display path adopt all 10 authority kinds, or stay
-  at 5 for now?
-  - (a) **Unify to 10** — one list, mismatch class eliminated. Changes
-    `/api/content` output for adopted non-po/si/tm/unit/pack kinds; needs a
-    parity-test rewrite and a client check (Dex renderers for monster/skill/
-    gimic/dungeon/unit_skin).
-  - (b) **Keep 5, unify the engine only** — zero payload change, ships behind the
-    existing parity gate, leaves A open with a single documented kind list per
-    consumer and a test that asserts the display list is a subset of the
-    authority list.
-  - Recommendation: **(b) now, (a) as an immediate follow-up REQ.** It splits the
-    risky payload change away from the structural fix so each can be gated and
-    reverted on its own.
-- **D2.** `services/registry_overlay.cjs` or `lib/registry_overlay.cjs`? It is
-  required by both a `lib/` and a `services/` module. `lib/` matches the
-  "shared, no domain" convention of `http_util` / `route_auth`; `services/`
-  matches where the fuller implementation lives today.
+- `getScheduleContent()` stays **synchronous** (`core.cjs:384`; 20+ in-request-path
+  consumers). The warm snapshot + opportunistic TTL refresh is what makes that
+  possible; preserve the shape exactly.
+- "Never throw / keep last snapshot": neither path may 500 on a transient DB
+  read failure; worst case is file-served.
+- Empty registry (files backend) must return the file payload **object
+  unchanged** — `core.cjs:262-265` notes this is what keeps the default e2e fleet
+  a true no-regression baseline.
 
 ## 7. Gates
 
@@ -174,24 +197,30 @@ Two consequences are **not**:
    this is the gate that actually exercises the overlay.
 3. `tests/content_serving_test.cjs`, `tests/schedule_serving_test.cjs`,
    `tests/verify_content_registry_parity_test.cjs` — the existing
-   display/authority parity trio; the parity assertion is the contract this REQ
-   is refactoring under.
+   display/authority parity trio.
 4. `tools/ci.sh` full run.
-5. **New test (the point of the REQ):** one shared table asserting that the
-   display and authority overlays agree on every kind both cover, and that a
-   single kind whose `resolveAdoptedContentData` throws degrades ONLY that kind
-   on BOTH paths (the REQ-0211 regression, now asserted on the display path too).
+5. **New test A (the point of the REQ):** one kind whose
+   `resolveAdoptedContentData` throws degrades ONLY that kind, on the display
+   path as well as the authority path — the REQ-0211 regression, now asserted for
+   `/api/content` too (§1.2).
+6. **New test B (the §3.1 hazard):** the display payload's registry-backed name
+   set is a subset of `core.REGISTRY_KINDS`' requested name set, per kind. Fails
+   loudly if a future display-only content file is added.
+7. Byte-parity spot check: capture `GET /api/content` under `STORAGE_BACKEND=pg`
+   with a non-empty registry before and after, and diff.
 
-## 8. Notes
+## 8. Expected result
 
-- Nothing here is a hot path rewrite: `getScheduleContent()` must stay
-  **synchronous** (`core.cjs:384`; 20+ in-request-path consumers) and the warm
-  snapshot + opportunistic TTL refresh is what makes that possible. The shared
-  module must preserve that shape exactly.
-- Estimated net: roughly -150 lines across the two consumers, +180 in the shared
-  module, with the duplicated invariants going from 2 copies to 1.
+`lib/content.cjs` loses ~90 lines and all registry state; `services/core.cjs`
+is largely untouched. Duplicated invariants go 2 copies -> 1, the second
+`REGISTRY_TTL_MS` / `servedCache` / warm-on-boot disappears, and §1.2 is fixed
+without a targeted patch. `services/core.cjs` stays a grab-bag (audit item P3)
+and is not addressed here.
 
 ## 9. Status log
 
-- 2026-07-30 — reserved (`7e15078e`), spec written, moved `reserved -> draft`
-  pending D1. Audit evidence gathered at `master` `e4b24dd0`.
+- 2026-07-30 — reserved (`7e15078e`); first spec written and moved
+  `reserved -> draft` (`46f04ca4`) pending D1.
+- 2026-07-30 — audit claims re-verified: two withdrawn (§1.3), design replaced
+  with the `*FromCore` collapse, D1/D2 resolved, moved `draft -> todo`.
+  Evidence gathered at `master` `e4b24dd0`.
