@@ -3,12 +3,14 @@
 // Warehouse HTTP surface (list, two-phase claim, dev backdate-claim /
 // clear-debris seams), split out of the combined routes/schedule.cjs
 // (origin lines 343-405, 432-470 @ commit 9d4bc89, bodies verbatim).
-// Shares the caller-resolution preamble via lib/route_auth.cjs; the
-// router dispatches schedule -> warehouse -> workshop consecutively in
-// the exact slot the combined module occupied. Returns false when not
-// matched.
-const { sendJSON, readBody } = require('../lib/http_util.cjs');
-const { resolveCallerOr401, sendScheduleError } = require('../lib/route_auth.cjs');
+// Shares the whole request preamble via lib/route_kit.cjs (REQ-0349;
+// was lib/route_auth.cjs, now a shim over it); the router dispatches
+// schedule -> warehouse -> workshop consecutively in the exact slot the
+// combined module occupied. Returns false when not matched.
+const { sendJSON } = require('../lib/http_util.cjs');
+// sendScheduleError is the kit's sendDomainError: identical body, one shared
+// code->status table instead of four hand-maintained copies.
+const { resolveCallerOr401, methodGuard, withJsonBody, sendDomainError, RAW_BODY_MESSAGES } = require('../lib/route_kit.cjs');
 const schedule = require('../schedule.cjs');
 
 const WAREHOUSE_RE = /^\/api\/warehouse$/;
@@ -36,22 +38,17 @@ function tryWarehouseRoutes(req, res, url, p) {
     // out the real 120s timeout. GATED to the dev_mode fallback caller
     // ONLY, same as dev/backdate.
     if (p.match(WAREHOUSE_DEV_BACKDATE_CLAIM_RE)) {
-      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      if (!methodGuard(req, res, 'POST')) return;
       if (!callerIsDevFallback) {
         sendJSON(res, 403, { ok: false, error: 'forbidden: dev/backdate-claim is only available to the dev_mode fallback caller (test-control seam, not a real player action)' });
         return;
       }
-      readBody(req, (err, bodyStr) => {
-        if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
-        let body = {};
-        if (bodyStr) {
-          try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
-        }
+      withJsonBody(req, res, RAW_BODY_MESSAGES, (body) => {
         if (!body.itemUid) { sendJSON(res, 400, { ok: false, error: 'itemUid is required' }); return; }
         try {
           const item = schedule.devBackdateClaimedWarehouseItem(callerId, body.itemUid, body.extraSecsIntoPast);
           sendJSON(res, 200, { ok: true, itemUid: item.itemUid, claimedAt: item.claimedAt });
-        } catch (e) { sendScheduleError(res, e); }
+        } catch (e) { sendDomainError(res, e); }
       });
       return;
     }
@@ -76,7 +73,7 @@ function tryWarehouseRoutes(req, res, url, p) {
     // supplied playerId at all), so no real player's rows are reachable
     // through it.
     if (p.match(WAREHOUSE_DEV_CLEAR_DEBRIS_RE)) {
-      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      if (!methodGuard(req, res, 'POST')) return;
       if (!callerIsDevFallback) {
         sendJSON(res, 403, { ok: false, error: 'forbidden: dev/clear-debris is only available to the dev_mode fallback caller (test-control seam, not a real player action)' });
         return;
@@ -84,26 +81,27 @@ function tryWarehouseRoutes(req, res, url, p) {
       try {
         const deleted = schedule.devClearWarehouse(callerId);
         sendJSON(res, 200, { ok: true, deleted });
-      } catch (e) { sendScheduleError(res, e); }
+      } catch (e) { sendDomainError(res, e); }
       return;
     }
 
     // ---- GET /api/warehouse (golden e/f) ----
     if (p.match(WAREHOUSE_RE)) {
-      if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      if (!methodGuard(req, res, 'GET')) return;
       try {
         sendJSON(res, 200, { ok: true, items: schedule.listWarehouse(callerId) });
-      } catch (e) { sendScheduleError(res, e); }
+      } catch (e) { sendDomainError(res, e); }
       return;
     }
 
     // ---- POST /api/warehouse/claim {itemUid} (golden f) ----
     if (p.match(WAREHOUSE_CLAIM_RE)) {
-      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
-      readBody(req, (err, bodyStr) => {
-        if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
-        let body;
-        try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+      if (!methodGuard(req, res, 'POST')) return;
+      // allowEmpty:false -- this handler used a BARE JSON.parse(bodyStr), so an
+      // empty body has always been a 400 here. Note dev/backdate-claim above
+      // guarded with `if (bodyStr)` and so tolerates one: the two endpoints in
+      // this same file genuinely differed, and REQ-0349 preserves both.
+      withJsonBody(req, res, Object.assign({ allowEmpty: false }, RAW_BODY_MESSAGES), (body) => {
         if (typeof body.itemUid !== 'string' || !body.itemUid) {
           sendJSON(res, 400, { ok: false, error: 'itemUid is required' }); return;
         }
@@ -123,7 +121,7 @@ function tryWarehouseRoutes(req, res, url, p) {
           // to the correct placement path (engine PO/SI first-fit vs.
           // TM place-or-merge).
           sendJSON(res, 200, { ok: true, itemUid: result.itemUid, itemId: result.itemId, kind: result.kind, qty: result.qty, bp: result.bp });
-        } catch (e) { sendScheduleError(res, e); }
+        } catch (e) { sendDomainError(res, e); }
       });
       return;
     }
