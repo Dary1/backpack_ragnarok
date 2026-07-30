@@ -38,16 +38,13 @@ const storage = require('../storage.cjs');
 // token needed) -- see server/README.md's "Bot-friendly" note (REQ-0039
 // design-first-class requirement).
 
-// resolveCallerOr401(req, res): token -> admin.resolveAuthFromRequest -> 401
-// (exact wording preserved) or the resolved caller context. Returns null after
-// sending the 401; callers MUST bail out on null.
-function resolveCallerOr401(req, res) {
+// resolveCallerContext(req): the full resolution, WITHOUT touching res.
+// Returns { ok: true, ...context } or { ok: false, reason }. Families use one of
+// the two wrappers below, never this directly.
+function resolveCallerContext(req) {
   const token = getAuthToken(req);
   const resolved = admin.resolveAuthFromRequest(req);
-  if (!resolved.ok) {
-    sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason });
-    return null;
-  }
+  if (!resolved.ok) return { ok: false, reason: resolved.reason };
   const callerId = resolved.player.playerId;
   // REQ-0036 P1-C: true only when this request resolved via the dev_mode
   // NO-TOKEN fallback (never for a real, valid guest token, even one belonging
@@ -73,7 +70,27 @@ function resolveCallerOr401(req, res) {
   // `resolved` is exposed so a family can read viaDevFallback / player.roles
   // without a second resolve (routes/profile.cjs and routes/skins.cjs need
   // viaDevFallback for their "default" compat alias).
-  return { token, callerId, callerIsDevFallback, callerCanSetGenSeed, resolved, player: resolved.player };
+  return { ok: true, token, callerId, callerIsDevFallback, callerCanSetGenSeed, resolved, player: resolved.player };
+}
+
+// The 401-sending wrapper -- the shape almost every family wants. Returns null
+// AFTER sending the 401 (exact pre-REQ-0349 wording), so callers MUST bail out
+// on null.
+function resolveCallerOr401(req, res) {
+  const ctx = resolveCallerContext(req);
+  if (!ctx.ok) {
+    sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + ctx.reason });
+    return null;
+  }
+  return ctx;
+}
+
+// The OPPORTUNISTIC wrapper: an unresolvable caller yields null and NOTHING is
+// sent. routes/dex.cjs needs exactly this -- a Dex card is public, so a missing
+// or invalid token must degrade to "no personal overlay", never a 401.
+function resolveCallerOptional(req) {
+  const ctx = resolveCallerContext(req);
+  return ctx.ok ? ctx : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -252,7 +269,7 @@ function requireOwnCanvas(callerId) {
 }
 
 module.exports = {
-  resolveCallerOr401,
+  resolveCallerContext, resolveCallerOr401, resolveCallerOptional,
   methodGuard, METHOD_NOT_ALLOWED,
   domainErrToStatus, sendDomainError, CODE_TO_STATUS,
   withJsonBody, RAW_BODY_MESSAGES, BODY_TOO_LARGE, BODY_READ_FAILED, BODY_BAD_JSON,
