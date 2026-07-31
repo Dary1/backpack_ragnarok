@@ -163,6 +163,35 @@ const DISPLAY_KINDS = ['po_def', 'si_def', 'tm_def', 'unit_def', 'gacha_pack'];
     }
   });
 
+  // -------------------------------------------------------------------------
+  // (C) REQ-0352: the monster_pack MERGE overlay. The one kind whose served
+  // entry has TWO writers: the registry (authored members/name/i18n/note) and
+  // autobalance (derived powerLevel, file-side only). A whole-entry replace
+  // passes every other case in this file and still zeroes level scaling for
+  // every pack -- this case is what fails instead.
+  // -------------------------------------------------------------------------
+  await check('REQ-0352: a served monster_pack keeps the registry members AND the derived powerLevel', async () => {
+    installStub();
+    throwFor = null;
+    const packId = 'pack_frost_scouts'; // live file entry with a calibrated powerLevel
+    storage.resolveAdoptedContentData = async function (kind, names) {
+      if (kind !== 'monster_pack' || names.indexOf(packId) === -1) return {};
+      // An adopted variant per the section-5 ruling: authored fields only.
+      return { [packId]: { id: packId, name: 'Frost Scouts (registry)', members: [{ enemy: 'frost_gnoll', at: 'B2' }] } };
+    };
+    await core.refreshRegistryData();
+    const served = core.getScheduleContent();
+    const entry = served.monsterPackDefsById[packId];
+    assert.ok(entry, packId + ' is served at all');
+    assert.strictEqual(entry.name, 'Frost Scouts (registry)', 'authored half: the registry name wins');
+    assert.strictEqual(entry.members.length, 1, 'authored half: the registry members win (file has 16)');
+    assert.ok(Number.isFinite(entry.powerLevel),
+      'derived half: powerLevel rides through from the file entry -- a whole-entry replace deletes it');
+    const { effLevelForPack } = require('../../sim/lib/level_scale.cjs');
+    assert.notStrictEqual(effLevelForPack(entry.powerLevel + 3, entry.powerLevel, false), 0,
+      'effLevelForPack is non-zero for the served entry -- the REQ-0352 section 5.3 failure mode, pinned');
+  });
+
   restoreStub();
   console.log('');
   console.log('registry_overlay_test: ' + (failed ? failed + ' FAILED' : 'all green'));
