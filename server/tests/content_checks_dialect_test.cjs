@@ -37,7 +37,11 @@ const GOOD_PO = liveItems.entries.find((e) => e.effects && e.effects.length);
 const monsterPacks = JSON.parse(fs.readFileSync(path.join(REPO, 'content', 'live', 'dungeon', 'packs.json'), 'utf8'));
 const PACK_SCHEMA = monsterPacks.schema;        // 'monster_pack/1'
 const GOOD_MPACK = monsterPacks.entries[0]; // NOT GOOD_PACK -- that is REQ-0171's GACHA pack fixture below
-const mpackClone = () => JSON.parse(JSON.stringify(GOOD_MPACK));
+// REQ-0352 section 5: a VARIANT is the AUTHORED view -- powerLevel is derived
+// (autobalance-owned, file-side only) and schema_vocab rejects a variant that
+// carries it. Every variant-shaped fixture therefore starts authored; the raw
+// file shape (with powerLevel) has its own dedicated REQ-0352 pin below.
+const mpackClone = () => { const p = JSON.parse(JSON.stringify(GOOD_MPACK)); delete p.powerLevel; return p; };
 const PO_SCHEMA = liveItems.schema;             // 'po/2'
 
 let pass = 0, fail = 0;
@@ -331,7 +335,12 @@ T('REQ-0171 unit_def: the 12 LIVE roster defs pass all applicable checks', () =>
 
 T('REQ-0184 positive: every live monster_pack/1 entry passes its schema_vocab + engine_types checks, data untouched (REQ-0300: overall may now be lowered by the SEPARATE formation_fill row -- pinned in the REQ-0300 block below)', () => {
   for (const pack of monsterPacks.entries) {
-    const r = checks.runChecks('monster_pack', PACK_SCHEMA, pack);
+    // REQ-0352: the live FILE entry legitimately carries the derived
+    // powerLevel; a VARIANT is the authored view. What this test guarantees is
+    // that every live pack's AUTHORED CONTENT passes -- the shape the
+    // reconcile re-port actually stores.
+    const authored = Object.assign({}, pack); delete authored.powerLevel;
+    const r = checks.runChecks('monster_pack', PACK_SCHEMA, authored);
     // REQ-0300 made `overall` additionally reflect the 30% formation-fill rule, so
     // a geometrically-perfect but sparse live pack now FAILs overall on fill. The
     // REQ-0184 guarantee is unchanged and pinned here AT THE CHECK LEVEL: the
@@ -342,6 +351,15 @@ T('REQ-0184 positive: every live monster_pack/1 entry passes its schema_vocab + 
       assert.ok(c && c.ok, pack.id + ' -> ' + name + ' must PASS, got: ' + (c && c.detail));
     }
   }
+});
+
+T('REQ-0352 authorship: a variant carrying the derived powerLevel FAILs schema_vocab by name', () => {
+  const p = mpackClone();
+  p.powerLevel = 4.5769; // the raw live-file shape -- legal in the file, illegal in a variant
+  const r = checks.runChecks('monster_pack', PACK_SCHEMA, p);
+  const sv = r.checks.find((c) => c.name === 'schema_vocab');
+  assert.ok(sv && !sv.ok, 'an authored powerLevel must FAIL schema_vocab');
+  assert.ok(/powerLevel must not be authored/.test(sv.detail), 'the error must name the rule, got: ' + sv.detail);
 });
 
 T('REQ-0184 honesty: an anchor in the MARGIN fails schema_vocab BY NAME (the bug this REQ found)', () => {
@@ -419,7 +437,8 @@ T('REQ-0184 the CHECKER and the PLACER agree: blessed layout == where the sim pu
   const skillDefs = {};
   for (const sk of skills.entries) skillDefs[sk.id] = { trigger: sk.trigger, verb: sk.verb, attack_profile: sk.attack_profile, modes: sk.modes };
   for (const pack of monsterPacks.entries) {
-    const r = checks.runChecks('monster_pack', PACK_SCHEMA, pack);
+    const authored = Object.assign({}, pack); delete authored.powerLevel; // REQ-0352: check the variant shape
+    const r = checks.runChecks('monster_pack', PACK_SCHEMA, authored);
     // REQ-0300: overall may be lowered by the formation_fill row; the placer
     // agreement depends only on the geometry being blessed, so pin schema_vocab.
     const sv = checkOf(r, 'schema_vocab');
