@@ -119,6 +119,27 @@ FILES, i.e. from the roster that includes these skills. So post-fix the game
 should match what the calibration already assumed — but that is a claim to
 verify, not to assert.
 
+## 8b. Addendum (2026-08-01, found by REQ-0352): the `dungeon` kind is drifted too
+
+REQ-0352's COVERED completion (gimic + dungeon joined the parity tool per the
+shared section-6 gate) measured against live: **3 `dungeon` DRIFT, field
+`baseDifficulty`** (niflheim_depths=1, grave_hollows=15, beastreach_wilds=16 in
+the file; ABSENT from every adopted variant). gimic is 4/4 MATCH.
+
+Same root cause as this REQ: REQ-0293/0295 sim-calibrated `baseDifficulty`
+into `content/live/dungeon/dungeons.json` only (tool:
+`tools/calibrate_base_difficulty.cjs`); the registry variants are the REQ-0185
+port and never received it; `dungeon` IS registry-served, so **the calibrated
+difficulty is not in effect live** — every dungeon runs at the neutral g=1.0.
+
+Resolution belongs HERE, and needs one ruling first: is `baseDifficulty`
+authored (re-port file→registry, REQ-0353-style) or derived like
+monster_pack.powerLevel (REQ-0352 section 5: calibration-tool-owned, file-side
+only — in which case the dungeon overlay must become a MERGE like
+monster_pack's, or the field still never serves)? The powerLevel precedent
+argues derived; either way parity-green must coincide with the value actually
+reaching the sim, not precede it.
+
 ## 9. Status log
 
 - 2026-07-31 — reserved and specced into `todo/`. Filed unprompted: it is a live

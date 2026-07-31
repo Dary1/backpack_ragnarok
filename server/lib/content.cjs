@@ -589,5 +589,6 @@ module.exports = {
   unitSkinsFromCore, // REQ-0266: the /api/content display slice (derived from the authority path)
   artUrlNameBatch, // REQ-0266: the pure id batch behind art_urls (D-A wiring, inspectable DB-free)
   refreshRegistryData, getContentSources,
+  REGISTRY_KIND_BY_SECTION, // REQ-0352: the display kind list, for the kind-list agreement gate
   registryServedKindFor, // REQ-0182b
 };

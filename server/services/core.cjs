@@ -648,6 +648,7 @@ module.exports = {
   statMtimeMs,
   loadJSON,
   getScheduleContent,
+  REGISTRY_KINDS, // REQ-0352: for the kind-list agreement gate (kind_lists_agree_test)
   refreshRegistryData, // REQ-0176: awaited by routes/content.cjs invalidateServedContent()
   getRegistrySnapshot, // REQ-0348: the ONE registry snapshot; the display path overlays from it too
   getScheduleSources, // REQ-0176: authority-path source accounting

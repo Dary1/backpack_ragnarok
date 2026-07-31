@@ -62,6 +62,13 @@ const COVERED = [
   // compare -- so a registry variant that ever carries one shows as DRIFT,
   // which is exactly the authorship violation the ruling forbids.
   { kind: 'monster_pack', file: contentPath('live', 'dungeon', 'packs.json'), derived: ['powerLevel'] }, // REQ-0352
+  // REQ-0352 section 6: gimic and dungeon have been registry-served since
+  // REQ-0211 / REQ-0185 but were never covered -- the same omission class that
+  // hid monster_pack's 14 drifted packs. The kind-list gate
+  // (server/tests/kind_lists_agree_test.cjs) now asserts COVERED ==
+  // REGISTRY_KINDS, so a kind can no longer be served-but-unchecked.
+  { kind: 'gimic', file: contentPath('live', 'dungeon', 'gimics.json') }, // REQ-0352
+  { kind: 'dungeon', file: contentPath('live', 'dungeon', 'dungeons.json') }, // REQ-0352
 ];
 
 // Canonical JSON (recursive key sort) -> order-insensitive equality.
