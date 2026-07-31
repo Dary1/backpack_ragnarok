@@ -264,7 +264,7 @@ stage "[4.65/7] content backfill mapping + skip rules (DB-free, REQ-0157)"
 node server/tests/backfill_content_registry_test.cjs
 stage "[4.655/7] content registry parity classifier (DB-free, REQ-0178)"
 DATABASE_URL= node server/tests/verify_content_registry_parity_test.cjs
-
+stage "[4.656/7] kind-list agreement gate (DB-free, REQ-0352)"
 DATABASE_URL= node server/tests/kind_lists_agree_test.cjs
 stage "[4.66/7] content-check schema dialects (DB-free, REQ-0161)"
 node server/tests/content_checks_dialect_test.cjs
