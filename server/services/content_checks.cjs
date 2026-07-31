@@ -284,6 +284,18 @@ function schemaVocabCheck(kind, data, vocab, dialect) {
     } catch (e) {
       errs.push(e.message);
     }
+    // REQ-0352 section 5 ruling: powerLevel is DERIVED. Its sole writer is
+    // tools/autobalance_pack_powerlevel.cjs (into the live file at deploy);
+    // the registry owns the authored facts only (id/name/i18n/note/members).
+    // A variant carrying it would be silently clobbered at the next deploy --
+    // the worst field to put in front of an operator -- so the rule is
+    // enforced HERE, where content is authored, not discovered at deploy.
+    // NOT in shared/content_validate.cjs: the sim placer validates FILE
+    // entries with that function, and file entries legitimately carry the
+    // derived value.
+    if (data.powerLevel !== undefined) {
+      errs.push('powerLevel must not be authored in a monster_pack variant (REQ-0352: derived, written only by tools/autobalance_pack_powerlevel.cjs; the registry owns id/name/i18n/note/members)');
+    }
   } else if (kind === 'gimic') {
     // REQ-0211. A gimic's rules are executable in shared/content_validate.cjs
     // (validateGimicEntry) -- the SAME definition the dungeon generator relies on;

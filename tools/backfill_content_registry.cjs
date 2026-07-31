@@ -232,9 +232,75 @@ function printInventory(entries, missingFiles) {
   for (const s of SKIPPED_FILES) console.log('    - ' + s.file + ' -- ' + s.reason);
 }
 
+// REQ-0352: RECONCILE mode -- the drift repair the INSERT-ONLY pass below must
+// never do. For every entry of ONE kind, compare the live file's AUTHORED view
+// (derived fields stripped per the parity tool's COVERED[].derived; REQ-0352
+// section 5: powerLevel is autobalance-owned and never registry data) against
+// the adopted variant; where they differ, create the NEXT variant from the
+// authored view and ADOPT it. Direction of truth is the FILE (REQ-0352
+// section 3): the file is what the game plays and what REQ-0303 edited; the
+// registry variants were a 2026-07-15 snapshot nobody re-ported.
+// Guards: only defs this tool created (defIsOurs) are written to; a missing or
+// unadopted def is a warning, not a write (creation/repair stays the plain
+// INSERT-ONLY pass's job). Derived-field config is read off the parity tool's
+// COVERED so the two tools cannot disagree about what "authored" means.
+async function reconcileKind(kind, dryRun) {
+  const parity = require('./verify_content_registry_parity.cjs');
+  const sources = SOURCES.filter((s) => s.kind === kind);
+  if (!sources.length) throw new Error('--reconcile-kind ' + kind + ': not a SOURCES kind');
+  const covered = parity.COVERED.filter((c) => c.kind === kind);
+  const derived = (covered.length && covered[0].derived) || [];
+  const importedAt = new Date().toISOString();
+  const storage = require(path.join(REPO_ROOT, 'server', 'storage.cjs'));
+  const { runChecks } = require(path.join(REPO_ROOT, 'server', 'services', 'content_checks.cjs'));
+  let reported = 0, match = 0, skipped = 0;
+  try {
+    for (const src of sources) {
+      const fileJson = readJson(path.join(REPO_ROOT, src.file));
+      const schema = typeof fileJson.schema === 'string' ? fileJson.schema : '';
+      const excluded = new Set(src.exclude || []);
+      for (const entry of (fileJson.entries || [])) {
+        if (excluded.has(entry.id)) continue;
+        const authored = parity.authoredView(entry, derived);
+        const def = await storage.getContentDefByName(entry.id);
+        if (!def || def.kind !== kind) { console.warn('  SKIP ' + entry.id + ': no ' + kind + ' content_def (the INSERT-ONLY pass owns creation)'); skipped++; continue; }
+        if (!defIsOurs(def, { kind: kind })) { console.warn('  FOREIGN DEF SKIPPED (not this tool\'s; untouched): ' + entry.id); skipped++; continue; }
+        const adopted = await storage.getAdoptedVariant(entry.id);
+        if (!adopted) { console.warn('  SKIP ' + entry.id + ': def exists but nothing adopted (the INSERT-ONLY pass repairs adoption)'); skipped++; continue; }
+        if (parity.deepEqualUnordered(authored, adopted.data)) { match++; continue; }
+        const diffPaths = parity.diffFields(authored, adopted.data).map((d) => d.path).join(', ');
+        if (dryRun) { console.log('  WOULD RE-PORT ' + entry.id.padEnd(24) + ' v' + adopted.variant_no + ' -> next  fields: ' + diffPaths); reported++; continue; }
+        const provenance = {
+          source: 'backfill', origin_file: src.file, origin_schema: schema, imported_at: importedAt,
+          note: 'REQ-0352 reconcile re-port: live file wins (REQ-0303 member edits never reached the registry). Authored fields only -- powerLevel is derived (autobalance-owned) and deliberately absent.',
+        };
+        const variant = await storage.createVariant(def.id, { data: authored, provenance: provenance, status: 'ok' });
+        let mc;
+        try { mc = runChecks(kind, schema, authored); }
+        catch (err) { mc = { checks: [{ name: 'runner', ok: false, applicable: true, detail: 'checks crashed: ' + err.message }], overall: 'FAIL', ran_at: new Date().toISOString() }; }
+        await storage.setVariantMachineCheck(variant.id, mc);
+        await storage.adoptVariant(entry.id, variant.variant_no);
+        console.log('  ~ ' + entry.id.padEnd(24) + ' v' + adopted.variant_no + ' -> v' + variant.variant_no + ' adopted, checks overall=' + mc.overall + '  fields: ' + diffPaths);
+        reported++;
+      }
+    }
+    console.log('\n== reconcile ' + kind + (dryRun ? ' (DRY-RUN)' : '') + ' ==');
+    console.log('  ' + reported + (dryRun ? ' would re-port' : ' re-ported + adopted') + ', ' + match + ' already match, ' + skipped + ' skipped');
+  } finally {
+    await storage.closeContentPool();
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.indexOf('--dry-run') >= 0;
+  const rk = args.indexOf('--reconcile-kind');
+  if (rk >= 0) {
+    const kind = args[rk + 1];
+    if (!kind) throw new Error('--reconcile-kind needs a kind argument');
+    await reconcileKind(kind, dryRun);
+    return;
+  }
   const importedAt = new Date().toISOString();
   const { entries, missingFiles } = collectAll(REPO_ROOT, importedAt);
   printInventory(entries, missingFiles);
@@ -355,6 +421,7 @@ async function main() {
 module.exports = {
   SOURCES, SKIPPED_FILES, UNIT_DEF_NOTE, BRIEF_MARKER,
   entriesFromFile, collectAll, perKindCounts, perFileCounts, defIsOurs, variantIsOurs,
+  reconcileKind, // REQ-0352
 };
 
 if (require.main === module) {
