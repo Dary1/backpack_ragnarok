@@ -27,7 +27,9 @@ export function TroopDisbandToast({ locale }: { locale: Locale }) {
 
   useEffect(() => {
     const list = data?.notifications ?? [];
-    const next = list.find((n) => n.kind === 'troop_disbanded' && !handledRef.current.has(n.id));
+    // REQ-0357: room_halted (solo wipe-streak halt) surfaces through the same
+    // toast; a troop's breaker rides troop_disbanded with reason 'wipe_streak'.
+    const next = list.find((n) => (n.kind === 'troop_disbanded' || n.kind === 'room_halted') && !handledRef.current.has(n.id));
     if (next && (current === null || current.id !== next.id)) setCurrent(next);
   }, [data, current]);
 
@@ -41,10 +43,15 @@ export function TroopDisbandToast({ locale }: { locale: Locale }) {
     setCurrent(null);
   };
 
+  const wipeStreak = current.payload?.reason === 'wipe_streak';
   const text =
-    current.attackLv !== null
-      ? t(locale, 'notify.troopDisbanded', { level: String(current.attackLv) })
-      : t(locale, 'notify.troopDisbandedNoLevel');
+    current.kind === 'room_halted'
+      ? t(locale, 'notify.roomHalted')
+      : wipeStreak
+        ? t(locale, 'notify.troopDisbandedWipeStreak')
+        : current.attackLv !== null
+          ? t(locale, 'notify.troopDisbanded', { level: String(current.attackLv) })
+          : t(locale, 'notify.troopDisbandedNoLevel');
 
   return (
     <div className="notify-toast" role="status">
