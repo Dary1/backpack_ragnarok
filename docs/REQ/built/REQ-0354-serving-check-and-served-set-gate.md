@@ -1,6 +1,6 @@
 # REQ-0354 — A `serving` check tag in contentadmin, and a "served set == passing set" gate
 
-**Status:** Todo (cleared; all decisions ruled in §7)
+**Status:** Built (all gates green; awaiting merge/deploy + user acceptance)
 **Reserved:** 2026-07-31
 **Slug:** serving-check-and-served-set-gate
 **Origin:** user proposal, 2026-07-31 chat — *"contentadmin がタグを出力していますよね。あそこ
@@ -182,3 +182,76 @@ actionable rather than ambient.
   `overall`) was found while checking the adoption gate and is the correction
   that keeps the tag from weakening the existing checks. Evidence gathered
   against the live DB + live content at `master` `e4b24dd0`.
+- 2026-08-01 — built on `req-0354-serving-check-and-served-set-gate` (code
+  `9e029881`, tree == CI receipt `5e8144fc`). REQ-0352/0353 landed between spec
+  and build; premise deltas + gate reinterpretation recorded in §12. Moved
+  `todo -> built`.
+
+---
+
+## 12. Build record (2026-08-01)
+
+**Code:** `9e029881` on `req-0354-serving-check-and-served-set-gate`
+(tree `5e8144fc` == the CI receipt). Full diff: +270/-29 across
+`server/services/content_checks.cjs`, `server/routes/content.cjs`,
+`tools/verify_content_registry_parity.cjs`, `tools/release.sh`, `tools/ci.sh`,
+`server/tests/serving_check_test.cjs` (new), `server/tests/contentagg_test.cjs`,
+and the contentadmin client (api types, VariantCard, ContentAdminPage, css).
+
+**The world moved between spec and build.** This REQ was specced 2026-07-31
+against `e4b24dd0`; REQ-0352 and REQ-0353 landed and deployed 2026-08-01
+(merge order 0348 -> 0352 -> 0353), which changed three of this spec's premises:
+
+1. §1's three live conditions (14 NOT WIRED / 45 DRIFT / 64 MISSING) were
+   **reconciled before this build** — live parity is now MATCH=413, all other
+   counts 0. Gate 1's exact-count assertion is therefore unreproducible as
+   written; its intent ("the tag agrees with the parity tool") was verified
+   instead — see gates below.
+2. §6's kind-list assertions were landed by REQ-0352 as
+   `server/tests/kind_lists_agree_test.cjs` (this REQ references it, per the
+   spec's own "whichever lands first writes it" clause), including
+   `COVERED == REGISTRY_KINDS` — so the §8 "COVERED completeness" item was
+   already done.
+3. Gate 4's flag question resolved itself: with 0352/0353 landed the §6 gate
+   is green on today's tree, so it lands **UNFLAGGED** (recorded in
+   `tools/release.sh`'s comment).
+
+**What this REQ therefore built** (the §5/§7 mechanism, unchanged):
+
+- `serving` check row (content_checks.cjs `servingCheck`): DRIFT-vs-live-files
+  per variant, kind->file mapping required from the parity tool's `COVERED`
+  (never re-derived; kind_lists_agree_test pins it to REGISTRY_KINDS).
+  `advisory: true` — never feeds `overall` (§4), enforced by the ONE rule
+  `overallOf()` used by both computations (runChecks + the appended tier).
+- §3 ruling: the row carries `live_files[] = {file, sha256}`;
+  `annotateServingStaleness()` re-hashes on READ (def detail, public meta) and
+  a mismatch renders `stale: true` -> the client shows **STALE** (dotted gold,
+  deliberately neither the pass green nor the fail red).
+- §5 split: NOT WIRED = kind-level banner; MISSING = kind-level report row
+  (both from `serving_report` on the list endpoint); only DRIFT is per-variant.
+- §6 gate: `verify_content_registry_parity.cjs --strict` (`strictOk`):
+  DRIFT / MISSING-IN-REGISTRY / UNADOPTED all block. Wired into
+  `tools/release.sh` (the REQ-0353 gate slot, now strict) — the release path
+  is the enforcement point; `ci.sh` gets the DB-free stage [4.657/7].
+
+**Gates:**
+
+1. (reinterpreted, see above) Live agreement probe: for all 413 parity rows,
+   `servingCheck(adopted)` verdict == parity verdict — **agree=413,
+   disagree=0**. The three original conditions are pinned by DB-free fixtures
+   instead (serving_check_test: DRIFT names fields; MISSING wording;
+   NOT WIRED honest n/a; monster_pack derived-strip never false-drifts).
+2. **Staleness has teeth — green.** serving_check_test: computed PASS row,
+   mutated the live file, re-annotated WITHOUT re-running -> STALE, not PASS.
+3. **Adoption not blocked — green.** overallOf unit half (failing advisory row
+   -> overall PASS) + route level: contentadmin e2e adopts a fresh def (absent
+   from live files, serving row FAIL) without override — 28/28 passed.
+4. Landed **unflagged**; green on today's tree: live
+   `--strict` run = MATCH=413 DRIFT=0 MISSING=0 UNADOPTED=0, **STRICT OK**.
+5. Full `tools/ci.sh` CI_SCOPE=both: **CI GREEN** (346.9 s), receipt written
+   (tree `5e8144fc`). contentadmin e2e 28 passed; client build tsc clean,
+   lint 0 errors.
+
+**§10 risk note, updated:** the predicted ~58 red/amber wave cannot happen —
+0352/0353 landed first, so the tag arrives on an already-clean corpus and reds
+only appear when NEW drift is introduced (which is exactly when they should).

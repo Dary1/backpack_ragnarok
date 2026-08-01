@@ -24,7 +24,7 @@ const { sendJSON, readBody, getAuthToken } = require('../lib/http_util.cjs');
 const { methodGuard } = require('../lib/route_kit.cjs');
 const admin = require('../admin.cjs');
 const storage = require('../storage.cjs');
-const { runChecks } = require('../services/content_checks.cjs');
+const { runChecks, servingCheck, annotateServingStaleness, overallOf, servingReportForDefs } = require('../services/content_checks.cjs'); // REQ-0354: serving row + STALE + advisory-aware overall
 const { exportAdopted } = require('../services/content_export.cjs');
 
 const KINDS = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def', 'skill_def', 'gacha_pack', 'monster_pack', 'gimic', 'dungeon', 'unit_skin']; // REQ-0171: gacha_pack; REQ-0184: monster_pack; REQ-0211: gimic; REQ-0185: dungeon; REQ-0266: unit_skin (ALSO in services/core.cjs REGISTRY_KINDS -- a kind in one list and not the other never reaches serving, the monster_pack bug)
@@ -155,15 +155,27 @@ async function artSlotCheck(kind, data) {
     detail: 'slot "' + slot + '" agrees with the kind of artwork "' + ref + '"' };
 }
 
-/** Appends the DB-tier row (when there is one) to a pure runChecks() result and
- * recomputes `overall` with the SAME rule runChecks uses -- applicable:false
- * never sways the verdict. Used by BOTH ingest and recheck: a recheck that
- * dropped the row would quietly turn a real art/slot disagreement into a PASS. */
-async function withDbTierChecks(kind, data, mc) {
+/** Appends the tier rows a pure runChecks() cannot carry, then recomputes
+ * `overall` with the ONE advisory-aware rule (content_checks.overallOf):
+ *  - art_slot (REQ-0266, unit_skin only): needs the artwork registry.
+ *  - serving  (REQ-0354, every kind): needs the def's system_name, which
+ *    runChecks never sees. ADVISORY -- it renders as a row and drives the
+ *    section-6 gate, but NEVER feeds overall (section 4: a fresh adoption
+ *    legitimately differs from the live file until its export lands;
+ *    feeding overall would 409 every normal adoption and teach operators
+ *    to always override, weakening the REAL checks).
+ * Used by BOTH ingest and recheck: a recheck that dropped a row would
+ * quietly turn a real disagreement into a PASS. */
+async function withDbTierChecks(kind, data, mc, systemName) {
   const extra = await artSlotCheck(kind, data);
-  if (!extra) return mc;
-  mc.checks = (mc.checks || []).concat([extra]);
-  mc.overall = mc.checks.every((c) => c.applicable === false || c.ok) ? 'PASS' : 'FAIL';
+  if (extra) mc.checks = (mc.checks || []).concat([extra]);
+  if (systemName !== undefined) {
+    let srow;
+    try { srow = servingCheck(kind, systemName, data); }
+    catch (e) { srow = { name: 'serving', advisory: true, ok: true, applicable: false, detail: 'serving check crashed: ' + ((e && e.message) || e) }; }
+    mc.checks = (mc.checks || []).concat([srow]);
+  }
+  mc.overall = overallOf(mc.checks || []);
   return mc;
 }
 
@@ -175,7 +187,7 @@ async function ingestOne(def, data, provenance) {
   let mc;
   try { mc = runChecks(def.kind, def.schema_ref, data); }
   catch (e) { mc = { overall: 'FAIL', checks: [{ name: 'runner', ok: false, applicable: true, detail: 'checks crashed: ' + e.message }], ran_at: new Date().toISOString() }; }
-  const withCheck = await storage.setVariantMachineCheck(variant.id, await withDbTierChecks(def.kind, data, mc));
+  const withCheck = await storage.setVariantMachineCheck(variant.id, await withDbTierChecks(def.kind, data, mc, def.system_name));
   return withCheck;
 }
 
@@ -197,13 +209,26 @@ async function hCreateDef(req, res) {
 
 async function hListDefs(req, res) {
   const defs = await storage.listContentDefs();
-  sendJSON(res, 200, { ok: true, defs });
+  // REQ-0354 section 5: the KIND-level serving report rides the list
+  // response -- NOT WIRED is a per-kind banner (not 14 identical red rows)
+  // and MISSING-from-registry structurally cannot be a variant tag (there
+  // is no variant to hang it on). Non-fatal: a report hiccup must not
+  // take the def list down with it.
+  let serving_report = null;
+  try { serving_report = servingReportForDefs(defs, KINDS); }
+  catch (e) { serving_report = { error: 'serving report failed: ' + ((e && e.message) || e), kinds: [] }; }
+  sendJSON(res, 200, { ok: true, defs, serving_report });
 }
 
 async function hGetDef(req, res, name) {
   const def = await storage.getContentDefByName(name);
   if (!def) return sendJSON(res, 404, { ok: false, error: 'no such content def: ' + name });
   const variants = await storage.listVariants(def.id);
+  // REQ-0354 section 3: STALE is computed on READ, never stored -- the
+  // stored serving verdict is only as fresh as the live-file shas it
+  // carries. One sha cache across all variants: each file hashes once.
+  const shaCache = new Map();
+  for (const v of variants) { if (v && v.machine_check) annotateServingStaleness(v.machine_check, shaCache); }
   sendJSON(res, 200, { ok: true, def, variants, artwork_facet: def.artwork_facet });
 }
 
@@ -333,7 +358,7 @@ async function recheckVariant(name, variant_no) {
   // REQ-0266: the DB-tier art_slot row rides along here too. Recheck is exactly
   // where it earns its keep: the artwork may have been created (or re-kinded)
   // AFTER the def was ingested, which is the two-wave art flow (D4) by design.
-  return storage.setVariantMachineCheck(variant.id, await withDbTierChecks(def.kind, variant.data, mc));
+  return storage.setVariantMachineCheck(variant.id, await withDbTierChecks(def.kind, variant.data, mc, def.system_name));
 }
 async function hRecheck(req, res, name, variant_no) {
   try { const updated = await recheckVariant(name, variant_no); sendJSON(res, 200, { ok: true, variant: updated }); }
@@ -392,6 +417,7 @@ async function hServeAdopted(req, res, name) {
 async function hServeMeta(req, res, name) {
   const a = await storage.getAdoptedVariant(name);
   if (!a) return sendJSON(res, 404, { ok: false, error: 'no adopted content for ' + name });
+  if (a.machine_check) annotateServingStaleness(a.machine_check); // REQ-0354 section 3: STALE on read
   sendJSON(res, 200, {
     ok: true, system_name: name, kind: a.kind, variant_no: a.variant_no,
     data_sha256: a.data_sha256, schema_ref: a.schema_ref,

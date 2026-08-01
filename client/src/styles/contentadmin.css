@@ -126,6 +126,14 @@
 .ca-overall.is-pass { background: var(--r-uncommon); color: #0A0D12; }
 .ca-overall.is-fail { background: var(--blood); color: #FFF; }
 .ca-verdict--na { color: var(--bone-3); border-color: var(--border-lo); border-style: dashed; }
+/* REQ-0354: STALE = the live file moved since the check ran; a third state,
+   deliberately NOT green (a stale green is the REQ-0353 failure mode) and
+   NOT the fail red (the verdict is unknown, not known-bad). */
+.ca-verdict--stale { color: var(--gold-hi); border-color: var(--gold-hi); border-style: dotted; background: rgba(201, 169, 89, 0.08); }
+.ca-serving-report { display: flex; flex-direction: column; gap: 4px; margin: 0 0 8px; }
+.ca-banner { padding: 4px 10px; font-size: 12px; border: 1px solid; border-radius: 2px; }
+.ca-banner--notwired { color: #FFF; background: var(--blood); border-color: var(--blood); }
+.ca-banner--missing { color: var(--gold-hi); background: rgba(201, 169, 89, 0.10); border-color: var(--gold-lo); }
 .ca-check-detail {
   flex-basis: 100%; background: #0C1016; border: 1px solid var(--border-lo);
   padding: 5px 8px; font-size: 11px; font-family: ui-monospace, monospace;

@@ -699,6 +699,153 @@ function formationFillCheck(kind, data) {
   return _formationFillResult(data, enemyDefs, placeableCellsFor(FIELD_ROWS, FIELD_COLS));
 }
 
+// ---- 6. serving (REQ-0354) -- the advisory drift tag + its live-file sha --
+//
+// "Adopted but inert" (REQ-0352/0353) was invisible where the operator works.
+// This row compares ONE variant's data against the live content FILES -- the
+// same corpus, through the same COVERED kind->file mapping, as
+// tools/verify_content_registry_parity.cjs (required here, never re-derived,
+// so the mapping cannot fork; kind_lists_agree_test pins COVERED ==
+// REGISTRY_KINDS).
+//
+// THE STALENESS TRAP (REQ-0354 section 3): every other check is a pure
+// function of the variant's own immutable data, so a stored verdict stays
+// true forever. This row is a function of the variant AND the live files,
+// which change without the variant changing -- a naively-stored PASS goes
+// silently false, which is the exact failure mode this REQ exists to kill.
+// Ruling (user, 2026-07-31): the row CARRIES the sha256 of every live file
+// it was computed against (live_files[]); annotateServingStaleness() re-
+// hashes them on READ and a mismatch renders as STALE -- a third state,
+// neither PASS nor FAIL (same idiom as REQ-0297's powerlevel_calibrated_from).
+//
+// RULING (REQ-0354 section 4): advisory:true, and it NEVER feeds overall. A
+// freshly adopted variant legitimately differs from the live file until its
+// export lands; feeding overall would 409 every normal adoption and teach
+// operators to always send override:true -- which also bypasses the REAL
+// checks. overallOf() below is the ONE overall rule; advisory rows are
+// skipped EXPLICITLY, never by abusing applicable:false (that field means
+// "does not apply to this kind", a different fact, shown differently).
+
+/** The ONE overall rule (REQ-0354 section 4): applicable:false and
+ * advisory:true rows never sway the verdict. Used by runChecks() and by the
+ * appended-tier recompute in routes/content.cjs. */
+function overallOf(checks) {
+  return checks.every((c) => c.advisory === true || c.applicable === false || c.ok) ? 'PASS' : 'FAIL';
+}
+
+/** The advisory `serving` row for ONE variant: does the live-file entry named
+ * `systemName` match this variant's data (authored fields only, key order
+ * aside)? DB-free: reads only the COVERED live files + REGISTRY_KINDS. */
+function servingCheck(kind, systemName, data) {
+  const advisory = true;
+  let REGISTRY_KINDS = null;
+  try { REGISTRY_KINDS = require('./core.cjs').REGISTRY_KINDS; } catch (e) { /* fall through to n/a */ }
+  if (!REGISTRY_KINDS || !REGISTRY_KINDS.includes(kind)) {
+    return { name: 'serving', advisory, ok: true, applicable: false,
+      detail: 'serving n/a: kind "' + kind + '" is not wired into serving (services/core.cjs REGISTRY_KINDS) -- adoption cannot reach the game. A KIND-level condition: surfaced as the per-kind NOT WIRED banner (REQ-0354 section 5); kind_lists_agree_test forbids this state on CI.' };
+  }
+  const parity = require(path.join(repoRoot(), 'tools', 'verify_content_registry_parity.cjs'));
+  const { CONTENT_ROOT } = require('../lib/content_files.cjs');
+  const rel = (abs) => path.relative(CONTENT_ROOT, abs);
+  const sources = parity.COVERED.filter((s) => s.kind === kind);
+  const live_files = []; // EVERY covered file of the kind: absence-from-all is also a fact of all of them
+  let hit = null;
+  for (const src of sources) {
+    let raw = null;
+    try { raw = fs.readFileSync(src.file); }
+    catch (e) { live_files.push({ file: rel(src.file), sha256: null }); continue; }
+    live_files.push({ file: rel(src.file), sha256: sha256(raw) });
+    if (hit) continue;
+    let doc = null;
+    try { doc = JSON.parse(raw.toString('utf8')); } catch (e) { continue; }
+    const excluded = new Set(src.exclude || []);
+    for (const entry of (doc.entries || [])) {
+      if (entry && entry.id === systemName && !excluded.has(entry.id)) {
+        hit = { file: rel(src.file), entry: parity.authoredView(entry, src.derived) };
+        break;
+      }
+    }
+  }
+  if (!hit) {
+    return { name: 'serving', advisory, ok: false, applicable: true, live_files,
+      detail: 'no live-file entry named "' + systemName + '" for kind ' + kind + ' (checked: ' + (live_files.map((f) => f.file).join(', ') || 'none') + ') -- LEGITIMATE for a fresh def until its export is merged into content/live. Advisory: never blocks adoption (REQ-0354 section 4).' };
+  }
+  if (parity.deepEqualUnordered(hit.entry, data)) {
+    return { name: 'serving', advisory, ok: true, applicable: true, live_files,
+      detail: 'live-file entry matches this variant (' + hit.file + '; authored fields, key order aside)' };
+  }
+  const diffs = parity.diffFields(hit.entry, data).map((d) => d.path);
+  const shown = diffs.slice(0, 8).join(', ') + (diffs.length > 8 ? ' (+' + (diffs.length - 8) + ' more)' : '');
+  return { name: 'serving', advisory, ok: false, applicable: true, live_files,
+    detail: 'DRIFT vs ' + hit.file + ' -- fields: ' + shown + '. Legitimate for a fresh adoption until its export lands; STANDING drift on an ADOPTED variant is the REQ-0353 defect class. Advisory: never blocks adoption.' };
+}
+
+/** READ-time staleness (REQ-0354 section 3, the trap closed): re-hash the
+ * live files a stored serving row was computed against; any mismatch marks
+ * the row stale:true (rendered STALE -- a stale green is worse than a red,
+ * it is the state that produced REQ-0353). Mutates the row IN THE RESPONSE
+ * object only; nothing is persisted. shaCache (Map file->sha|null) lets a
+ * caller annotating many variants hash each file once. */
+function annotateServingStaleness(mc, shaCache) {
+  if (!mc || !Array.isArray(mc.checks)) return mc;
+  const row = mc.checks.find((c) => c && c.name === 'serving');
+  if (!row || !Array.isArray(row.live_files) || row.live_files.length === 0) return mc;
+  const { CONTENT_ROOT } = require('../lib/content_files.cjs');
+  const cache = shaCache || new Map();
+  let stale = false;
+  for (const lf of row.live_files) {
+    if (!lf || typeof lf.file !== 'string') continue;
+    let cur;
+    if (cache.has(lf.file)) { cur = cache.get(lf.file); }
+    else {
+      try { cur = sha256(fs.readFileSync(path.join(CONTENT_ROOT, lf.file))); } catch (e) { cur = null; }
+      cache.set(lf.file, cur);
+    }
+    if (cur !== (lf.sha256 == null ? null : lf.sha256)) { stale = true; break; }
+  }
+  row.stale = stale;
+  return mc;
+}
+
+/** Per-KIND serving report for the list endpoint (REQ-0354 section 5): NOT
+ * WIRED is a kind-level banner (14 identical red rows would bury the real
+ * per-variant reds) and MISSING cannot be a variant tag at all -- there is no
+ * variant to hang it on. defs come from the caller (storage stays out of this
+ * module); kinds is routes/content.cjs KINDS (passed in -- requiring routes
+ * from here would be a cycle). */
+function servingReportForDefs(defs, kinds) {
+  const parity = require(path.join(repoRoot(), 'tools', 'verify_content_registry_parity.cjs'));
+  let REGISTRY_KINDS = [];
+  try { REGISTRY_KINDS = require('./core.cjs').REGISTRY_KINDS; } catch (e) { /* report wired:false */ }
+  const byName = parity.collectFileEntries();
+  const defSet = new Set((defs || []).map((d) => d.kind + '/' + d.system_name));
+  const defsByKind = {}; const adoptedByKind = {};
+  for (const d of (defs || [])) {
+    defsByKind[d.kind] = (defsByKind[d.kind] || 0) + 1;
+    if (d.adopted_variant_id != null) adoptedByKind[d.kind] = (adoptedByKind[d.kind] || 0) + 1;
+  }
+  const rows = [];
+  for (const kind of (kinds || [])) {
+    const missing = [];
+    let inFiles = 0;
+    for (const [name, info] of byName) {
+      if (info.kind !== kind) continue;
+      inFiles++;
+      if (!defSet.has(kind + '/' + name)) missing.push(name);
+    }
+    rows.push({
+      kind,
+      wired: REGISTRY_KINDS.includes(kind),
+      def_count: defsByKind[kind] || 0,
+      adopted_count: adoptedByKind[kind] || 0,
+      in_files: inFiles,
+      missing_count: missing.length,
+      missing_from_registry: missing.slice(0, 100),
+    });
+  }
+  return { generated_at: new Date().toISOString(), kinds: rows };
+}
+
 // ---- runner -------------------------------------------------------------
 
 /** Run all four machine checks on one variant's data. Pure of DB access
@@ -717,7 +864,7 @@ function runChecks(kind, schema_ref, data) {
   // ONLY for monster_pack (a different kind -- e.g. gimic -- never reaches it, so
   // it is naturally exempt with no per-pack flag). A not-ok row lowers overall.
   if (kind === 'monster_pack') add('formation_fill', formationFillCheck(kind, data));
-  const overall = checks.every((c) => c.applicable === false || c.ok) ? 'PASS' : 'FAIL';
+  const overall = overallOf(checks); // REQ-0354: the ONE overall rule (advisory-aware; no advisory row is added here, runChecks stays pure of the live files)
   return { checks, overall, dialect: dialect.name, schema_ref: vpath ? path.relative(root, vpath) : schema_ref, ran_at: new Date().toISOString() };
 }
 
@@ -914,6 +1061,6 @@ if (require.main === module) {
   })().catch((e) => { console.error('FATAL', (e && e.stack) || e); process.exit(1); });
 }
 
-module.exports = { runChecks, formationFillCheck, _formationFillResult, _repoRoot: repoRoot, _contentLiveManifest: contentLiveManifest, _dialectFor: dialectFor, _DIALECTS: DIALECTS,
+module.exports = { runChecks, servingCheck, annotateServingStaleness, overallOf, servingReportForDefs, formationFillCheck, _formationFillResult, _repoRoot: repoRoot, _contentLiveManifest: contentLiveManifest, _dialectFor: dialectFor, _DIALECTS: DIALECTS,
   checkArtworkGeometry, defGeometry, artworkGeometry, sweepArtworkGeometry, ART_GEOM_CORPUS,
   _normCellSet, _maskCells, _rectCells, _setEq };

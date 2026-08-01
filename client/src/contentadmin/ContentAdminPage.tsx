@@ -33,7 +33,7 @@ import {
   ingestVariants, reviewVariant, editVariant, adoptVariantApi, deleteVariantApi,
   recheckVariantApi, listArtworks,
 } from '../api';
-import type { ContentDefDto, ContentVariantDto, ContentCommission, ArtworkDto } from '../api';
+import type { ContentDefDto, ContentVariantDto, ContentCommission, ArtworkDto, ServingReport } from '../api';
 import { copyText, artworkThumbUrl, buildArtworkIndex, resolveDefArtwork, defAdoptedArtUrl,
   buildMemberFootprints, packMembers } from './contentShared'; // REQ-0184
 import { DefRail } from './DefRail';
@@ -86,6 +86,9 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
   const [variants, setVariants] = useState<ContentVariantDto[]>([]);
   const [artworkFacet, setArtworkFacet] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
+  // REQ-0354 section 5: kind-level serving report (NOT WIRED banner +
+  // MISSING-from-registry rows) riding the def-list response.
+  const [servingReport, setServingReport] = useState<ServingReport | null>(null);
   // def edit draft (explicit Save; baseline for the dirty indicator)
   const [draft, setDraft] = useState<DefDraft | null>(null);
   const [baseline, setBaseline] = useState<DefDraft | null>(null);
@@ -135,7 +138,7 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
   }, [msg]);
 
   const refreshList = useCallback(async () => {
-    try { const r = await listContentDefs(); setDefs(r.defs); setListError(null); }
+    try { const r = await listContentDefs(); setDefs(r.defs); setServingReport(r.serving_report || null); setListError(null); }
     catch (e) { const m = (e as Error).message; setMsg('list: ' + m); setListError(m); }
   }, []);
 
@@ -368,6 +371,30 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
         <a data-testid="cd-artadmin-link" className="aa-crosslink t-micro" href="#/artadmin">Art Admin &rarr;</a>
         <div data-testid="cd-msg" aria-live="polite" className="aa-msg t-micro">{msg}</div>
       </header>
+      {/* REQ-0354 section 5: NOT WIRED is a KIND-level banner (14 identical
+          red rows would add nothing and bury the per-variant reds); MISSING
+          is a KIND-level report row (there is no variant to hang it on).
+          Renders nothing when the corpus is clean. */}
+      {servingReport && (() => {
+        const kindRows = servingReport.kinds || [];
+        const notWired = kindRows.filter((k) => !k.wired && (k.def_count > 0 || k.in_files > 0));
+        const missing = kindRows.filter((k) => k.missing_count > 0);
+        if (notWired.length === 0 && missing.length === 0) return null;
+        return (
+          <div className="ca-serving-report" data-testid="cd-serving-report">
+            {notWired.map((k) => (
+              <div key={'nw-' + k.kind} data-testid={'cd-notwired-' + k.kind} className="ca-banner ca-banner--notwired">
+                NOT WIRED: kind <b>{k.kind}</b> is adoptable but not served (services/core.cjs REGISTRY_KINDS) -- its {k.def_count} def(s) / {k.adopted_count} adoption(s) never reach the game.
+              </div>
+            ))}
+            {missing.map((k) => (
+              <div key={'ms-' + k.kind} data-testid={'cd-missing-' + k.kind} className="ca-banner ca-banner--missing">
+                MISSING: <b>{k.kind}</b> -- {k.missing_count} of {k.in_files} live-file entit{k.missing_count === 1 ? 'y is' : 'ies are'} absent from the registry ({k.missing_from_registry.slice(0, 6).join(', ')}{k.missing_count > 6 ? ', ...' : ''})
+              </div>
+            ))}
+          </div>
+        );
+      })()}
       <div className="ca-cols">
         <DefRail defs={defs} artworksByName={artworksByName} selected={selected} onSelect={requestSelect} onNew={requestCreate} listError={listError} />
         <section className="ca-center">
@@ -435,8 +462,8 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
             <div className="ca-confirm-checks">
               <span className={'ca-overall ' + (confirmOverall === 'PASS' ? 'is-pass' : 'is-fail')}>{confirmOverall}</span>
               {((confirmVariant.machine_check && confirmVariant.machine_check.checks) || []).map((c) => (
-                <span key={c.name} className={'aa-verdict ' + (!c.applicable ? 'ca-verdict--na' : c.ok ? 'aa-verdict--pass' : 'aa-verdict--fail')}>
-                  {c.name} {!c.applicable ? 'n/a' : c.ok ? 'ok' : 'x'}
+                <span key={c.name} className={'aa-verdict ' + (c.stale ? 'ca-verdict--stale' : !c.applicable ? 'ca-verdict--na' : c.ok ? 'aa-verdict--pass' : 'aa-verdict--fail')}>
+                  {c.name} {c.stale ? 'STALE' : !c.applicable ? 'n/a' : c.ok ? 'ok' : 'x'}
                 </span>
               ))}
             </div>

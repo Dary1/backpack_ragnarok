@@ -23,11 +23,16 @@ REL_T0=$(date +%s)
 # It runs HERE, against the live DB (server/.env), and DRIFT fails the release.
 # A missing server/.env also fails the release, deliberately: a gate that is
 # skipped when credentials are absent is exactly the not-run gate this fixes.
-echo "[release] content registry drift gate (REQ-0353)"
+# REQ-0354 section 6: --strict makes this THE served-set==passing-set gate --
+# MISSING-IN-REGISTRY and UNADOPTED now block the release too, not just DRIFT
+# (a served entity with no passing adopted variant IS a set mismatch). Landed
+# UNFLAGGED: REQ-0352/0353 reconciled the corpus first (MATCH=413, all other
+# counts 0), so the gate is green on the tree it ships with.
+echo "[release] content registry drift gate (REQ-0353; --strict: REQ-0354 section 6)"
 (
   set -a; . server/.env; set +a
   export STORAGE_BACKEND=pg
-  node tools/verify_content_registry_parity.cjs
+  node tools/verify_content_registry_parity.cjs --strict
 )
 
 export CI_SCOPE=both
