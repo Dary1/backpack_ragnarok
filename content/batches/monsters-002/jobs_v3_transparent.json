@@ -1,0 +1,37 @@
+[
+  {
+    "name": "02c_v1_base",
+    "ckpt": "toonyou_beta6.safetensors",
+    "width": 640, "height": 832, "seed": 887701, "steps": 30, "cfg": 7.0, "hires": true,
+    "positive": "frost golem, solo, one creature only, a stocky monster made of ice and packed snow, big simple glowing blue eyes, thick icy limbs, flat cel shading, bold clean outlines, vibrant colors, mobile game monster illustration, full body, front facing, centered, high quality, solid green background",
+    "negative": "human, humans, child, boy, girl, person, people, second character, companion, photorealistic, realistic skin, text, watermark, blurry, multiple characters, two characters, cropped, gore, low detail, scenery, ground, floor, no subject, empty background, abstract, gradient only"
+  },
+  {
+    "name": "02c_v2_shoulder_spikes",
+    "ckpt": "toonyou_beta6.safetensors",
+    "width": 640, "height": 832, "seed": 100001, "steps": 30, "cfg": 7.0, "hires": true,
+    "positive": "frost golem, solo, one creature only, a stocky monster made of ice and packed snow, small ice spikes on shoulders and back, big simple glowing blue eyes, thick icy limbs, flat cel shading, bold clean outlines, vibrant colors, mobile game monster illustration, full body, front facing, centered, high quality, solid green background",
+    "negative": "human, humans, child, boy, girl, person, people, second character, companion, photorealistic, realistic skin, text, watermark, blurry, multiple characters, two characters, cropped, gore, low detail, scenery, ground, floor, no subject, empty background, abstract, gradient only"
+  },
+  {
+    "name": "02c_v3_ice_crown",
+    "ckpt": "toonyou_beta6.safetensors",
+    "width": 640, "height": 832, "seed": 200002, "steps": 30, "cfg": 7.0, "hires": true,
+    "positive": "frost golem, solo, one creature only, a stocky monster made of ice and packed snow, crystalline ice crown on head, sharper angular icy body, big simple glowing blue eyes, flat cel shading, bold clean outlines, vibrant colors, mobile game monster illustration, full body, front facing, centered, high quality, solid green background",
+    "negative": "human, humans, child, boy, girl, person, people, second character, companion, photorealistic, realistic skin, text, watermark, blurry, multiple characters, two characters, cropped, gore, low detail, scenery, ground, floor, no subject, empty background, abstract, gradient only"
+  },
+  {
+    "name": "02c_v4_round_chibi",
+    "ckpt": "toonyou_beta6.safetensors",
+    "width": 640, "height": 832, "seed": 300003, "steps": 30, "cfg": 7.0, "hires": true,
+    "positive": "frost golem, solo, one creature only, a round chubby chibi-ish monster made of ice and packed snow, big simple glowing blue eyes, short stubby icy limbs, flat cel shading, bold clean outlines, vibrant colors, mobile game monster illustration, full body, front facing, centered, high quality, solid green background",
+    "negative": "human, humans, child, boy, girl, person, people, second character, companion, photorealistic, realistic skin, text, watermark, blurry, multiple characters, two characters, cropped, gore, low detail, scenery, ground, floor, no subject, empty background, abstract, gradient only"
+  },
+  {
+    "name": "02c_v5_battle_ready",
+    "ckpt": "toonyou_beta6.safetensors",
+    "width": 640, "height": 832, "seed": 400004, "steps": 30, "cfg": 7.0, "hires": true,
+    "positive": "frost golem, solo, one creature only, a stocky monster made of ice and packed snow, battle-ready pose, fists clenched, big simple glowing blue eyes, thick icy limbs, flat cel shading, bold clean outlines, vibrant colors, mobile game monster illustration, full body, front facing, centered, high quality, solid green background",
+    "negative": "human, humans, child, boy, girl, person, people, second character, companion, photorealistic, realistic skin, text, watermark, blurry, multiple characters, two characters, cropped, gore, low detail, scenery, ground, floor, no subject, empty background, abstract, gradient only"
+  }
+]

@@ -1,0 +1,223 @@
+{
+  "schema": "enemy/1",
+  "batch": "batch-005-grave-legion",
+  "note": "REQ-0203. An undead roster DESIGNED FROM adopted artworks. Every footprint is the linked artwork's shape {w,h} TRANSPOSED to [fh,fw]=[h,w] (REQ-0029 transpose canon; verified read-only against artworks.shape 2026-07-17). rarity uses the enemy/1 lowercase dialect; pack_role uses the attested vocabulary dungen understands (line/support/anchor/boss) -- see the REQ file for the skirmish/bruiser/elite -> attested mapping. artwork_ref is a DB-column deploy concern (like batch-002 frost_gnoll), not an enemies.json field: 7 ids match their artwork by exact name; wight's art is 'monsters-003-flux2:wight' so its content_def gets an explicit artwork_ref set at deploy.",
+  "entries": [
+    {
+      "id": "zombie",
+      "name": "Zombie",
+      "hp": [
+        55,
+        75
+      ],
+      "footprint": [
+        4,
+        3
+      ],
+      "skills": [
+        "rotting_claw",
+        "festering_grasp",
+        "zombie_already_rotten"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Zombie"
+        },
+        "ja": {
+          "name": "ゾンビ"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "line"
+    },
+    {
+      "id": "ghost",
+      "name": "Ghost",
+      "hp": [
+        40,
+        55
+      ],
+      "footprint": [
+        4,
+        3
+      ],
+      "skills": [
+        "spectral_touch",
+        "haunting_chill",
+        "ghost_incorporeal"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Ghost"
+        },
+        "ja": {
+          "name": "ゴースト"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "line"
+    },
+    {
+      "id": "mummy",
+      "name": "Mummy",
+      "hp": [
+        85,
+        115
+      ],
+      "footprint": [
+        4,
+        3
+      ],
+      "skills": [
+        "bandage_lash",
+        "mummys_curse",
+        "mummy_death_curse"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Mummy"
+        },
+        "ja": {
+          "name": "マミー"
+        }
+      },
+      "rarity": "uncommon",
+      "pack_role": "line"
+    },
+    {
+      "id": "skeleton_warrior",
+      "name": "Skeleton Warrior",
+      "hp": [
+        75,
+        100
+      ],
+      "footprint": [
+        4,
+        3
+      ],
+      "skills": [
+        "bone_cleaver",
+        "shield_jab",
+        "skel_no_flesh"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Skeleton Warrior"
+        },
+        "ja": {
+          "name": "スケルトンウォーリア"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "anchor"
+    },
+    {
+      "id": "wight",
+      "name": "Wight",
+      "hp": [
+        110,
+        140
+      ],
+      "footprint": [
+        4,
+        3
+      ],
+      "skills": [
+        "grave_blade",
+        "life_drain",
+        "wight_undying"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Wight"
+        },
+        "ja": {
+          "name": "ワイト"
+        }
+      },
+      "rarity": "rare",
+      "pack_role": "anchor"
+    },
+    {
+      "id": "necromancer",
+      "name": "Necromancer",
+      "hp": [
+        50,
+        70
+      ],
+      "footprint": [
+        4,
+        3
+      ],
+      "skills": [
+        "dark_mending",
+        "enfeebling_bolt",
+        "necro_deathly_ward"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Necromancer"
+        },
+        "ja": {
+          "name": "ネクロマンサー"
+        }
+      },
+      "rarity": "uncommon",
+      "pack_role": "support"
+    },
+    {
+      "id": "lich",
+      "name": "Lich",
+      "hp": [
+        150,
+        200
+      ],
+      "footprint": [
+        5,
+        4
+      ],
+      "skills": [
+        "soul_blast",
+        "paralyzing_dread",
+        "lich_undying_will"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Lich"
+        },
+        "ja": {
+          "name": "リッチ"
+        }
+      },
+      "rarity": "rare",
+      "pack_role": "anchor"
+    },
+    {
+      "id": "bone_dragon",
+      "name": "Bone Dragon",
+      "hp": [
+        550,
+        750
+      ],
+      "footprint": [
+        10,
+        10
+      ],
+      "skills": [
+        "bone_breath",
+        "necrotic_roar",
+        "bonedrag_death_collapse"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Bone Dragon"
+        },
+        "ja": {
+          "name": "ボーンドラゴン"
+        }
+      },
+      "rarity": "relic",
+      "pack_role": "boss"
+    }
+  ]
+}

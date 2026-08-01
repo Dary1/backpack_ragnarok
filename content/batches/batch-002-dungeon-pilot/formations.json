@@ -1,0 +1,31 @@
+{
+  "schema": "formation/1",
+  "batch": "batch-002-dungeon-pilot",
+  "note": "All 4 ratified formation defs (combat_spec_draft.md v0.3 S5.1/S5.2), matching sim/combat.cjs's hardcoded FORMATIONS table byte-for-byte. formation4 uses the CORRECTED J11:Q18 box (supersedes any xlsx/older-doc J11:Q19 which overran row 18).",
+  "entries": [
+    {
+      "id": "formation1",
+      "i18n": { "en": { "name": "Standard Line" }, "ja": { "name": "標準陣形" } },
+      "canvases": { "unit1": "F2:M9", "unit2": "N2:U9", "unit3": "B10:I17", "unit4": "R10:Y17" },
+      "note": "standard; 2 front cover 2 back (top-entry only)"
+    },
+    {
+      "id": "formation2",
+      "i18n": { "en": { "name": "Tank Vanguard" }, "ja": { "name": "タンク先鋒" } },
+      "canvases": { "unit1": "J2:Q9", "unit2": "B6:I13", "unit3": "R6:Y13", "unit4": "J10:Q17" },
+      "note": "unit1 tank up top; unit4 well protected"
+    },
+    {
+      "id": "formation3",
+      "i18n": { "en": { "name": "Corner Bastion" }, "ja": { "name": "隅の防塁" } },
+      "canvases": { "unit1": "B2:I9", "unit2": "R2:Y9", "unit3": "F10:M17", "unit4": "N10:U17" },
+      "note": "corner squads tank top diagonals"
+    },
+    {
+      "id": "formation4",
+      "i18n": { "en": { "name": "Wing Spread" }, "ja": { "name": "翼陣" } },
+      "canvases": { "unit1": "B2:I9", "unit2": "J2:Q9", "unit3": "R2:Y9", "unit4": "J11:Q18" },
+      "note": "CORRECTED: unit1=left_wing, unit2=center_top, unit3=right_wing, unit4=backline_center=J11:Q18 (8 rows, in-bounds). Supersedes any xlsx/older-doc J11:Q19 which overran row 18."
+    }
+  ]
+}
