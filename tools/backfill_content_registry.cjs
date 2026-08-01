@@ -244,7 +244,7 @@ function printInventory(entries, missingFiles) {
 // unadopted def is a warning, not a write (creation/repair stays the plain
 // INSERT-ONLY pass's job). Derived-field config is read off the parity tool's
 // COVERED so the two tools cannot disagree about what "authored" means.
-async function reconcileKind(kind, dryRun) {
+async function reconcileKind(kind, dryRun, note) {
   const parity = require('./verify_content_registry_parity.cjs');
   const sources = SOURCES.filter((s) => s.kind === kind);
   if (!sources.length) throw new Error('--reconcile-kind ' + kind + ': not a SOURCES kind');
@@ -272,7 +272,7 @@ async function reconcileKind(kind, dryRun) {
         if (dryRun) { console.log('  WOULD RE-PORT ' + entry.id.padEnd(24) + ' v' + adopted.variant_no + ' -> next  fields: ' + diffPaths); reported++; continue; }
         const provenance = {
           source: 'backfill', origin_file: src.file, origin_schema: schema, imported_at: importedAt,
-          note: 'REQ-0352 reconcile re-port: live file wins (REQ-0303 member edits never reached the registry). Authored fields only -- powerLevel is derived (autobalance-owned) and deliberately absent.',
+          note: note || ('reconcile re-port: live file wins; authored fields only (derived fields, per the parity tool COVERED config, deliberately absent). Kind: ' + kind + '.'),
         };
         const variant = await storage.createVariant(def.id, { data: authored, provenance: provenance, status: 'ok' });
         let mc;
@@ -298,7 +298,10 @@ async function main() {
   if (rk >= 0) {
     const kind = args[rk + 1];
     if (!kind) throw new Error('--reconcile-kind needs a kind argument');
-    await reconcileKind(kind, dryRun);
+    const ni = args.indexOf('--note');
+    const note = ni >= 0 ? args[ni + 1] : undefined;
+    if (ni >= 0 && !note) throw new Error('--note needs a text argument');
+    await reconcileKind(kind, dryRun, note);
     return;
   }
   const importedAt = new Date().toISOString();
