@@ -307,3 +307,16 @@ is untouched and remains a candidate REQ. It did NOT shrink here — it gained
   serving list has 10, so `monster_pack` adoptions reach nothing) is untouched,
   as scoped in §4.
 - `services/core.cjs`'s low cohesion (audit P3) — see §8.
+
+## Deploy record (2026-08-01)
+
+- Merged to master as dd9519c8 (merge order REQ-0348 -> REQ-0352 -> REQ-0353).
+- `tools/release.sh` on the merged master: the NEW REQ-0353 drift gate ran
+  FIRST on the release path and passed (MATCH=413 DRIFT=0 MISSING=0), full CI
+  GREEN (343 s), dist unchanged, receipt written (tree 855262cd).
+- Pushed e4b24dd0..27e8afbd (push gate accepted the receipt);
+  `backpack-api` restarted 03:49Z; backpack-web / backpack-tunnel active.
+- Live verification: `/api/content` on 127.0.0.1:8802 AND
+  https://backpack-dev.qtie.jp serves frost_gnoll `["gnoll_claw","gnoll_snap"]`,
+  troll/medusa/behemoth flavor skills, and `monster_skills.gnoll_snap` resolves
+  with i18n names. Deployed; `built -> done` awaits user acceptance.

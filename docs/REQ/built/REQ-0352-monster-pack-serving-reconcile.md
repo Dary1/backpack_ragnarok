@@ -211,3 +211,16 @@ branch. Deploy order: merge REQ-0348, then this branch.
   on the existing backfill tool (its INSERT-ONLY doctrine untouched) rather
   than a bespoke porter. DB re-port applied to live (safe: kind unwired on
   master). Awaiting merge/deploy/acceptance behind REQ-0348.
+
+## Deploy record (2026-08-01)
+
+- Merged to master as a84a6b7a (merge order REQ-0348 -> REQ-0352 -> REQ-0353).
+- `tools/release.sh` on the merged master: the NEW REQ-0353 drift gate ran
+  FIRST on the release path and passed (MATCH=413 DRIFT=0 MISSING=0), full CI
+  GREEN (343 s), dist unchanged, receipt written (tree 855262cd).
+- Pushed e4b24dd0..27e8afbd (push gate accepted the receipt);
+  `backpack-api` restarted 03:49Z; backpack-web / backpack-tunnel active.
+- Live verification: `/api/content` on 127.0.0.1:8802 AND
+  https://backpack-dev.qtie.jp serves frost_gnoll `["gnoll_claw","gnoll_snap"]`,
+  troll/medusa/behemoth flavor skills, and `monster_skills.gnoll_snap` resolves
+  with i18n names. Deployed; `built -> done` awaits user acceptance.
