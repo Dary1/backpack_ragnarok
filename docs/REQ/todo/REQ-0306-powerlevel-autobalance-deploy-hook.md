@@ -66,3 +66,50 @@ present and correct. Wiring clarifications added:
 - Ordering: REQ-0305 is now SUPERSEDED, so 0306 is the sole owner of deploy-time recalibration; no ordering
   conflict remains.
 Status unchanged (`todo`): still ready to implement, now with the above wiring pinned.
+
+## Implementation (2026-08-01) -- branch req-0306-powerlevel-autobalance-deploy-hook, commit 9ffd9d59
+
+All three deliverables landed exactly as the audit pinned them:
+
+1. **`tools/predeploy_recalibrate_powerlevel.cjs`** (SCRIPT, not a runbook line): `check` ->
+   CLEAN = no-op with ZERO writes / DIRTY = ONE batched round-robin `emit` with the MARKER
+   DEFAULTS (alpha 0.7 / loops 8 / seeds 6; `autobalance({})` -- no custom tuning at deploy) +
+   marker re-stamp, then a re-`check` that THROWS (exit 1) if somehow still dirty (refuses to
+   report false success). Idempotent; `--check` semantics stay CHECKOUT-relative (= live only on
+   the main checkout @ master), per the audit rewording. The check/emit/autobalance tool is
+   injectable, which is what makes the DB-free self-test possible; the REAL mechanics remain
+   REQ-0297's and are untouched (zero diff to autobalance_pack_powerlevel.cjs).
+2. **ci.sh [3.997/7]**: `--self-test` runs HARD; the drift check is the audit-verbatim ADVISORY
+   `node tools/autobalance_pack_powerlevel.cjs --check || echo "[advisory] ..."` so
+   `set -euo pipefail` cannot harden it by accident. "Flip to hard" = delete the `|| echo`
+   guard (documented in-line). Hard enforcement deliberately lives in the predeploy script, not
+   ci (a hard ci gate would block WIP branches).
+3. **Hook point**: NEW `docs/llm_managed/content_deploy_runbook.md` -- the content-deploy runbook
+   the audit found missing. The predeploy script is its MANDATORY final content step, run on the
+   MAIN checkout after any promote_dungeon_batch.cjs/surgical edit, before committing the
+   regenerated files and `systemctl --user restart backpack-api`. Known gaps recorded verbatim
+   (scaling_profile.json + sim-code outside the sha dirty-set -> manual --emit; additive source
+   batches 005/006/007 carry no powerLevel -> sync before wholesale re-promotion).
+
+## Gate results (2026-08-01, on the worktree)
+
+- `tools/ci.sh`: **CI GREEN**, scope=both (FULL gate: files+pg api, typecheck, client build,
+  admin-e2e 28/28, registry-first e2e 4/4, client e2e fleet), 344s. Receipt re-minted on the
+  final tree (see branch HEAD).
+- `predeploy_recalibrate_powerlevel.cjs --self-test`: 10/10 assertions (dirty-no-marker acts;
+  post-emit clean; marker records defaults; second run no-op with byte-identical files; re-dirty
+  re-acts; non-stamping emit -> STILL DIRTY throw).
+- END-TO-END dirty path against REAL content (worktree, then reverted): whitespace-touched
+  live skills.json -> predeploy reported DIRTY(skills.json), recalibrated 14 packs in 20.8s,
+  re-stamped marker, ended CLEAN -- and the regenerated packs.json was BYTE-IDENTICAL to the
+  pre-touch bytes (determinism + REQ-0122 lossless preserved, acceptance's "goldens
+  byte-identical" trivially so since content/ was restored). Clean path verified as a true
+  zero-write no-op (git status clean).
+
+## Acceptance mapping
+
+- auto-regenerate on level-affecting edit, clean deploy skips, marker tracks: predeploy script +
+  runbook step (hard point) -- VERIFIED above.
+- ci advisory flags dirty-but-uncalibrated checkout: [3.997/7] advisory -- in place, report-only.
+- deterministic/reproducible: byte-identical packs.json on re-emit of unchanged content --
+  VERIFIED (marker `date` wall-clock exempt, as specced).
