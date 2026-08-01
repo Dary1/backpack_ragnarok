@@ -42,6 +42,7 @@ module.exports = {
   SQUAD_SLOTS: core.SQUAD_SLOTS,
   DEFAULT_FORMATION_ID: core.DEFAULT_FORMATION_ID,
   DEFAULT_FAILURE_STEP: core.DEFAULT_FAILURE_STEP,
+  WIPE_STREAK_LIMIT: runs.WIPE_STREAK_LIMIT, // REQ-0357
   getScheduleContent: core.getScheduleContent,
   resolveRewardItemId: core.resolveRewardItemId,
   makeEngine: core.makeEngine,

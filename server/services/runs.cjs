@@ -17,6 +17,10 @@ const bioService = require('./bio.cjs'); // REQ-0060
 const notifications = require('./notifications.cjs'); // REQ-0327: troop-disband notification feed emission hook
 const pacing = require('./pacing.cjs'); // REQ-0240: presentation-pacing serving-layer decoration
 
+// REQ-0357: consecutive zero-progress wipes tolerated before the circuit
+// breaker refuses the next auto-start (troop -> disband, solo -> halt).
+const WIPE_STREAK_LIMIT = 3;
+
 // REQ-0293: the enemy level-scaling manifest, loaded ONCE at module load (the
 // same discipline as the sim content fixtures). v1 ships NEUTRAL -- every rule
 // is identity -- so this changes no output; it wires the effLevel-driven,
@@ -345,6 +349,14 @@ function settleRun(room, run, profileCanvas, itemDefsById) {
   room.status = 'open'; // no run currently in flight; auto-schedule (below) will flip it back once cooldown clears
   room.updatedAt = now;
 
+  // REQ-0357: wipe-streak accounting. A wipe with NO progress is the
+  // observable signature of a hopeless matchup (level-down self-correction
+  // floors at LEVEL_MIN and then loops forever); count consecutive
+  // occurrences here, break the loop in maybeAutoStartNextRun. Any run that
+  // made ANY progress -- or won -- resets the streak.
+  const zeroProgressWipe = run.result === 'wipe' && !(run.finalProgressPct > 0);
+  room.wipeStreak = zeroProgressWipe ? (room.wipeStreak || 0) + 1 : 0;
+
   const swapped = applyPendingSwapIfAny(room, profileCanvas, itemDefsById);
 
   // REQ-0060: fold this settled run's own replay/settlement data into
@@ -454,6 +466,23 @@ function maybeAutoStartNextRun(room, profileCanvas) {
   if (isTroopRoom(room) && room.disbandRequested) {
     return disbandTroopRoom(room, 'member_cancel');
   }
+  // REQ-0357: the wipe-streak circuit breaker. Three consecutive
+  // zero-progress wipes and the room does NOT get another run: a Troop
+  // disbands through the standard all-or-nothing teardown (seats returned,
+  // fleet freed, troop_disbanded notification with reason 'wipe_streak' to
+  // every member); a solo room cancels its lane and records a discrete
+  // haltEvent + a room_halted notification to its owner. The anomaly stops
+  // burning cycles AND announces itself -- the session can self-correct.
+  if ((room.wipeStreak || 0) >= WIPE_STREAK_LIMIT) {
+    if (isTroopRoom(room)) return disbandTroopRoom(room, 'wipe_streak');
+    const now = new Date().toISOString();
+    room.status = 'canceled';
+    room.haltEvent = { roomId: room.id, reason: 'wipe_streak', streak: room.wipeStreak, haltedAt: now };
+    room.updatedAt = now;
+    storage.writeRoom(room.id, room);
+    notifications.emitRoomHalted(room);
+    return room;
+  }
   // REQ-0058: a sealed-seed room is single-shot -- once its one run has
   // settled, never auto-start another (each participant runs a given
   // sealId exactly once). The FIRST run still auto-starts normally
@@ -547,6 +576,7 @@ function lastRunSummary(room) {
 }
 
 module.exports = {
+  WIPE_STREAK_LIMIT, // REQ-0357
   computeDurationSecs,
   runClock,
   visibleEvents,

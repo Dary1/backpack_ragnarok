@@ -1389,11 +1389,14 @@ export interface ApiDismantleLedgerResponse {
 export interface ApiNotification {
   id: number;
   ts: string;
-  kind: 'troop_disbanded';
+  /** REQ-0357: 'room_halted' = a solo room's wipe-streak circuit breaker
+   * canceled its lane (a troop's breaker rides 'troop_disbanded' with
+   * payload.reason 'wipe_streak'). */
+  kind: 'troop_disbanded' | 'room_halted';
   roomId: string;
   attackLv: number | null;
   seenAt: string | null;
-  payload: { reason?: string; disbandedAt?: string };
+  payload: { reason?: string; disbandedAt?: string; streak?: number; haltedAt?: string };
 }
 export interface ApiNotificationsResponse {
   ok: true;

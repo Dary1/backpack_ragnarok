@@ -1002,6 +1002,117 @@ module.exports.run = async function run(h) {
   });
 
   // ===================================================================
+  // REQ-0357: the wipe-streak circuit breaker. Three consecutive
+  // zero-progress wipes = observable evidence of a hopeless matchup; the
+  // room must STOP occupying its lane and ANNOUNCE why, instead of
+  // auto-restarting forever (the live 15-min wipe loop this REQ fixes).
+  // The sim's own wipe production is proven in sim/tests; here we drive
+  // the settlement machinery through the same summary-rewrite seam the
+  // REQ-0325 wipe test uses.
+  // ===================================================================
+  function rewriteRunAsWipe(runId, finalProgressPct) {
+    const run = scheduleStorage.readRun(runId);
+    run.result = 'wipe';
+    run.finalProgressPct = finalProgressPct;
+    run.rewards = [];
+    run.lrdstReward = 0;
+    run.levelAfter = 1;
+    run.settled = false;
+    scheduleStorage.writeRun(run.id, run);
+    forceRunElapsed(run.id);
+  }
+  function clearCooldown(roomId) {
+    const room = scheduleStorage.readRoom(roomId);
+    room.cooldownUntil = new Date(Date.now() - 1000).toISOString();
+    scheduleStorage.writeRoom(room.id, room);
+  }
+
+  await AT('REQ-0357: a troop that wipes at 0% progress three runs straight is DISBANDED by the breaker (seats returned, reason wipe_streak, every member notified)', async () => {
+    const owners = ['R7WsA', 'R7WsB', 'R7WsC', 'R7WsD'].map((n) => playersFixture.createPlayer(n, []));
+    for (const pl of owners) scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const { id } = await openAndFillTroop(owners, 1);
+    for (let cycle = 1; cycle <= 3; cycle++) {
+      const roomNow = scheduleStorage.readRoom(id);
+      assert.ok(roomNow.lastRunId, 'cycle ' + cycle + ': a run is in flight');
+      rewriteRunAsWipe(roomNow.lastRunId, 0);
+      await scheduleReq('GET', '/api/schedule/troops/' + id, owners[0].token); // settle
+      const settled = scheduleStorage.readRoom(id);
+      if (cycle < 3) {
+        assert.strictEqual(settled.wipeStreak, cycle, 'streak counts consecutive zero-progress wipes');
+        assert.strictEqual(settled.state, 'active', 'below the limit the troop keeps cycling');
+        clearCooldown(id);
+        const prevRun = settled.lastRunId;
+        await scheduleReq('GET', '/api/schedule/troops/' + id, owners[0].token); // auto-start next
+        assert.notStrictEqual(scheduleStorage.readRoom(id).lastRunId, prevRun, 'cycle ' + cycle + ': next run auto-started');
+      } else {
+        assert.strictEqual(settled.state, 'canceled', 'the 3rd zero-progress wipe trips the breaker: no 4th run, troop disbanded');
+        assert.ok(settled.slots.every((sl) => sl === null), 'every seat returned');
+        assert.strictEqual(settled.disbandEvent.reason, 'wipe_streak', 'the disband records WHY');
+      }
+    }
+    for (const pl of owners) {
+      const feed = await scheduleReq('GET', '/api/notifications', pl.token);
+      const mine = feed.body.notifications.filter((n) => n.kind === 'troop_disbanded' && n.roomId === id);
+      assert.strictEqual(mine.length, 1, 'exactly one breaker notification for ' + pl.playerId);
+      assert.strictEqual(mine[0].payload.reason, 'wipe_streak', 'the notification carries the breaker reason');
+    }
+    scheduleStorage.deleteRoom(id);
+  });
+
+  await AT('REQ-0357: a SOLO room trips the same breaker -- canceled with a discrete haltEvent + one room_halted notification to the owner', async () => {
+    const owner = playersFixture.createPlayer('R7SoloW', []);
+    scheduleStorage.writeProfile(owner.playerId, makeTestCanvas());
+    const created = await scheduleReq('POST', '/api/schedule/rooms', owner.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, owner.token, { squadIndex: i });
+    await scheduleReq('GET', '/api/schedule/rooms/' + roomId, owner.token); // start run #1
+    for (let cycle = 1; cycle <= 3; cycle++) {
+      const roomNow = scheduleStorage.readRoom(roomId);
+      assert.ok(roomNow.lastRunId, 'cycle ' + cycle + ': a run is in flight');
+      rewriteRunAsWipe(roomNow.lastRunId, 0);
+      await scheduleReq('GET', '/api/schedule/rooms/' + roomId, owner.token); // settle
+      if (cycle < 3) {
+        clearCooldown(roomId);
+        await scheduleReq('GET', '/api/schedule/rooms/' + roomId, owner.token); // auto-start next
+      }
+    }
+    const halted = scheduleStorage.readRoom(roomId);
+    assert.strictEqual(halted.status, 'canceled', 'the solo lane stops');
+    assert.strictEqual(halted.haltEvent.reason, 'wipe_streak', 'the halt records WHY');
+    assert.strictEqual(halted.haltEvent.streak, 3, 'the halt records the streak');
+    const feed = await scheduleReq('GET', '/api/notifications', owner.token);
+    const mine = feed.body.notifications.filter((n) => n.kind === 'room_halted' && n.roomId === roomId);
+    assert.strictEqual(mine.length, 1, 'exactly one room_halted notification');
+    assert.strictEqual(mine[0].payload.reason, 'wipe_streak');
+    scheduleStorage.deleteRoom(roomId);
+  });
+
+  await AT('REQ-0357: ANY progress (or a victory) RESETS the streak -- a struggling-but-moving room is never broken', async () => {
+    const owner = playersFixture.createPlayer('R7SoloR', []);
+    scheduleStorage.writeProfile(owner.playerId, makeTestCanvas());
+    const created = await scheduleReq('POST', '/api/schedule/rooms', owner.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, owner.token, { squadIndex: i });
+    await scheduleReq('GET', '/api/schedule/rooms/' + roomId, owner.token);
+    // two zero-progress wipes...
+    for (let cycle = 1; cycle <= 2; cycle++) {
+      rewriteRunAsWipe(scheduleStorage.readRoom(roomId).lastRunId, 0);
+      await scheduleReq('GET', '/api/schedule/rooms/' + roomId, owner.token);
+      clearCooldown(roomId);
+      await scheduleReq('GET', '/api/schedule/rooms/' + roomId, owner.token);
+    }
+    assert.strictEqual(scheduleStorage.readRoom(roomId).wipeStreak, 2, 'two zero-progress wipes counted');
+    // ...then a wipe WITH progress: streak resets, room keeps cycling.
+    rewriteRunAsWipe(scheduleStorage.readRoom(roomId).lastRunId, 40);
+    await scheduleReq('GET', '/api/schedule/rooms/' + roomId, owner.token);
+    const after = scheduleStorage.readRoom(roomId);
+    assert.strictEqual(after.wipeStreak, 0, 'progress resets the streak (a wipe at 40% is a fight, not a pathology)');
+    assert.notStrictEqual(after.status, 'canceled', 'the room keeps its lane');
+    for (const item of schedule.listWarehouse(owner.playerId)) scheduleStorage.deleteWarehouseItem(owner.playerId, item.itemUid);
+    scheduleStorage.deleteRoom(roomId);
+  });
+
+  // ===================================================================
   // REQ-0327: the troop-disband NOTIFICATION FEED. ONE mechanism a human
   // device and a bot program consume IDENTICALLY (GET /api/notifications,
   // auth = X-Auth-Token). disbandTroopRoom (REQ-0326) appends ONE

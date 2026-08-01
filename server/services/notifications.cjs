@@ -115,4 +115,23 @@ function emitTroopDisbanded(room) {
   return out;
 }
 
-module.exports = { MAX_ENTRIES, append, list, ack, emitTroopDisbanded };
+// emitRoomHalted(room) -- REQ-0357. Reads the discrete room.haltEvent
+// ({ roomId, reason, streak, haltedAt }) a solo room records when the
+// wipe-streak circuit breaker cancels its lane, and appends ONE
+// 'room_halted' notification to the OWNER's feed. Same best-effort
+// discipline as emitTroopDisbanded: a feed write must never abort the halt.
+function emitRoomHalted(room) {
+  const ev = room && room.haltEvent;
+  if (!ev || room.ownerId == null) return [];
+  try {
+    return [append(room.ownerId, {
+      kind: 'room_halted',
+      roomId: ev.roomId,
+      attackLv: room.level != null ? room.level : null,
+      ts: ev.haltedAt,
+      payload: { reason: ev.reason || 'wipe_streak', streak: ev.streak, haltedAt: ev.haltedAt },
+    })];
+  } catch (e) { return []; }
+}
+
+module.exports = { MAX_ENTRIES, append, list, ack, emitTroopDisbanded, emitRoomHalted };
