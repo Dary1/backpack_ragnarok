@@ -115,6 +115,50 @@ async function main() {
     // art-less def still composites here. Only the BOARD suppresses it.
     ok(comp.compositeSkin([[2, 2]], derivedNoArt, '#14181f').rgba.length === 3 * 3 * 48 * 48 * 4, // DEFAULT_PARAMS: cellPx 48, margin 1
       'an art-less derived def still composites OFFLINE at full size -- only the board suppresses it');
+    // REQ-0350 -- THE CACHE-KEY GUARD. bpSkinTexture.textureFor() keys its
+    // texture cache on the cell set NORMALISED to its own origin, so every
+    // translation of one shape shares a single entry. That is only sound while
+    // the compositor is translation-INVARIANT, and while r0/c0 really are the
+    // cell set's own mins (textureFor computes them itself, to serve both the
+    // key and the sprite's board placement). Neither property is stated
+    // anywhere in composite.ts's signature -- they are consequences of how it
+    // happens to derive its frame -- so a future edit could quietly break the
+    // cache into serving a correct-looking texture for the wrong shape. These
+    // two assertions are what make that edit fail here instead.
+    for (const [label, cells, shift] of [
+      ['1x1', [[2, 2]], [4, 3]],
+      ['1x2', [[2, 2], [2, 3]], [1, 5]],
+      ['L-tromino', [[2, 2], [2, 3], [3, 2]], [3, 1]],
+      ['holed', [[2, 2], [2, 3], [2, 4], [3, 2], [3, 4], [4, 2], [4, 3], [4, 4]], [2, 2]],
+    ]) {
+      const moved = cells.map(([r, c]) => [r + shift[0], c + shift[1]]);
+      const at = comp.compositeSkin(cells, defs['devornate'], '#14181f');
+      const bt = comp.compositeSkin(moved, defs['devornate'], '#14181f');
+      ok(at.width === bt.width && at.height === bt.height,
+        `translation-invariant extent: ${label}`);
+      ok(Buffer.compare(Buffer.from(at.rgba), Buffer.from(bt.rgba)) === 0,
+        `translation-invariant pixels: ${label} (this is what lets textureFor share one cache entry across positions)`);
+      ok(Buffer.compare(Buffer.from(at.layer), Buffer.from(bt.layer)) === 0,
+        `translation-invariant layer map: ${label}`);
+      // ...and the ONLY thing that moves is the origin, which is exactly what
+      // textureFor returns per call rather than reading off the cached entry.
+      ok(bt.r0 === at.r0 + shift[0] && bt.c0 === at.c0 + shift[1],
+        `origin tracks the translation: ${label}`);
+      ok(at.r0 === Math.min(...cells.map((x) => x[0])) && at.c0 === Math.min(...cells.map((x) => x[1])),
+        `r0/c0 ARE the cell set's own mins: ${label} (textureFor recomputes them and must agree)`);
+    }
+    // A different SHAPE with the same cell COUNT must not collide, or the
+    // normalisation would be over-eager rather than merely position-blind.
+    const iTrom = comp.compositeSkin([[2, 2], [2, 3], [2, 4]], defs['devornate'], '#14181f');
+    const lTrom = comp.compositeSkin([[2, 2], [2, 3], [3, 2]], defs['devornate'], '#14181f');
+    ok(iTrom.width !== lTrom.width || iTrom.height !== lTrom.height ||
+       Buffer.compare(Buffer.from(iTrom.rgba), Buffer.from(lTrom.rgba)) !== 0,
+      'same cell count, different shape -> different composite (normalisation is position-blind, not shape-blind)');
+    // The key builder itself, mirrored here in one line so the canonical form is
+    // pinned as DATA: two translations agree, two shapes do not.
+    const keyOf = (cs) => { const r0 = Math.min(...cs.map((x) => x[0])), c0 = Math.min(...cs.map((x) => x[1])); return cs.map((x) => (x[0] - r0) + ',' + (x[1] - c0)).sort().join(';'); };
+    eq(keyOf([[2, 2], [2, 3], [3, 2]]), keyOf([[5, 8], [5, 9], [6, 8]]), 'normalised key: translations collapse');
+    ok(keyOf([[2, 2], [2, 3], [2, 4]]) !== keyOf([[2, 2], [2, 3], [3, 2]]), 'normalised key: distinct shapes stay distinct');
   } finally { await server.close(); }
   if (fails) { console.error(`\n${fails} assertion(s) FAILED`); process.exit(1); }
   console.log('\ncheck_bpskin: ALL GREEN');
