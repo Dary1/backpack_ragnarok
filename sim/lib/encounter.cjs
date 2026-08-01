@@ -14,7 +14,7 @@ const { freshStatusBag, tickStatuses, foldBattleStartStatusVerbs, applyStatus, c
 const { registerHpBelowWatchers, foldFlatBonusInPlace } = require('./hpbelow.cjs'); // REQ-0121
 const { FIELD_ROWS, FIELD_COLS } = require('./field.cjs');
 const { maskLabel } = require('./replay.cjs');
-const { effectStreamName, makeBPActor, makeEnemyActor, fireSkillRay, defaultAttackProfileFor, applyReactiveVerbToTarget, selectHealAllyTarget } = require('./skills.cjs');
+const { effectStreamName, makeBPActor, makeEnemyActor, fireSkillRay, defaultAttackProfileFor, applyReactiveVerbToTarget, selectHealAllyTarget, targetIdent } = require('./skills.cjs'); // REQ-0355: targetIdent
 const { compileEnemyPack } = require('./packs.cjs');
 const { effLevelForPack } = require('./level_scale.cjs'); // REQ-0297: per-pack effLevel = attackLv - pack.powerLevel (+ boss bonus)
 const { createEncounterChargeManager } = require('./unit_charge_encounter.cjs'); // REQ-0200
@@ -1020,9 +1020,10 @@ function fireEnemyInstanceSlot(inst, cd, ctx) {
 
 function tickAndEmit(actor, t, events, onHeal) {
   const ticks = tickStatuses(actor.statusBag, TUNABLES.STATUS_TICK_PERIOD_SECS);
+  const ident = targetIdent(actor) || {}; // REQ-0355: slot/bpIdx on player targets (status ticks are the main killer to attribute)
   for (const tk of ticks) {
-    if (tk.kind === 'damage') { actor.applyDamage(tk.amount); events.push({ t, ev: 'status_tick', dst: maskLabel(actor.ref), status: tk.name, amount: tk.amount, hp_after: actor.hp() }); }
-    else if (tk.kind === 'heal') { actor.heal(tk.amount); events.push({ t, ev: 'status_tick', dst: maskLabel(actor.ref), status: tk.name, amount: tk.amount, hp_after: actor.hp() }); if (onHeal) onHeal(actor.id); } // REQ-0200: on_heal_done
+    if (tk.kind === 'damage') { actor.applyDamage(tk.amount); events.push(Object.assign({ t, ev: 'status_tick', dst: maskLabel(actor.ref), status: tk.name, amount: tk.amount, hp_after: actor.hp() }, ident)); }
+    else if (tk.kind === 'heal') { actor.heal(tk.amount); events.push(Object.assign({ t, ev: 'status_tick', dst: maskLabel(actor.ref), status: tk.name, amount: tk.amount, hp_after: actor.hp() }, ident)); if (onHeal) onHeal(actor.id); } // REQ-0200: on_heal_done
   }
 }
 

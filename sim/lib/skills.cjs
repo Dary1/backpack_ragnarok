@@ -32,6 +32,23 @@ function bonusVsStatusAmount(targetBag, bonusList, rng) {
   return bonus;
 }
 
+// REQ-0355: additive seat identity for PLAYER-field targets. dst on a
+// player-target event is a CONTENT id (three seats can all field
+// bp_starter_guard), so hits/status ticks were unattributable mid-run --
+// the client dock could only show full bars until run_end. Returns
+// { slot, bpIdx? } for a squad-tagged player BP actor, null otherwise
+// (enemy targets / direct runEncounter callers that never tagged
+// squadSlot); callers Object.assign it so untagged events are UNCHANGED.
+const SLOT_IDX_0355 = { unit1: 0, unit2: 1, unit3: 2, unit4: 3 };
+function targetIdent(actor) {
+  if (!actor || actor.kind !== 'bp' || !actor.ref) return null;
+  const si = SLOT_IDX_0355[actor.ref.squadSlot];
+  if (si == null) return null;
+  const out = { slot: si };
+  if (typeof actor.ref.bpIdx === 'number') out.bpIdx = actor.ref.bpIdx;
+  return out;
+}
+
 // Actor wrapper: unifies BP occupants (player field) and enemy occupants
 // (enemy field) behind one shape so ray-hit / status / HP logic doesn't
 // need to branch on kind everywhere. Built once per encounter from the
@@ -99,7 +116,7 @@ function reduceIncoming(amount, actor) {
 function dealHitOnField(actor, verbEff, bounceMult, rng, mode, events, attackerBonusVsStatus, attackerActor, attackerOutgoingBuffPct) {
   if (mode === 'detection') {
     // "a hit IS the find, damage irrelevant" -- no HP change, just discovery.
-    return { amount: 0, hpAfter: actor.hp(), dstLabel: maskLabel(actor.ref), isDiscovery: true };
+    return { amount: 0, hpAfter: actor.hp(), dstLabel: maskLabel(actor.ref), isDiscovery: true, ident: targetIdent(actor) };
   }
   const verb = verbEff.verb;
   let amount = 0;
@@ -164,14 +181,14 @@ function dealHitOnField(actor, verbEff, bounceMult, rng, mode, events, attackerB
   if (verb.t === 'apply_status' || verb.t === 'add_on_hit_status') {
     const n = rng.range(verb.n[0], verb.n[1]);
     applyStatus(actor.statusBag, verb.status, n);
-    events.push({ ev: 'apply_status', dst: maskLabel(actor.ref), status: verb.status, n });
+    events.push(Object.assign({ ev: 'apply_status', dst: maskLabel(actor.ref), status: verb.status, n }, targetIdent(actor) || {})); // REQ-0355: + slot/bpIdx on player targets
   }
   // Spikes: consumed per hit when the ACTOR (defender) is hit (OQ9 LOCKED).
   const spikesReflect = consumeSpikes(actor.statusBag);
   if (spikesReflect > 0) {
     events.push({ ev: 'reflect_damage', dst: 'attacker', amount: spikesReflect });
   }
-  return { amount, hpAfter: actor.hp(), dstLabel: maskLabel(actor.ref), isDiscovery: false };
+  return { amount, hpAfter: actor.hp(), dstLabel: maskLabel(actor.ref), isDiscovery: false, ident: targetIdent(actor) };
 }
 
 // fireSkillRay: fires ONE ray for one skill-effect against the opposing
@@ -225,7 +242,8 @@ function fireSkillRay(opts) {
         if (!a.alive) continue;
         const r = dealHitOnField(a, verbEff, bmult, dmgStream, mode, events, attacker.bonusVsStatus, attacker.selfActor, attacker.outgoingBuffPct);
         if (r.amount > 0) landedHits.push({ actor: a, amount: r.amount });
-        hits.push({ dst: r.dstLabel, amount: r.amount });
+        // REQ-0355: hp_after + seat identity so all-field strikes are attributable too.
+        hits.push(Object.assign({ dst: r.dstLabel, amount: r.amount, hp_after: r.hpAfter }, r.ident || {}));
       }
       return hits;
     }
@@ -285,7 +303,8 @@ function fireSkillRay(opts) {
         applyStatus(a.statusBag, verbEff.verb.status, n);
       }
       if (dmgAmount > 0) landedHits.push({ actor: a, amount: dmgAmount });
-      hits.push({ dst: maskLabel(a.ref), amount: dmgAmount });
+      // REQ-0355: hp_after + seat identity so splash hits are attributable too.
+      hits.push(Object.assign({ dst: maskLabel(a.ref), amount: dmgAmount, hp_after: a.hp() }, targetIdent(a) || {}));
     }
     return hits;
   }
@@ -393,6 +412,7 @@ function selectHealAllyTarget(casterActor, allyActors) {
 }
 
 module.exports = {
+  targetIdent, // REQ-0355
   effectStreamName,
   selectHealAllyTarget, // REQ-0203
   makeBPActor,

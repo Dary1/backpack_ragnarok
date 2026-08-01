@@ -93,7 +93,9 @@ function runDungeon(opts) {
   const compiled = squadSlots.map((slot, i) => compileSquadSnapshot(squadSnapshots[i], itemDefsById, formationId, slot, siDefsById, unitDefsById, connShapes));
   // REQ-0095: tag squad membership onto each BP/PO (lost by the flatMap) so squad-scoped
   // reactive triggers (OnSquadHit/OnSquadBeenHit) can resolve owner -> squad at runtime.
-  compiled.forEach(c => { for (const b of c.bps) b.squadSlot = c.squadSlot; for (const p of c.pos) p.squadSlot = c.squadSlot; for (const x of (c.sis || [])) x.squadSlot = c.squadSlot; });
+  // REQ-0355: bpIdx = index within the squad's own bps -- with squadSlot this
+  // uniquely identifies a BP instance across seats that field the same content id.
+  compiled.forEach(c => { c.bps.forEach((b, bi) => { b.squadSlot = c.squadSlot; b.bpIdx = bi; }); for (const p of c.pos) p.squadSlot = c.squadSlot; for (const x of (c.sis || [])) x.squadSlot = c.squadSlot; });
   const allBps = compiled.flatMap(c => c.bps);
   const allPos = compiled.flatMap(c => c.pos);
   const allSis = compiled.flatMap(c => c.sis || []);
