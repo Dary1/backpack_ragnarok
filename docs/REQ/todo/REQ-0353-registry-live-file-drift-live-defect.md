@@ -140,6 +140,19 @@ monster_pack's, or the field still never serves)? The powerLevel precedent
 argues derived; either way parity-green must coincide with the value actually
 reaching the sim, not precede it.
 
+## 8c. Rulings (user, 2026-08-01)
+
+- **Section 8b — `baseDifficulty` is AUTHORED.** User ruling, verbatim intent:
+  baseDifficulty is a FIXED value the dungeon owns; monster_pack.powerLevel is
+  the investigated/derived one; the pack level at spawn = baseDifficulty −
+  powerLevel. So baseDifficulty re-ports file→registry like any authored field
+  (no dungeon-overlay MERGE; the powerLevel precedent does NOT extend to it).
+- **Section 6 — choice (a).** The parity tool runs inside `tools/release.sh`
+  against the live DB; DRIFT fails the release, and a missing `server/.env`
+  also fails it (a gate skippable by absent credentials is the not-run gate
+  this REQ exists to fix). (b) scheduled runs: not added; can be added later
+  if drift that bypasses the deploy path ever appears.
+
 ## 9. Status log
 
 - 2026-07-31 — reserved and specced into `todo/`. Filed unprompted: it is a live
