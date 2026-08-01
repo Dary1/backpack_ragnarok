@@ -1,6 +1,6 @@
 # REQ-0351 — Collapse `invalidateServedContent()`'s double refresh to one
 
-**Status:** Todo (cleared to implement; one non-blocking choice recorded in §5)
+**Status:** Built (all gates green; awaiting merge/deploy/acceptance)
 **Reserved:** 2026-07-31
 **Slug:** invalidate-served-content-collapse
 **Origin:** REQ-0348 §9 "Follow-ups this REQ deliberately did not take"
@@ -122,3 +122,36 @@ otherwise: same snapshot, same await, same determinism.
 - 2026-07-31 — reserved and specced straight into `todo/` at the user's request,
   from REQ-0348 §9. Not started. Do not implement before REQ-0348 is merged:
   on `master` as it stands today the two calls are still genuinely different.
+
+## 10. Implementation record (2026-08-01)
+
+- Branch `req-0351-invalidate-served-content-collapse`, code commit **fc0bb166**
+  (tree `d4cd2a42` == the ci-receipt tree).
+- §5 choice taken: **(a)** — `lib/content.cjs` keeps its delegating
+  `refreshRegistryData` facade; `content_serving_test.cjs` untouched.
+- Files changed: `server/routes/content.cjs` (collapse + contract comment
+  rewritten per §4; added `_invalidateServedContent` test export alongside the
+  existing `_normalizeProvenance`-style exports) and
+  `server/tests/registry_overlay_test.cjs` (new case (D), the §7.5 gate).
+
+### Gate results
+
+1. `node tests/api_test.cjs` (files) — 229 tests, 0 failed, 1948 assertions.
+2. `STORAGE_BACKEND=pg node tests/api_test.cjs` — 229 tests, 0 failed,
+   1950 assertions.
+3. `node tests/content_serving_test.cjs` (pg) — 9 pass / 0 fail.
+4. `node tests/schedule_serving_test.cjs` (pg) — 13 pass / 0 fail.
+5. New §7.5 assertion — green; **verified red against the pre-patch code**
+   (restored the old Promise.all with only the test export added: all 11 kinds
+   asked x2, case (D) FAILs; with the collapse: x1, PASS).
+6. `tools/ci.sh` full run — CI GREEN, 327.8s, receipt written for tree
+   `d4cd2a42`.
+
+Result matches §8: registry asks per kind per content mutation 2 → 1 (11 kinds
+live rather than the spec-time 10 — `unit_skin` joined the list since), same
+await, same determinism contract.
+
+## 9′. Status log (cont.)
+
+- 2026-08-01 — implemented, all §7 gates green, todo → built (code commit
+  fc0bb166). Not merged, not deployed.
