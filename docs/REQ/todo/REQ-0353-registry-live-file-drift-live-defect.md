@@ -1,7 +1,6 @@
 # REQ-0353 — LIVE DEFECT: 44 monsters are missing their REQ-0299 flavor skills in-game
 
-**Status:** Todo (cleared; this is a defect report with a measured symptom, not a
-design question)
+**Status:** Built (all gates green; DB reconciliation applied to live; release.sh gate awaits merge)
 **Reserved:** 2026-07-31
 **Slug:** registry-live-file-drift-live-defect
 **Origin:** found while specifying REQ-0352; the standing drift gate was run and
@@ -152,6 +151,53 @@ reaching the sim, not precede it.
   also fails it (a gate skippable by absent credentials is the not-run gate
   this REQ exists to fix). (b) scheduled runs: not added; can be added later
   if drift that bypasses the deploy path ever appears.
+
+## 10. Build record (2026-08-01)
+
+Branch `req-0353-registry-live-file-drift-live-defect`, stacked on
+`req-0352-monster-pack-serving-reconcile` (its COVERED completion is what makes
+the dungeon drift measurable; merge order is therefore 0348 -> 0352 -> 0353).
+Commits: 12f7dfe2 (`--note` for reconcile provenance), 8fb53260 (release.sh
+drift gate, section 6a), f7e949d0 (rulings recorded).
+
+**What was applied to the LIVE DB** (via the existing tools; no schema change):
+1. INSERT-ONLY backfill pass -> the 64 missing `skill_def` content_defs
+   created + adopted (machine checks: 63 schema_vocab ok; the 1 FAIL is
+   `e2e_faildef`, the deliberately-invalid e2e fixture -- pre-existing posture,
+   backfill never blocks on live-by-definition content).
+2. `--reconcile-kind monster_def` -> 44 re-ported v1->v2 + adopted (field:
+   skills), checks PASS.
+3. `--reconcile-kind gacha_pack` -> `arsenal` v1->v2 (field: pool); 3 match;
+   4 foreign defs skipped (parity-MATCH, admin-created, correctly untouched).
+4. `--reconcile-kind dungeon` -> 3 re-ported v1->v2 (field: baseDifficulty),
+   per the 8c ruling (authored).
+
+**Gates (section 7):**
+1. Parity vs live: before MATCH=301 DRIFT=48 MISSING=64; after
+   **MATCH=413 DRIFT=0 MISSING-IN-REGISTRY=0 UNADOPTED=0** (PARITY OK).
+2. Served probe (post `refreshRegistryData()`): `frost_gnoll` serves
+   `["gnoll_claw","gnoll_snap"]`; troll/medusa/behemoth serve
+   `troll_regeneration` / `medusa_stone_gaze` / `behemoth_last_stand`; all
+   64 flavor `skill_def`s resolve in `skillDefsById`; dungeons serve
+   baseDifficulty 1 / 15 / 16. (Spec gate 2 named `lich_phylactery_chill`
+   informally; the real lich flavor skill `lich_undying_will` serves.)
+3. Sim replay goldens: **unchanged** (12 cases OK) -- the section-7 prediction
+   that they would move was wrong in a good way: the sim reads the FILES, which
+   have carried the flavor skills since REQ-0299, so the goldens (and the
+   REQ-0299/0303 powerLevel calibration) already assumed this roster. The fix
+   moves the SERVED game onto what the goldens already were. This verifies the
+   section-8 balance claim rather than asserting it; no rebaseline needed.
+4. `STORAGE_BACKEND=pg api_test`: 229 passed / 0 failed. Serving trio
+   (content_serving 9, schedule_serving 13, registry_overlay) green on pg.
+5. Full `tools/ci.sh` (CI_SCOPE=both): **CI GREEN**, 337 s, receipt written
+   (tree 673d4861).
+
+**Live-behaviour note:** monster_def/dungeon are wired registry kinds, so the
+DB re-port is live at the next registry refresh/restart -- 44 monsters gain
+their flavor skill and the 3 dungeons their calibrated baseDifficulty without
+a code deploy. That IS the defect fix (gate 3 shows play now matches what the
+balance work already assumed). The release.sh gate (8fb53260) ships with the
+normal merge train.
 
 ## 9. Status log
 
