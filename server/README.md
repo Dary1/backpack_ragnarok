@@ -14,7 +14,7 @@ on `127.0.0.1:8802` only.
   combined schedule module into schedule/warehouse/workshop, dispatched
   consecutively in its old slot, with the shared caller-resolution
   preamble (token -> resolveAuth -> 401 + dev-fallback flag) in
-  `lib/route_auth.cjs`; content payload/cache, HTTP plumbing, event
+  `lib/route_kit.cjs` (REQ-0349; replaced `lib/route_auth.cjs`); content payload/cache, HTTP plumbing, event
   humanizer and HOST/PORT/VERSION in `lib/`.
 - `storage.cjs` — THE persistence chokepoint (design rule 4). REQ-0145a
   (sb): now a pure FACADE re-exporting `storage/{lib,profiles,rooms,

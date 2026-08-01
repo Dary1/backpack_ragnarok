@@ -16,6 +16,12 @@
 // POST .../variants/<no>/review. The user adopts exactly one variant; the
 // adopted variant is served + exported (server/services/content_export.cjs).
 const { sendJSON, readBody, getAuthToken } = require('../lib/http_util.cjs');
+// REQ-0349: ONLY the kit's 405 guard here, for the same three reasons as
+// routes/art.cjs (promise-based body reader for async handlers, an httpForCode
+// table that is a superset of the kit's, and an item_admin ROLE gate rather than
+// caller resolution). Like art.cjs this module has no service layer either
+// (27 direct storage.* calls); that is its own REQ.
+const { methodGuard } = require('../lib/route_kit.cjs');
 const admin = require('../admin.cjs');
 const storage = require('../storage.cjs');
 const { runChecks } = require('../services/content_checks.cjs');
@@ -420,7 +426,7 @@ function tryContentRoutes(req, res, url, p) {
     if (!requireAdmin(req, res)) return true;
     if (req.method === 'GET') { run(res, hListDefs(req, res)); return true; }
     if (req.method === 'POST') { run(res, hCreateDef(req, res)); return true; }
-    sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return true;
+    methodGuard(req, res, ['GET', 'POST']); return true;
   }
   if ((m = RE_COMMISSION.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hCommission(req, res, decodeURIComponent(m[1]))); return true; }
   if ((m = RE_REVIEW.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hReview(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
@@ -433,7 +439,7 @@ function tryContentRoutes(req, res, url, p) {
     if (!requireAdmin(req, res)) return true;
     if (req.method === 'GET') { run(res, hGetDef(req, res, decodeURIComponent(m[1]))); return true; }
     if (req.method === 'PATCH') { run(res, hPatchDef(req, res, decodeURIComponent(m[1]))); return true; }
-    sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return true;
+    methodGuard(req, res, ['GET', 'PATCH']); return true;
   }
   // public serving (no auth)
   if ((m = RE_PUB_META.exec(p)) && req.method === 'GET') { run(res, hServeMeta(req, res, decodeURIComponent(m[1]))); return true; }

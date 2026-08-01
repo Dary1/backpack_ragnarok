@@ -49,7 +49,12 @@
 // REQUIRED, full-ledger surface for the Workshop panel).
 const { sendJSON } = require('../lib/http_util.cjs'); // REQ-0199: getAuthToken dropped (JWT-first resolver reads the req itself)
 const { getContent } = require('../lib/content.cjs');
-const admin = require('../admin.cjs');
+// REQ-0349: caller resolution comes from lib/route_kit.cjs. This family takes
+// the OPPORTUNISTIC wrapper (resolveCallerOptional), not the 401-sending one --
+// see tryReadDismantleInfo below. The wrong-method reply here stays a 404
+// 'not found' (not the kit's 405) because that is this family's pre-REQ-0349
+// behaviour and REQ-0349 changes no status codes.
+const { resolveCallerOptional } = require('../lib/route_kit.cjs');
 const storage = require('../storage.cjs');
 const dismantle = require('../dismantle.cjs');
 
@@ -77,10 +82,12 @@ function tryReadDismantleInfo(req, kind, id) {
   // X-Auth-Token path + dev_mode fallback) so a JWT-only caller gets
   // THEIR OWN dismantle overlay -- previously the X-Auth-Token-ONLY
   // resolver resolved a JWT caller to the dev fallback (the wrong overlay).
-  // Still opportunistic: an unresolvable caller yields undefined, never a 401.
-  const resolved = admin.resolveAuthFromRequest(req);
-  if (!resolved.ok) return undefined;
-  const doc = storage.readDismantleLedger(resolved.player.playerId);
+  // Still opportunistic: an unresolvable caller yields undefined, never a 401 --
+  // REQ-0349 expresses that with the kit's resolveCallerOptional, which shares
+  // the resolution with resolveCallerOr401 but never touches `res`.
+  const ctx = resolveCallerOptional(req);
+  if (!ctx) return undefined;
+  const doc = storage.readDismantleLedger(ctx.callerId);
   const count = (doc && doc.counts && doc.counts[id]) || 0;
   return { count, suppression: dismantle.suppressionFloor(count) };
 }

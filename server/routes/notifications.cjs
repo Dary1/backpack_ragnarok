@@ -10,31 +10,30 @@
 // adapter, mirroring server/routes/bio.cjs's shape.
 //   GET  /api/notifications?since=<id>   -> { ok, notifications:[...], cursor }
 //   POST /api/notifications/ack {ids:[]} -> { ok, acked }
-const { sendJSON, readBody } = require('../lib/http_util.cjs');
-const admin = require('../admin.cjs');
+// REQ-0349: the request preamble (caller resolution, the 405 guard, the JSON
+// body read) comes from lib/route_kit.cjs instead of being open-coded here.
+const { sendJSON } = require('../lib/http_util.cjs');
+const { resolveCallerOr401, methodGuard, withJsonBody } = require('../lib/route_kit.cjs');
 const notifications = require('../services/notifications.cjs');
 
 function tryNotificationsRoutes(req, res, url, p) {
   if (p === '/api/notifications') {
-    if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
-    const resolved = admin.resolveAuthFromRequest(req);
-    if (!resolved.ok) { sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason }); return; }
+    if (!methodGuard(req, res, 'GET')) return;
+    const ctx = resolveCallerOr401(req, res);
+    if (!ctx) return;
     const sinceRaw = url.searchParams.get('since');
     const since = sinceRaw != null && sinceRaw !== '' ? Number(sinceRaw) : null;
-    const { notifications: entries, cursor } = notifications.list(resolved.player.playerId, since);
+    const { notifications: entries, cursor } = notifications.list(ctx.callerId, since);
     sendJSON(res, 200, { ok: true, notifications: entries, cursor });
     return;
   }
   if (p === '/api/notifications/ack') {
-    if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
-    const resolved = admin.resolveAuthFromRequest(req);
-    if (!resolved.ok) { sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason }); return; }
-    readBody(req, (err, bodyStr) => {
-      if (err) { sendJSON(res, 400, { ok: false, error: 'bad body' }); return; }
-      let body;
-      try { body = JSON.parse(bodyStr || '{}'); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid json' }); return; }
+    if (!methodGuard(req, res, 'POST')) return;
+    const ctx = resolveCallerOr401(req, res);
+    if (!ctx) return;
+    withJsonBody(req, res, {}, (body) => {
       const ids = Array.isArray(body.ids) ? body.ids : [];
-      const acked = notifications.ack(resolved.player.playerId, ids);
+      const acked = notifications.ack(ctx.callerId, ids);
       sendJSON(res, 200, { ok: true, acked });
     });
     return;
