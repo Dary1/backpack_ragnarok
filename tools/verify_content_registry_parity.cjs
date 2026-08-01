@@ -144,6 +144,15 @@ async function classifyAll(storage, byName) {
   return rows;
 }
 
+// REQ-0354 section 6: the served set == the passing set. Under --strict,
+// MISSING-IN-REGISTRY and UNADOPTED also block (a served entity with no
+// passing adopted variant IS a set mismatch), not just DRIFT. This is the
+// enforcement half of REQ-0354; the per-variant serving tag is the
+// visibility half. Ship both or neither (section 7 ruling 4).
+function strictOk(counts) {
+  return counts.DRIFT === 0 && counts['MISSING-IN-REGISTRY'] === 0 && counts.UNADOPTED === 0;
+}
+
 function summarize(rows) {
   const counts = { MATCH: 0, DRIFT: 0, 'MISSING-IN-REGISTRY': 0, UNADOPTED: 0 };
   for (const r of rows) counts[r.status] = (counts[r.status] || 0) + 1;
@@ -152,6 +161,7 @@ function summarize(rows) {
 
 async function main() {
   const asJson = process.argv.includes('--json');
+  const strict = process.argv.includes('--strict'); // REQ-0354 section 6
   if (process.env.STORAGE_BACKEND !== 'pg' || !process.env.DATABASE_URL) {
     console.error('verify_content_registry_parity: STORAGE_BACKEND=pg + DATABASE_URL required (source server/.env)');
     process.exit(2);
@@ -165,7 +175,7 @@ async function main() {
     try { await storage.closeContentPool(); } catch (e) { /* best effort */ }
   }
   if (asJson) {
-    console.log(JSON.stringify({ ok: counts.DRIFT === 0, counts, rows }, null, 2));
+    console.log(JSON.stringify({ ok: counts.DRIFT === 0, strict_ok: strictOk(counts), counts, rows }, null, 2));
   } else {
     // The banner names the covered kinds off COVERED itself, so it can never
     // advertise a coverage the tool does not actually check.
@@ -184,10 +194,15 @@ async function main() {
       ? '  PARITY OK (no drift; the game serves the file corpus verbatim from the registry).'
       : '  DRIFT DETECTED -- a live-file entry diverges from its adopted registry variant. STOP: surface to the user.');
   }
-  process.exit(counts.DRIFT > 0 ? 1 : 0);
+  if (strict && !asJson) {
+    console.log(strictOk(counts)
+      ? '  STRICT OK (REQ-0354 section 6: the served set == the passing set).'
+      : '  STRICT FAIL -- served set != passing set (under --strict, MISSING/UNADOPTED block too). STOP: surface to the user.');
+  }
+  process.exit(strict ? (strictOk(counts) ? 0 : 1) : (counts.DRIFT > 0 ? 1 : 0));
 }
 
-module.exports = { canonical, deepEqualUnordered, diffFields, authoredView, collectFileEntries, classifyAll, summarize, COVERED };
+module.exports = { canonical, deepEqualUnordered, diffFields, authoredView, collectFileEntries, classifyAll, summarize, strictOk, COVERED }; // strictOk: REQ-0354 section 6
 
 if (require.main === module) {
   main().catch((e) => { console.error('FATAL', (e && e.stack) || e); process.exit(2); });

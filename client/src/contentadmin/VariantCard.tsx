@@ -131,10 +131,13 @@ export function VariantCard(props: {
           const key = no + '|' + c.name;
           return (
             <span key={c.name} className="ca-checkwrap">
+              {/* REQ-0354: STALE (live file moved since the check ran) is a third
+                  state, visually distinct from PASS -- a stale green is worse than
+                  a red (it is the state that produced REQ-0353). */}
               <button type="button" data-testid={'check-' + no + '-' + c.name}
-                className={'aa-verdict ' + (!c.applicable ? 'ca-verdict--na' : c.ok ? 'aa-verdict--pass' : 'aa-verdict--fail')}
-                title={c.detail} onClick={() => props.onToggleCheck(key)}>
-                {c.name} {!c.applicable ? 'n/a' : c.ok ? 'ok' : 'x'}
+                className={'aa-verdict ' + (c.stale ? 'ca-verdict--stale' : !c.applicable ? 'ca-verdict--na' : c.ok ? 'aa-verdict--pass' : 'aa-verdict--fail')}
+                title={(c.advisory ? '[advisory -- never feeds overall] ' : '') + c.detail} onClick={() => props.onToggleCheck(key)}>
+                {c.name} {c.stale ? 'STALE' : !c.applicable ? 'n/a' : c.ok ? 'ok' : 'x'}
               </button>
               {expandedChecks[key] && (
                 <span data-testid={'check-detail-' + no + '-' + c.name} className="ca-check-detail">{c.detail}</span>

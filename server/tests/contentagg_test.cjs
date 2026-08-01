@@ -100,7 +100,7 @@ async function main() {
     const updated = await _recheckVariant('agg_recheck', v.variant_no);
     const mc = updated.machine_check;
     assert.strictEqual(mc.overall, 'PASS', 'known-good po_def rechecks to PASS (verdict consistent with content_test G2)');
-    assert.deepStrictEqual(mc.checks.map((c) => c.name), ['schema_vocab', 'engine_types', 'gen_data', 'integrate'], 'all four checks re-ran');
+    assert.deepStrictEqual(mc.checks.map((c) => c.name), ['schema_vocab', 'engine_types', 'gen_data', 'integrate', 'serving'], 'all four checks re-ran (+ the REQ-0354 advisory serving row the recheck path appends)');
     assert.ok(mc.ran_at && mc.ran_at > staleRan, 'fresh ran_at replaces the stale one');
     // asset-of-record untouched: same variant row, same data hash
     assert.strictEqual(updated.id, v.id, 'same immutable variant row');
