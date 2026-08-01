@@ -44,3 +44,27 @@ at the moment the anomaly exists, visible to the session that caused it).
   reason wipe_streak + notifications; solo 3x -> canceled + haltEvent +
   room_halted notification; a progress>0 wipe / victory RESETS the streak.
 - Full ci.sh green; client tsc/build/oxlint green.
+
+---
+
+# Outcome (2026-08-01)
+
+Implemented as specced. settleRun counts `room.wipeStreak` (consecutive
+`result:'wipe'` + zero `finalProgressPct` settlements; anything else resets);
+maybeAutoStartNextRun refuses the next auto-start at WIPE_STREAK_LIMIT(3):
+troop -> REQ-0326 disband teardown with reason `wipe_streak` (seats returned,
+fleet freed, `troop_disbanded` notification to every member), solo -> lane
+canceled + discrete `room.haltEvent` + new `room_halted` notification kind
+(REQ-0327 feed). Toast surfaces both with dedicated en+ja copy.
+
+Gates: api_test 232/232 (3 new REQ-0357 cases: troop breaker + notifications,
+solo breaker + haltEvent, streak reset on progress); client tsc/build/oxlint
+green; full tools/ci.sh GREEN incl. e2e via the combined REQ-0355+0357
+release (receipt scope=both). Deployed to backpack-dev with that release.
+
+Commits: 33d6f9bb (implementation), merged 39e086b8.
+
+Note: the live wipe-looping troop (room_d8005555cdca7677) carries no streak
+history (field starts absent) -- the breaker disbands it after its next THREE
+zero-progress wipes under the new code (~45min of its 15-min cycle), which is
+the intended live proof.
