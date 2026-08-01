@@ -69,3 +69,13 @@ batch-002 dir) and sim/dungen.cjs test_fixed read batch-002 JSONs.
 Resolution: ALL *.json/*.md under content/batches restored (812KB — the
 size win was always the PNGs); deletion now covers images/html only.
 content/proposals stays fully deleted. release.sh rerun after this fix.
+
+## Correction 2 (2026-08-01, found by the release gate rerun)
+
+The image purge also deleted the 8 PNGs the REQ-0152 inspection-kit golden
+vectors (tools/tests/inspect_kits_test.py, ci.sh stage [4.7/7]) validate:
+bpskin-frames-0150 {leather,iron,wood}_frame_{s1,s202}.png,
+batch-003-item-icons/candidates/blade_c1_s101_alpha.png,
+bpskin-flux2-0150/elven_s101_seamless.png. Those gate vectors are frozen
+REGRESSION fixtures, not dead authoring inputs. Restored exactly those 8
+files (2.4MB); everything else about the image purge stands.
