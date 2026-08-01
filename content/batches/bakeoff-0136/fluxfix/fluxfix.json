@@ -1,0 +1,11 @@
+{
+  "cpu": {
+    "te_device": "cpu",
+    "warm_s": [
+      10.0,
+      10.0
+    ],
+    "warm_median_s": 10.0,
+    "vram_peak_mib": 240
+  }
+}

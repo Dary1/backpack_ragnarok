@@ -1,0 +1,266 @@
+[
+  {
+    "name": "goblin_s1",
+    "positive": "goblin, white background",
+    "width": 384,
+    "height": 512,
+    "seed": 1,
+    "cells_hint": [
+      3,
+      4
+    ]
+  },
+  {
+    "name": "goblin_s202",
+    "positive": "goblin, white background",
+    "width": 384,
+    "height": 512,
+    "seed": 202,
+    "cells_hint": [
+      3,
+      4
+    ]
+  },
+  {
+    "name": "goblin_shaman_s1",
+    "positive": "goblin shaman, white background",
+    "width": 384,
+    "height": 512,
+    "seed": 1,
+    "cells_hint": [
+      3,
+      4
+    ]
+  },
+  {
+    "name": "goblin_shaman_s202",
+    "positive": "goblin shaman, white background",
+    "width": 384,
+    "height": 512,
+    "seed": 202,
+    "cells_hint": [
+      3,
+      4
+    ]
+  },
+  {
+    "name": "gnoll_s1",
+    "positive": "gnoll, white background",
+    "width": 384,
+    "height": 512,
+    "seed": 1,
+    "cells_hint": [
+      3,
+      4
+    ]
+  },
+  {
+    "name": "gnoll_s202",
+    "positive": "gnoll, white background",
+    "width": 384,
+    "height": 512,
+    "seed": 202,
+    "cells_hint": [
+      3,
+      4
+    ]
+  },
+  {
+    "name": "ogre_s1",
+    "positive": "ogre, white background",
+    "width": 512,
+    "height": 512,
+    "seed": 1,
+    "cells_hint": [
+      4,
+      4
+    ]
+  },
+  {
+    "name": "ogre_s202",
+    "positive": "ogre, white background",
+    "width": 512,
+    "height": 512,
+    "seed": 202,
+    "cells_hint": [
+      4,
+      4
+    ]
+  },
+  {
+    "name": "wight_s1",
+    "positive": "wight, white background",
+    "width": 384,
+    "height": 512,
+    "seed": 1,
+    "cells_hint": [
+      3,
+      4
+    ]
+  },
+  {
+    "name": "wight_s202",
+    "positive": "wight, white background",
+    "width": 384,
+    "height": 512,
+    "seed": 202,
+    "cells_hint": [
+      3,
+      4
+    ]
+  },
+  {
+    "name": "cockatrice_s1",
+    "positive": "cockatrice, white background",
+    "width": 384,
+    "height": 512,
+    "seed": 1,
+    "cells_hint": [
+      3,
+      4
+    ]
+  },
+  {
+    "name": "cockatrice_s202",
+    "positive": "cockatrice, white background",
+    "width": 384,
+    "height": 512,
+    "seed": 202,
+    "cells_hint": [
+      3,
+      4
+    ]
+  },
+  {
+    "name": "boar_s1",
+    "positive": "wild boar, white background",
+    "width": 512,
+    "height": 384,
+    "seed": 1,
+    "cells_hint": [
+      4,
+      3
+    ]
+  },
+  {
+    "name": "boar_s202",
+    "positive": "wild boar, white background",
+    "width": 512,
+    "height": 384,
+    "seed": 202,
+    "cells_hint": [
+      4,
+      3
+    ]
+  },
+  {
+    "name": "giant_rat_s1",
+    "positive": "giant rat, white background",
+    "width": 512,
+    "height": 384,
+    "seed": 1,
+    "cells_hint": [
+      4,
+      3
+    ]
+  },
+  {
+    "name": "giant_rat_s202",
+    "positive": "giant rat, white background",
+    "width": 512,
+    "height": 384,
+    "seed": 202,
+    "cells_hint": [
+      4,
+      3
+    ]
+  },
+  {
+    "name": "chimera_s1",
+    "positive": "chimera, white background",
+    "width": 768,
+    "height": 512,
+    "seed": 1,
+    "cells_hint": [
+      6,
+      4
+    ]
+  },
+  {
+    "name": "chimera_s202",
+    "positive": "chimera, white background",
+    "width": 768,
+    "height": 512,
+    "seed": 202,
+    "cells_hint": [
+      6,
+      4
+    ]
+  },
+  {
+    "name": "giant_snake_s1",
+    "positive": "giant snake, white background",
+    "width": 512,
+    "height": 512,
+    "seed": 1,
+    "cells_hint": [
+      4,
+      4
+    ]
+  },
+  {
+    "name": "giant_snake_s202",
+    "positive": "giant snake, white background",
+    "width": 512,
+    "height": 512,
+    "seed": 202,
+    "cells_hint": [
+      4,
+      4
+    ]
+  },
+  {
+    "name": "mimic_s1",
+    "positive": "mimic treasure chest, white background",
+    "width": 512,
+    "height": 384,
+    "seed": 1,
+    "cells_hint": [
+      4,
+      3
+    ]
+  },
+  {
+    "name": "mimic_s202",
+    "positive": "mimic treasure chest, white background",
+    "width": 512,
+    "height": 384,
+    "seed": 202,
+    "cells_hint": [
+      4,
+      3
+    ]
+  },
+  {
+    "name": "ancient_dragon_s1",
+    "positive": "ancient dragon, white background",
+    "width": 1280,
+    "height": 1280,
+    "seed": 1,
+    "cells_hint": [
+      10,
+      10
+    ]
+  },
+  {
+    "name": "ancient_dragon_s202",
+    "positive": "ancient dragon, white background",
+    "width": 1280,
+    "height": 1280,
+    "seed": 202,
+    "cells_hint": [
+      10,
+      10
+    ]
+  }
+]

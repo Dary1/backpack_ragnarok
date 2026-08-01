@@ -58,3 +58,14 @@ history (this REQ stops future checkout/packfile growth, it does not shrink
   tools/ legacy one-offs.
 - NOT done here: .git history rewrite (941MB stays; rewriting would
   invalidate commit hashes pinned in REQ files — separate decision).
+
+## Correction (2026-08-01, found by the release gate)
+
+The claim "tests read no real batch files" was WRONG for sim/: the grep
+missed path.join(..., "content", "batches", ...) comma-joined constants.
+sim/tests/run.cjs (fixtures + the REQ-0122 lossless-provenance invariant,
+which byte-compares content/live/dungeon against the promoted-from
+batch-002 dir) and sim/dungen.cjs test_fixed read batch-002 JSONs.
+Resolution: ALL *.json/*.md under content/batches restored (812KB — the
+size win was always the PNGs); deletion now covers images/html only.
+content/proposals stays fully deleted. release.sh rerun after this fix.

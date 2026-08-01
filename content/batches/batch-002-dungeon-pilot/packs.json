@@ -1,0 +1,106 @@
+{
+  "schema": "monster_pack/1",
+  "batch": "batch-002-dungeon-pilot",
+  "note": "REQ-0184. The 4 packs previously inlined as encounterDef.enemyPack.enemyIds in dungeon.json, ported to first-class monster_pack/1 defs with an EXPLICIT layout. A member's `at` is its A1 TOP-LEFT anchor on the enemy plane; the cells it occupies are derived from the enemy def's footprint (shared/content_validate.cjs cellsFor) and are never stored. The placeable area is B2:Y17 (24x16) inside the 26x18 field -- see the port note below.",
+  "port_note": "These layouts are the PORT of the pre-REQ-0184 placement, not a rebalance. compileEnemyPack() used to fill from the box origin left-to-right, and encounter.cjs handed it the WHOLE A1:Z18 plane -- so every pack stood on the margin (frost_gnoll at A1, etc). The user ruled 2026-07-15 that 24x16/B2:Y17 is canon and the margin-riding was a bug. The fix is a pure origin shift A1 -> B2: the relative arrangement within each pack is byte-for-byte what it was. Re-composing these packs as game design (anchor forward, support behind, spread vs AoE) is a separate REQ with its own ratification -- doing it here would make the golden diff unreadable.",
+  "entries": [
+    {
+      "id": "pack_frost_scouts",
+      "powerLevel": 4.5769,
+      "name": "Frost Scouts",
+      "i18n": { "en": { "name": "Frost Scouts" }, "ja": { "name": "氷霜の斥候" } },
+      "members": [
+        { "enemy": "frost_giant", "at": "B2" },
+        { "enemy": "frost_giant", "at": "G2" },
+        { "enemy": "frost_giant", "at": "L2" },
+        { "enemy": "frostback_bear", "at": "Q2" },
+        { "enemy": "frostback_bear", "at": "S2" },
+        { "enemy": "frostback_bear", "at": "U2" },
+        { "enemy": "frostback_bear", "at": "W2" },
+        { "enemy": "frostback_bear", "at": "Q4" },
+        { "enemy": "frostback_bear", "at": "S4" },
+        { "enemy": "frost_gnoll", "at": "Y2" },
+        { "enemy": "frost_gnoll", "at": "Y3" },
+        { "enemy": "ice_archer", "at": "U4" },
+        { "enemy": "ice_archer", "at": "V4" },
+        { "enemy": "rime_shaman", "at": "W4" },
+        { "enemy": "glacier_wisp", "at": "X4" },
+        { "enemy": "niflheim_stalker", "at": "Y4" }
+      ],
+      "note": "was enc_pack_1 enemyIds [frost_gnoll, ice_archer]; ported A1,B1 -> B2,C2"
+    },
+    {
+      "id": "pack_rime_choir",
+      "powerLevel": 3.9038,
+      "name": "Rime Choir",
+      "i18n": { "en": { "name": "Rime Choir" }, "ja": { "name": "霧氷の聖歌隊" } },
+      "members": [
+        { "enemy": "frost_giant", "at": "B2" },
+        { "enemy": "frost_giant", "at": "G2" },
+        { "enemy": "frost_giant", "at": "L2" },
+        { "enemy": "frostback_bear", "at": "Q2" },
+        { "enemy": "frostback_bear", "at": "S2" },
+        { "enemy": "frostback_bear", "at": "U2" },
+        { "enemy": "frostback_bear", "at": "W2" },
+        { "enemy": "frostback_bear", "at": "Q4" },
+        { "enemy": "rime_shaman", "at": "Y2" },
+        { "enemy": "rime_shaman", "at": "Y3" },
+        { "enemy": "rime_shaman", "at": "S4" },
+        { "enemy": "glacier_wisp", "at": "T4" },
+        { "enemy": "glacier_wisp", "at": "U4" },
+        { "enemy": "glacier_wisp", "at": "V4" },
+        { "enemy": "ice_archer", "at": "W4" },
+        { "enemy": "ice_archer", "at": "X4" }
+      ],
+      "note": "was enc_pack_2 enemyIds [rime_shaman, glacier_wisp, glacier_wisp]; ported A1,B1,C1 -> B2,C2,D2. The two glacier_wisp members are distinct instances (glacier_wisp#1, glacier_wisp#2) -- member ORDER names the instance, so it is stable, not cosmetic."
+    },
+    {
+      "id": "pack_bear_and_stalker",
+      "powerLevel": 7,
+      "name": "Bear and Stalker",
+      "i18n": { "en": { "name": "Bear and Stalker" }, "ja": { "name": "熊と追跡者" } },
+      "members": [
+        { "enemy": "frost_giant", "at": "B2" },
+        { "enemy": "frost_giant", "at": "G2" },
+        { "enemy": "frost_giant", "at": "L2" },
+        { "enemy": "frostback_bear", "at": "Q2" },
+        { "enemy": "frostback_bear", "at": "S2" },
+        { "enemy": "frostback_bear", "at": "U2" },
+        { "enemy": "frostback_bear", "at": "W2" },
+        { "enemy": "frostback_bear", "at": "Q4" },
+        { "enemy": "frostback_bear", "at": "S4" },
+        { "enemy": "frostback_bear", "at": "U4" },
+        { "enemy": "niflheim_stalker", "at": "Y2" },
+        { "enemy": "niflheim_stalker", "at": "Y3" },
+        { "enemy": "niflheim_stalker", "at": "W4" },
+        { "enemy": "niflheim_stalker", "at": "X4" },
+        { "enemy": "niflheim_stalker", "at": "Y4" }
+      ],
+      "note": "was enc_pack_3 enemyIds [frostback_bear, niflheim_stalker]; ported A1,C1 -> B2,D2. frostback_bear footprint [2,2] occupies B2:C3, which is why the stalker anchors at D2 and not C2 -- the cursor skipped by footprint width and the port preserves that exactly."
+    },
+    {
+      "id": "pack_hrimgrimnir",
+      "powerLevel": 9.7372,
+      "name": "Hrimgrimnir",
+      "i18n": { "en": { "name": "Hrimgrimnir" }, "ja": { "name": "フリームグリームニル" } },
+      "members": [
+        { "enemy": "frost_giant", "at": "B2" },
+        { "enemy": "frost_giant", "at": "G2" },
+        { "enemy": "frost_giant", "at": "L2" },
+        { "enemy": "hrimgrimnir", "at": "Q2" },
+        { "enemy": "frostback_bear", "at": "T2" },
+        { "enemy": "frostback_bear", "at": "V2" },
+        { "enemy": "frostback_bear", "at": "X2" },
+        { "enemy": "frostback_bear", "at": "T4" },
+        { "enemy": "frostback_bear", "at": "V4" },
+        { "enemy": "niflheim_stalker", "at": "X4" },
+        { "enemy": "niflheim_stalker", "at": "Y4" },
+        { "enemy": "niflheim_stalker", "at": "Q5" },
+        { "enemy": "ice_archer", "at": "R5" },
+        { "enemy": "ice_archer", "at": "S5" },
+        { "enemy": "ice_archer", "at": "X5" }
+      ],
+      "note": "was enc_boss enemyIds [hrimgrimnir]; ported A1 -> B2. footprint [3,3] occupies B2:D4."
+    }
+  ]
+}

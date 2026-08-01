@@ -1,0 +1,971 @@
+{
+  "schema": "skill/1",
+  "batch": "batch-006-wildlands",
+  "note": "REQ-0207 -- three synergy engines, one per pack. WILD HUNT: lifesteal tempo (feral_bite, blood_drain, impish_drain sustain through damage). VENOM NEST: a Poison engine -- spider/snake APPLY Poison (venom_bite, venom_spit), scorpion/basilisk CONVERT it via the ACTIVE bonus_vs_status verb x mult (stinger, toxic_maw). DEMON GATE: a Burn engine -- imp/demon_lord APPLY Burn (fire_dart, dominion_of_flame), gargoyle CONVERTS it (molten_talons). multi_strike follows REQ-0203 bone_breath semantics: n=[lo,hi] per hit x hits (each sub-hit a separate on-hit event). Attack profiles follow ruling 7 typing (batch-002/005 conventions); aoe_statuses is only authored with aoe>=1 so it is never inert.",
+  "entries": [
+    {
+      "id": "rending_claws",
+      "name_en": "Rending Claws",
+      "name_ja": "引き裂く爪",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.4,
+          3.0
+        ]
+      },
+      "verb": {
+        "t": "multi_strike",
+        "n": [
+          4,
+          7
+        ],
+        "hits": 3
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "feral_bite",
+      "name_en": "Feral Bite",
+      "name_ja": "獣の牙",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.6,
+          4.4
+        ]
+      },
+      "verb": {
+        "t": "lifesteal",
+        "n": [
+          8,
+          12
+        ],
+        "frac": 0.5
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "savage_bite",
+      "name_en": "Savage Bite",
+      "name_ja": "凶暴な咬みつき",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.2,
+          2.8
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          9,
+          14
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "harrying_snap",
+      "name_en": "Harrying Snap",
+      "name_ja": "追い立ての牙",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.8,
+          4.6
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Weakness",
+        "n": [
+          1,
+          3
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "tusk_charge",
+      "name_en": "Tusk Charge",
+      "name_ja": "牙の突進",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.2,
+          4.0
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          12,
+          18
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 1,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "blood_drain",
+      "name_en": "Blood Drain",
+      "name_ja": "吸血",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.8,
+          3.6
+        ]
+      },
+      "verb": {
+        "t": "lifesteal",
+        "n": [
+          5,
+          8
+        ],
+        "frac": 0.6
+      },
+      "attack_profile": {
+        "edge": [
+          "left",
+          "right"
+        ],
+        "direction": "side",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "venom_bite",
+      "name_en": "Venom Bite",
+      "name_ja": "毒牙",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.8,
+          3.6
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Poison",
+        "n": [
+          2,
+          4
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "stinger",
+      "name_en": "Stinger",
+      "name_ja": "毒針",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.6,
+          3.2
+        ]
+      },
+      "verb": {
+        "t": "bonus_vs_status",
+        "status": "Poison",
+        "n": [
+          9,
+          15
+        ],
+        "mult": 1.5
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "pincer_grip",
+      "name_en": "Pincer Grip",
+      "name_ja": "鋏の握撃",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.6,
+          4.4
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          6,
+          10
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "constrict",
+      "name_en": "Constrict",
+      "name_ja": "締め付け",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.0,
+          3.8
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          10,
+          16
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "venom_spit",
+      "name_en": "Venom Spit",
+      "name_ja": "毒吐き",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          4.0,
+          5.0
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Poison",
+        "n": [
+          2,
+          4
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 1,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "petrifying_gaze",
+      "name_en": "Petrifying Gaze",
+      "name_ja": "石化の凝視",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          5.0,
+          6.0
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Stun",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 1,
+        "aoe_statuses": true
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "toxic_maw",
+      "name_en": "Toxic Maw",
+      "name_ja": "毒の顎",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.8,
+          3.6
+        ]
+      },
+      "verb": {
+        "t": "bonus_vs_status",
+        "status": "Poison",
+        "n": [
+          12,
+          20
+        ],
+        "mult": 1.5
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 1,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "fire_dart",
+      "name_en": "Fire Dart",
+      "name_ja": "火の矢",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.0,
+          3.8
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Burn",
+        "n": [
+          2,
+          4
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "impish_drain",
+      "name_en": "Impish Drain",
+      "name_ja": "小悪魔の吸精",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.8,
+          4.6
+        ]
+      },
+      "verb": {
+        "t": "lifesteal",
+        "n": [
+          5,
+          8
+        ],
+        "frac": 0.5
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "molten_talons",
+      "name_en": "Molten Talons",
+      "name_ja": "溶岩の爪",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.6,
+          3.4
+        ]
+      },
+      "verb": {
+        "t": "bonus_vs_status",
+        "status": "Burn",
+        "n": [
+          10,
+          15
+        ],
+        "mult": 1.5
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "headless_charge",
+      "name_en": "Headless Charge",
+      "name_ja": "首無しの突撃",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.0,
+          3.8
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          14,
+          20
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 2,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "doom_toll",
+      "name_en": "Doom Toll",
+      "name_ja": "破滅の鐘",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          4.5,
+          5.5
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Weakness",
+        "n": [
+          3,
+          5
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 1,
+        "aoe_statuses": true
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "hellfire_wave",
+      "name_en": "Hellfire Wave",
+      "name_ja": "獄炎の波",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.2,
+          4.0
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          16,
+          24
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 1,
+        "aoe": 2,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "dominion_of_flame",
+      "name_en": "Dominion of Flame",
+      "name_ja": "炎の支配",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          5.0,
+          6.0
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Burn",
+        "n": [
+          3,
+          5
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 2,
+        "aoe_statuses": true
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "werewolf_lunar_regen",
+      "name_en": "Lunar Regeneration",
+      "name_ja": "月夜の治癒",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "grant_self_status",
+        "status": "Regen",
+        "n": [
+          2,
+          3
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "direwolf_harrier_retort",
+      "name_en": "Harrier's Retort",
+      "name_ja": "追い立ての反撃",
+      "trigger": {
+        "t": "OnSquadBeenHit"
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          1,
+          3
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "boar_wounded_fury",
+      "name_en": "Wounded Boar's Fury",
+      "name_ja": "手負いの猪",
+      "trigger": {
+        "t": "on_hp_below",
+        "hp_frac": 0.4
+      },
+      "verb": {
+        "t": "buff_self",
+        "stat": "damage",
+        "n": [
+          2,
+          4
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "bat_erratic_flight",
+      "name_en": "Erratic Flight",
+      "name_ja": "不規則な飛行",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "damage_reduction",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "spider_clinging_web",
+      "name_en": "Clinging Web",
+      "name_ja": "絡みつく糸",
+      "trigger": {
+        "t": "OnSquadBeenHit"
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Chill",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "scorpion_barbed_carapace",
+      "name_en": "Barbed Carapace",
+      "name_ja": "棘の甲殻",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "grant_self_status",
+        "status": "Spikes",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "snake_retaliatory_venom",
+      "name_en": "Retaliatory Venom",
+      "name_ja": "反撃の毒牙",
+      "trigger": {
+        "t": "OnSquadBeenHit"
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Poison",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "basilisk_venom_blooded",
+      "name_en": "Venom-Blooded",
+      "name_ja": "毒の血",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "status_immune",
+        "status": "Poison"
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "imp_death_pop",
+      "name_en": "Death Pop",
+      "name_ja": "自爆",
+      "trigger": {
+        "t": "on_death"
+      },
+      "verb": {
+        "t": "death_throes",
+        "n": [
+          4,
+          8
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "gargoyle_stone_skin",
+      "name_en": "Stone Skin",
+      "name_ja": "石の皮膚",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "damage_reduction",
+        "n": [
+          1,
+          3
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "dullahan_headless",
+      "name_en": "Headless",
+      "name_ja": "首なし",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "status_immune",
+        "status": "Stun"
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "demonlord_wrath",
+      "name_en": "Demonic Wrath",
+      "name_ja": "魔王の憤怒",
+      "trigger": {
+        "t": "on_hp_below",
+        "hp_frac": 0.4
+      },
+      "verb": {
+        "t": "buff_self",
+        "stat": "damage",
+        "n": [
+          3,
+          5
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+[
+  {
+    "name": "goblin",
+    "ckpt": "toonyou_beta6.safetensors",
+    "width": 640, "height": 832, "seed": 500001, "steps": 30, "cfg": 7.0, "hires": true,
+    "positive": "goblin, solo, one creature only, a small crude humanoid monster, green skin, big pointy ears, sharp teeth, wearing a tattered loincloth, holding a crude wooden club, flat cel shading, bold clean outlines, vibrant colors, mobile game monster illustration, full body, front facing, centered, high quality",
+    "negative": "human, humans, child, boy, girl, person, people, second character, companion, photorealistic, realistic skin, text, watermark, blurry, multiple characters, two characters, cropped, gore, low detail, scenery, ground, floor, no subject visible"
+  },
+  {
+    "name": "orc",
+    "ckpt": "toonyou_beta6.safetensors",
+    "width": 640, "height": 832, "seed": 500002, "steps": 30, "cfg": 7.0, "hires": true,
+    "positive": "orc warrior, solo, one creature only, a hulking muscular humanoid monster, green skin, tusks jutting from lower jaw, wearing simple leather armor, flat cel shading, bold clean outlines, vibrant colors, mobile game monster illustration, full body, front facing, centered, high quality",
+    "negative": "human, humans, child, boy, girl, person, people, second character, companion, photorealistic, realistic skin, text, watermark, blurry, multiple characters, two characters, cropped, gore, low detail, scenery, ground, floor, no subject visible"
+  },
+  {
+    "name": "skeleton",
+    "ckpt": "toonyou_beta6.safetensors",
+    "width": 640, "height": 832, "seed": 500003, "steps": 30, "cfg": 7.0, "hires": true,
+    "positive": "skeleton warrior, solo, one creature only, an animated bone skeleton monster, holding a rusty sword and cracked shield, wearing tattered cloth scraps, flat cel shading, bold clean outlines, vibrant colors, mobile game monster illustration, full body, front facing, centered, high quality",
+    "negative": "human, humans, child, boy, girl, person, people, second character, companion, photorealistic, realistic skin, text, watermark, blurry, multiple characters, two characters, cropped, gore, low detail, scenery, ground, floor, no subject visible"
+  },
+  {
+    "name": "wolf",
+    "ckpt": "toonyou_beta6.safetensors",
+    "width": 832, "height": 640, "seed": 500004, "steps": 30, "cfg": 7.0, "hires": true,
+    "positive": "monster wolf, solo, one creature only, a fierce four legged beast, grey and black fur, sharp fangs bared, glowing yellow eyes, flat cel shading, bold clean outlines, vibrant colors, mobile game monster illustration, full body, side facing, centered, high quality",
+    "negative": "human, humans, child, boy, girl, person, people, second character, companion, photorealistic, realistic skin, text, watermark, blurry, multiple characters, two characters, cropped, gore, low detail, scenery, ground, floor, no subject visible"
+  },
+  {
+    "name": "giant_spider",
+    "ckpt": "toonyou_beta6.safetensors",
+    "width": 832, "height": 640, "seed": 500005, "steps": 30, "cfg": 7.0, "hires": true,
+    "positive": "giant spider monster, solo, one creature only, a large eight legged arachnid, dark purple and black chitin, glowing red eyes, flat cel shading, bold clean outlines, vibrant colors, mobile game monster illustration, full body, angled view, centered, high quality",
+    "negative": "human, humans, child, boy, girl, person, people, second character, companion, photorealistic, realistic skin, text, watermark, blurry, multiple characters, two characters, cropped, gore, low detail, scenery, ground, floor, no subject visible"
+  },
+  {
+    "name": "lizardman",
+    "ckpt": "toonyou_beta6.safetensors",
+    "width": 640, "height": 832, "seed": 500006, "steps": 30, "cfg": 7.0, "hires": true,
+    "positive": "lizardman warrior, solo, one creature only, a scaled reptilian humanoid monster, green scales, holding a simple spear, flat cel shading, bold clean outlines, vibrant colors, mobile game monster illustration, full body, front facing, centered, high quality",
+    "negative": "human, humans, child, boy, girl, person, people, second character, companion, photorealistic, realistic skin, text, watermark, blurry, multiple characters, two characters, cropped, gore, low detail, scenery, ground, floor, no subject visible"
+  },
+  {
+    "name": "mushroom",
+    "ckpt": "toonyou_beta6.safetensors",
+    "width": 640, "height": 832, "seed": 500007, "steps": 30, "cfg": 7.0, "hires": true,
+    "positive": "mushroom monster, solo, one creature only, a round cute monster with a big mushroom cap, stubby little legs, simple dot eyes, flat cel shading, bold clean outlines, vibrant colors, mobile game monster illustration, full body, front facing, centered, high quality",
+    "negative": "human, humans, child, boy, girl, person, people, second character, companion, photorealistic, realistic skin, text, watermark, blurry, multiple characters, two characters, cropped, gore, low detail, scenery, ground, floor, no subject visible"
+  },
+  {
+    "name": "giant_bat",
+    "ckpt": "toonyou_beta6.safetensors",
+    "width": 832, "height": 640, "seed": 500008, "steps": 30, "cfg": 7.0, "hires": true,
+    "positive": "giant bat monster, solo, one creature only, a dark furry winged beast, large leathery wings spread wide, sharp fangs, flat cel shading, bold clean outlines, vibrant colors, mobile game monster illustration, full body, front facing, centered, high quality",
+    "negative": "human, humans, child, boy, girl, person, people, second character, companion, photorealistic, realistic skin, text, watermark, blurry, multiple characters, two characters, cropped, gore, low detail, scenery, ground, floor, no subject visible"
+  }
+]

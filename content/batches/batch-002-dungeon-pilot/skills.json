@@ -1,0 +1,308 @@
+{
+  "schema": "skill/1",
+  "batch": "batch-002-dungeon-pilot",
+  "note": "All skills reuse EXISTING vocab.json verbs/statuses only (strike, multi_strike, apply_status w/ Chill/Burn/Weakness/Stun). Attack profiles vary edge/direction/penetration/aoe per ruling 7 typing (bow-type=side/pen0, spear-type=front/pen1, others compose freely).",
+  "entries": [
+    {
+      "id": "gnoll_claw",
+      "name_en": "Gnoll Claw", "name_ja": "ノールの爪",
+      "trigger": { "t": "every_secs", "s": [1.8, 2.4] },
+      "verb": { "t": "strike", "n": [6, 11] },
+      "attack_profile": { "edge": ["top"], "direction": "front", "penetration": 0, "aoe": 0, "aoe_statuses": false },
+      "modes": ["battle"]
+    },
+    {
+      "id": "ice_arrow",
+      "name_en": "Ice Arrow", "name_ja": "氷の矢",
+      "trigger": { "t": "every_secs", "s": [2.2, 2.8] },
+      "verb": { "t": "strike", "n": [8, 14] },
+      "attack_profile": { "edge": ["left", "right"], "direction": "side", "penetration": 0, "aoe": 0, "aoe_statuses": false },
+      "modes": ["battle"]
+    },
+    {
+      "id": "chilling_word",
+      "name_en": "Chilling Word", "name_ja": "凍える言葉",
+      "trigger": { "t": "every_secs", "s": [3.0, 4.0] },
+      "verb": { "t": "apply_status", "status": "Chill", "n": [3, 5] },
+      "attack_profile": { "edge": ["top"], "direction": "front", "penetration": 1, "aoe": 0, "aoe_statuses": true },
+      "modes": ["battle"]
+    },
+    {
+      "id": "frost_ward",
+      "name_en": "Frost Ward", "name_ja": "氷の加護",
+      "trigger": { "t": "every_secs", "s": [4.5, 5.5] },
+      "verb": { "t": "strike", "n": [3, 6] },
+      "attack_profile": { "edge": ["top"], "direction": "front", "penetration": 0, "aoe": 0, "aoe_statuses": false },
+      "modes": ["battle"]
+    },
+    {
+      "id": "bear_slam",
+      "name_en": "Bear Slam", "name_ja": "熊の叩きつけ",
+      "trigger": { "t": "every_secs", "s": [2.5, 3.2] },
+      "verb": { "t": "strike", "n": [14, 22] },
+      "attack_profile": { "edge": ["top"], "direction": "front", "penetration": 1, "aoe": 1, "aoe_statuses": false },
+      "modes": ["battle"]
+    },
+    {
+      "id": "frost_roar",
+      "name_en": "Frost Roar", "name_ja": "氷の咆哮",
+      "trigger": { "t": "every_secs", "s": [5.0, 6.0] },
+      "verb": { "t": "apply_status", "status": "Weakness", "n": [2, 4] },
+      "attack_profile": { "edge": ["top", "left", "right"], "direction": "front", "penetration": 0, "aoe": 2, "aoe_statuses": true },
+      "modes": ["battle"]
+    },
+    {
+      "id": "wisp_bolt",
+      "name_en": "Wisp Bolt", "name_ja": "鬼火の矢",
+      "trigger": { "t": "every_secs", "s": [1.5, 2.0] },
+      "verb": { "t": "multi_strike", "n": [2, 4], "hits": 3 },
+      "attack_profile": { "edge": ["left", "right"], "direction": "side", "penetration": 0, "aoe": 0, "aoe_statuses": false },
+      "modes": ["battle"]
+    },
+    {
+      "id": "stalker_pounce",
+      "name_en": "Stalker Pounce", "name_ja": "追跡者の飛びかかり",
+      "trigger": { "t": "every_secs", "s": [2.0, 2.6] },
+      "verb": { "t": "strike", "n": [12, 18] },
+      "attack_profile": { "edge": ["bottom"], "direction": "front", "penetration": 2, "aoe": 0, "aoe_statuses": false },
+      "modes": ["battle"]
+    },
+    {
+      "id": "stalker_bleed_bite",
+      "name_en": "Stalker Bleed Bite", "name_ja": "追跡者の裂傷牙",
+      "trigger": { "t": "every_secs", "s": [3.5, 4.2] },
+      "verb": { "t": "apply_status", "status": "Burn", "n": [3, 5] },
+      "attack_profile": { "edge": ["top"], "direction": "front", "penetration": 0, "aoe": 0, "aoe_statuses": false },
+      "modes": ["battle"]
+    },
+    {
+      "id": "hrim_cleave",
+      "name_en": "Hrimgrimnir's Cleave", "name_ja": "フリムグリムニルの薙ぎ払い",
+      "trigger": { "t": "every_secs", "s": [1.6, 2.0] },
+      "verb": { "t": "strike", "n": [20, 30] },
+      "attack_profile": { "edge": ["top"], "direction": "front", "penetration": 2, "aoe": 1, "aoe_statuses": false },
+      "modes": ["battle"]
+    },
+    {
+      "id": "hrim_blizzard_volley",
+      "name_en": "Blizzard Volley", "name_ja": "吹雪の斉射",
+      "trigger": { "t": "every_secs", "s": [3.2, 3.8] },
+      "verb": { "t": "multi_strike", "n": [4, 7], "hits": 4 },
+      "attack_profile": { "edge": ["top", "left", "right"], "direction": "front", "penetration": 0, "aoe": 2, "aoe_statuses": false },
+      "modes": ["battle"]
+    },
+    {
+      "id": "hrim_deep_freeze",
+      "name_en": "Deep Freeze", "name_ja": "深い凍結",
+      "trigger": { "t": "every_secs", "s": [6.0, 7.5] },
+      "verb": { "t": "apply_status", "status": "Stun", "n": [1.5, 2.5] },
+      "attack_profile": { "edge": ["top"], "direction": "front", "penetration": 1, "aoe": 0, "aoe_statuses": false },
+      "modes": ["battle"]
+    },
+    {
+      "id": "trap_deadfall_volley",
+      "name_en": "Deadfall Volley", "name_ja": "落とし穴の一斉射撃",
+      "trigger": { "t": "every_secs", "s": [999, 999] },
+      "verb": { "t": "strike", "n": [10, 16] },
+      "attack_profile": { "edge": ["top", "left", "right", "bottom"], "direction": "front", "penetration": 0, "aoe": 1, "aoe_statuses": false },
+      "modes": ["battle"],
+      "note": "Fired exactly once by the trap-timeout path in runEncounter (not scheduled via every_secs in normal play); the huge s-range is a defensive placeholder so it would never self-schedule if accidentally treated as a normal schedulable effect."
+    },
+    {
+      "id": "door_keeper_strike",
+      "name_en": "Keeper's Strike", "name_ja": "門番の一撃",
+      "trigger": { "t": "every_secs", "s": [2.0, 2.5] },
+      "verb": { "t": "strike", "n": [8, 12] },
+      "attack_profile": { "edge": ["top"], "direction": "front", "penetration": 0, "aoe": 0, "aoe_statuses": false },
+      "modes": ["unlock"],
+      "note": "Door's stage2 (unlock-stage) entity skill; only fires-back-relevant if the door entity itself is given an offensive skill. Included for completeness/symmetry (S4.7 OQ10: statuses/damage symmetric)."
+    },
+    {
+      "id": "gnoll_snap",
+      "name_en": "Scavenger's Snap",
+      "name_ja": "あさりの噛みつき",
+      "trigger": {
+        "t": "OnSquadBeenHit"
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          2,
+          4
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "archer_steady_aim",
+      "name_en": "Steady Aim",
+      "name_ja": "狙い澄まし",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "buff_self",
+        "stat": "damage",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "rime_mantle",
+      "name_en": "Hoarfrost Mantle",
+      "name_ja": "霧氷の外套",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "status_immune",
+        "status": "Chill"
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "bear_frost_hide",
+      "name_en": "Frostmatted Hide",
+      "name_ja": "霜降りの毛皮",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "damage_reduction",
+        "n": [
+          1,
+          3
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "wisp_freezing_touch",
+      "name_en": "Freezing Touch",
+      "name_ja": "凍える揺らめき",
+      "trigger": {
+        "t": "OnSquadBeenHit"
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Chill",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "stalker_cornered_fury",
+      "name_en": "Cornered Fury",
+      "name_ja": "窮鼠の牙",
+      "trigger": {
+        "t": "on_hp_below",
+        "hp_frac": 0.4
+      },
+      "verb": {
+        "t": "buff_self",
+        "stat": "damage",
+        "n": [
+          2,
+          4
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "hrim_frost_masked",
+      "name_en": "The Frost-Masked",
+      "name_ja": "霜面の不凍",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "status_immune",
+        "status": "Chill"
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    }
+  ]
+}
