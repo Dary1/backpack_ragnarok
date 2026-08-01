@@ -46,3 +46,15 @@ history (this REQ stops future checkout/packfile growth, it does not shrink
 ## Outcome
 
 (filled at built)
+
+## Outcome (2026-08-01)
+
+- Deletion commit: 1045 files, content/batches + content/proposals removed
+  entirely (working tree content/ 752MB -> 178MB; remaining bulk is
+  content/art 177MB, out of scope here).
+- Gate 1 (server suite, files backend): 229 passed / 0 failed, 1950
+  assertions, in this worktree post-deletion.
+- Gate 2 (grep): zero non-comment references to the deleted paths outside
+  tools/ legacy one-offs.
+- NOT done here: .git history rewrite (941MB stays; rewriting would
+  invalidate commit hashes pinned in REQ files — separate decision).
