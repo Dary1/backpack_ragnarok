@@ -70,23 +70,19 @@ function run(res, promise) {
 }
 
 // REQ-0178: registry-first /api/content serving. After any adopt/edit/delete/
-// patch the warm registry snapshot (server/lib/content.cjs) is refreshed so the
-// next /api/content payload reflects the change. AWAITED by the mutating
-// handlers for e2e determinism (mirrors REQ-0133's refreshArtUrls). Never
-// throws: a registry read hiccup must not fail the mutation that already
-// committed.
+// patch the warm registry snapshot is refreshed so the next served payload
+// reflects the change. Never throws: a registry read hiccup must not fail the
+// mutation that already committed.
 //
-// REQ-0176 (Phase-1b): there are TWO warm snapshots -- lib/content.cjs (the
-// DISPLAY path, /api/content) and services/core.cjs (the AUTHORITY path: the
-// gacha roll, the run simulation, market, warehouse). Both refresh
-// from THIS ONE call site, on purpose: a mutation that refreshed only one would
-// leave display and roll disagreeing, which is precisely the drift REQ-0176
-// exists to kill. If a third snapshot is ever added, it belongs here too.
+// REQ-0348 made this ONE snapshot (services/core.cjs owns it; lib/content.cjs
+// is a delegating facade over it); REQ-0351 collapsed the call. The await is
+// still the contract: the adopt/edit/delete/patch handlers do not answer until
+// the served view reflects the mutation (the wiring e2e determinism contract,
+// REQ-0176/REQ-0178, mirroring REQ-0133's refreshArtUrls). If a SECOND
+// snapshot is ever introduced, it belongs here too -- and that is the moment
+// to ask why it exists at all.
 function invalidateServedContent() {
-  return Promise.all([
-    require('../lib/content.cjs').refreshRegistryData(),
-    require('../services/core.cjs').refreshRegistryData(),
-  ]).catch(() => {});
+  return require('../services/core.cjs').refreshRegistryData().catch(() => {});
 }
 
 // Full-provenance validation (gate G3): every variant carries source/model/
@@ -445,4 +441,4 @@ function tryContentRoutes(req, res, url, p) {
   return false;
 }
 
-module.exports = { tryContentRoutes, KINDS, _normalizeProvenance: normalizeProvenance, _recheckVariant: recheckVariant, _resolveArtworkRefPatch: resolveArtworkRefPatch }; // KINDS: REQ-0352 kind-list agreement gate
+module.exports = { tryContentRoutes, KINDS, _normalizeProvenance: normalizeProvenance, _recheckVariant: recheckVariant, _resolveArtworkRefPatch: resolveArtworkRefPatch, _invalidateServedContent: invalidateServedContent }; // KINDS: REQ-0352 kind-list agreement gate; _invalidateServedContent: REQ-0351 one-recompute gate

@@ -192,6 +192,32 @@ const DISPLAY_KINDS = ['po_def', 'si_def', 'tm_def', 'unit_def', 'gacha_pack'];
       'effLevelForPack is non-zero for the served entry -- the REQ-0352 section 5.3 failure mode, pinned');
   });
 
+  // -------------------------------------------------------------------------
+  // (D) REQ-0351: the mutation-side invalidation runs the recompute ONCE.
+  // Before REQ-0348 routes/content.cjs's invalidateServedContent() awaited two
+  // DIFFERENT snapshot builders; after it, both names resolved to the same
+  // recompute, so the old Promise.all fired the identical recompute twice
+  // concurrently -- two asks per kind per mutation. This pins the collapse:
+  // one invalidateServedContent() -> exactly one registry ask per kind.
+  // -------------------------------------------------------------------------
+  await check('REQ-0351: ONE invalidateServedContent() asks the registry exactly ONCE per kind', async () => {
+    installStub();
+    throwFor = null;
+    const { _invalidateServedContent } = require('../routes/content.cjs');
+    asked = []; // count only what THIS invalidation triggers
+    await _invalidateServedContent();
+    const counts = {};
+    for (const a of asked) counts[a.kind] = (counts[a.kind] || 0) + 1;
+    const kinds = Object.keys(counts);
+    assert.ok(kinds.length >= DISPLAY_KINDS.length,
+      'the recompute still asks for every kind; got ' + JSON.stringify(kinds));
+    const dupes = kinds.filter((k) => counts[k] !== 1);
+    assert.deepStrictEqual(dupes, [],
+      'kinds asked more than once per invalidation: ' +
+      JSON.stringify(dupes.map((k) => k + ' x' + counts[k])) +
+      ' -- the pre-REQ-0351 duplicate recompute is back');
+  });
+
   restoreStub();
   console.log('');
   console.log('registry_overlay_test: ' + (failed ? failed + ' FAILED' : 'all green'));
