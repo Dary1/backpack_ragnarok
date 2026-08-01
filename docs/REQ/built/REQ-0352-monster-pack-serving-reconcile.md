@@ -153,9 +153,61 @@ the same assertion REQ-0353 wants; whichever lands first should write it.
    `content_serving_test`, and REQ-0348's `registry_overlay_test`.
 5. `tools/ci.sh` full run.
 
-## 8. Status log
+## 8. Built — gate results (2026-08-01)
+
+Branch `req-0352-monster-pack-serving-reconcile`, stacked on
+`req-0348-registry-overlay-unify` @ `d8c038ca` (REQ-0348 is `built/`; its
+`registry_overlay_test` is this REQ's gate 4 and its one-snapshot core is the
+code this REQ wires into). Merge after (or with) REQ-0348.
+
+Commits: `856c4e6f` (step 1: COVERED + derived strip), `7330963b` (step 2:
+`--reconcile-kind` + section-5.2 rejection; re-port APPLIED to live DB),
+`f4e7f495` (step 3: wire + merge overlay), `87537c6c`+`40581629` (section-6
+kind-list gate), `b5269e6f` (merge pinned in registry_overlay_test),
+`b76d101b` (dialect tests updated to the ruling).
+
+1. **Parity gate:** before re-port monster_pack 10 DRIFT (members) + 4 MATCH;
+   after, **14/14 MATCH**. The spec's "14 DRIFT" counted the powerLevel-only
+   diffs that the section-5 ruling itself reclassifies as correct
+   (pack_bone_court / pack_demon_gate / pack_deep_tide / pack_titan_ridge
+   never had member drift). Re-port = 10 packs v1 -> v2, checks PASS, adopted.
+2. **Both halves served:** registry_overlay_test case (C) green, and live
+   smoke (worktree code, live DB, warm snapshot): pack_frost_scouts
+   members=16 powerLevel=4.5769, pack_hrimgrimnir 15/9.7372, pack_bone_court
+   4/-1.6154; effLevelForPack non-zero for all.
+3. **Sim goldens unmoved:** working tree clean after the full run -- the
+   re-port is a no-op for the sim, as required.
+4. **pg suites + serving trio + registry_overlay_test:** green inside ci.sh.
+5. **`tools/ci.sh` full run: CI GREEN** (336s, receipt tree `6bbda0e4`).
+   4 dialect-test failures found and fixed en route: they fed raw file
+   entries (powerLevel included) through runChecks as variants -- pre-ruling
+   shapes; now they check the authored view and a new pin asserts the raw
+   shape FAILs by name.
+
+Section-6 gate delivered as `server/tests/kind_lists_agree_test.cjs` (DB-free,
+in ci.sh): routes KINDS == core REGISTRY_KINDS ⊇ display kinds, parity
+COVERED == REGISTRY_KINDS, COVERED ⊆ backfill SOURCES, and monster_pack's
+derived config pinned to exactly `['powerLevel']`. REQ-0353/0354 reference it.
+
+**Out-of-scope finding, surfaced not fixed:** completing COVERED (gimic +
+dungeon) measured gimic 4/4 MATCH but **dungeon 3 DRIFT on `baseDifficulty`**
+(REQ-0293/0295 calibrated it into the file only; `dungeon` is registry-served,
+so every dungeon runs at neutral g=1.0 live). Recorded as REQ-0353 section 8b
+-- same root cause, needs an authored-vs-derived ruling there.
+
+**NOT yet live:** the DB re-port is applied (inert until code deploys --
+monster_pack was unwired on master), but the wiring/merge code is only on this
+branch. Deploy order: merge REQ-0348, then this branch.
+
+## 9. Status log
 
 - 2026-07-31 — reserved and specced into `todo/` at the user's request. The
   `powerLevel` ownership question was delegated by the user and is RULED in §5
   rather than deferred. Evidence gathered against the live DB + live content at
   `master` `e4b24dd0`.
+- 2026-08-01 — implemented (sections 4.1 -> 4.2 -> 4.3 -> 4.4 in the specced
+  order, gate before wire), all gates green, todo -> built. Section-5(a)-style
+  choice made en route: the re-port went through a new `--reconcile-kind` mode
+  on the existing backfill tool (its INSERT-ONLY doctrine untouched) rather
+  than a bespoke porter. DB re-port applied to live (safe: kind unwired on
+  master). Awaiting merge/deploy/acceptance behind REQ-0348.

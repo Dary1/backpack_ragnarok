@@ -445,4 +445,4 @@ function tryContentRoutes(req, res, url, p) {
   return false;
 }
 
-module.exports = { tryContentRoutes, _normalizeProvenance: normalizeProvenance, _recheckVariant: recheckVariant, _resolveArtworkRefPatch: resolveArtworkRefPatch };
+module.exports = { tryContentRoutes, KINDS, _normalizeProvenance: normalizeProvenance, _recheckVariant: recheckVariant, _resolveArtworkRefPatch: resolveArtworkRefPatch }; // KINDS: REQ-0352 kind-list agreement gate

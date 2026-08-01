@@ -266,7 +266,7 @@ function ensureFilePayload() {
 // byte-identical to the pre-REQ loader. That is what keeps the default e2e
 // fleet a true no-regression baseline.
 // ---------------------------------------------------------------------
-const REGISTRY_KINDS = ['po_def', 'si_def', 'tm_def', 'unit_def', 'gacha_pack', 'monster_def', 'skill_def', 'gimic', 'dungeon', 'unit_skin']; // REQ-0211: gimic; REQ-0185: dungeon; REQ-0266: unit_skin -- it is in routes/content.cjs KINDS TOO (monster_pack is in that list and not this one, so its adoptions never reach serving; do not repeat that)
+const REGISTRY_KINDS = ['po_def', 'si_def', 'tm_def', 'unit_def', 'gacha_pack', 'monster_def', 'skill_def', 'gimic', 'dungeon', 'unit_skin', 'monster_pack']; // REQ-0211: gimic; REQ-0185: dungeon; REQ-0266: unit_skin; REQ-0352: monster_pack -- wired only AFTER the section-4 re-port made the registry match the live files (wiring it earlier would have served every pack's 1-3-member 2026-07-15 ancestor and zeroed level scaling). Must stay a subset of routes/content.cjs KINDS; the kind-list gate (server/tests/kind_lists_agree_test.cjs) asserts all four lists.
 // kind -> the file-payload map whose key set defines what we ask the registry for.
 const REGISTRY_MAP_BY_KIND = {
   po_def: 'itemDefsById',
@@ -279,6 +279,7 @@ const REGISTRY_MAP_BY_KIND = {
   gimic: 'gimicDefsById', // REQ-0211
   dungeon: 'dungeonDefsById', // REQ-0185
   unit_skin: 'unitSkinDefsById', // REQ-0266
+  monster_pack: 'monsterPackDefsById', // REQ-0352 (NOT packDefsById -- that is gacha)
 };
 const REGISTRY_TTL_MS = 15000; // mirror lib/content.cjs REGISTRY_TTL_MS / ART_URLS_TTL_MS
 
@@ -344,7 +345,9 @@ function skillNamesFrom(s) {
 
 function overlayMap(base, regEntries, transform) {
   const out = Object.assign({}, base);
-  for (const name of Object.keys(regEntries)) out[name] = transform ? transform(regEntries[name]) : regEntries[name];
+  // transform receives (registry entry, file entry) -- the base entry rides
+  // along for the ONE kind whose overlay is a merge, not a replace (REQ-0352).
+  for (const name of Object.keys(regEntries)) out[name] = transform ? transform(regEntries[name], out[name]) : regEntries[name];
   return out;
 }
 
@@ -371,6 +374,15 @@ function applyRegistryOverlay(fp) {
     gimicDefsById: overlayMap(fp.gimicDefsById, reg.gimic, null), // REQ-0211
     dungeonDefsById: overlayMap(fp.dungeonDefsById, reg.dungeon, null), // REQ-0185
     unitSkinDefsById: overlayMap(fp.unitSkinDefsById, reg.unit_skin, null), // REQ-0266
+    // REQ-0352: monster_pack is the ONE kind whose served entry has TWO
+    // writers: the registry (authored: id/name/i18n/note/members) and
+    // tools/autobalance_pack_powerlevel.cjs (derived: powerLevel, file-side
+    // only -- section 5 ruling). A whole-entry replace would delete the
+    // derived half, and sim/lib/level_scale.cjs effLevelForPack() returns 0
+    // for a non-finite powerLevel -- level scaling silently OFF for every
+    // pack, and no crash to say so. So this overlay MERGES: authored fields
+    // win, derived fields ride through from the file entry.
+    monsterPackDefsById: overlayMap(fp.monsterPackDefsById, reg.monster_pack, (raw, base) => Object.assign({}, base, raw)),
     skillDefsById: overlayMap(fp.skillDefsById, reg.skill_def, skillMechanicsFrom),
     skillNamesById: overlayMap(fp.skillNamesById, reg.skill_def, skillNamesFrom),
   });
@@ -636,6 +648,7 @@ module.exports = {
   statMtimeMs,
   loadJSON,
   getScheduleContent,
+  REGISTRY_KINDS, // REQ-0352: for the kind-list agreement gate (kind_lists_agree_test)
   refreshRegistryData, // REQ-0176: awaited by routes/content.cjs invalidateServedContent()
   getRegistrySnapshot, // REQ-0348: the ONE registry snapshot; the display path overlays from it too
   getScheduleSources, // REQ-0176: authority-path source accounting

@@ -53,6 +53,22 @@ const COVERED = [
   // slice). This file's own header states the rule: a kind the serving path resolves
   // but this tool does not check is a kind whose drift reaches the game unseen.
   { kind: 'unit_skin', file: contentPath('live', 'live_unit_skins.json') }, // REQ-0266
+  // REQ-0352: monster_pack joins the covered set BEFORE it is wired into
+  // services/core.cjs REGISTRY_KINDS -- gate-before-wire (REQ-0352 section 4):
+  // the instrument must show the 14 drifted packs before any data or wiring
+  // changes. `derived` lists fields the registry does NOT own (REQ-0352
+  // section 5: powerLevel is written only by tools/autobalance_pack_powerlevel.cjs
+  // and lives file-side only). They are stripped from the FILE entry before
+  // compare -- so a registry variant that ever carries one shows as DRIFT,
+  // which is exactly the authorship violation the ruling forbids.
+  { kind: 'monster_pack', file: contentPath('live', 'dungeon', 'packs.json'), derived: ['powerLevel'] }, // REQ-0352
+  // REQ-0352 section 6: gimic and dungeon have been registry-served since
+  // REQ-0211 / REQ-0185 but were never covered -- the same omission class that
+  // hid monster_pack's 14 drifted packs. The kind-list gate
+  // (server/tests/kind_lists_agree_test.cjs) now asserts COVERED ==
+  // REGISTRY_KINDS, so a kind can no longer be served-but-unchecked.
+  { kind: 'gimic', file: contentPath('live', 'dungeon', 'gimics.json') }, // REQ-0352
+  { kind: 'dungeon', file: contentPath('live', 'dungeon', 'dungeons.json') }, // REQ-0352
 ];
 
 // Canonical JSON (recursive key sort) -> order-insensitive equality.
@@ -62,6 +78,17 @@ function canonical(v) {
   return JSON.stringify(v);
 }
 function deepEqualUnordered(a, b) { return canonical(a) === canonical(b); }
+
+// REQ-0352: the FILE entry minus its derived fields (COVERED[].derived) -- the
+// authored view, which is what the registry is supposed to mirror. Stripping
+// happens on the file side ONLY: a registry variant carrying a derived field
+// still compares unequal and surfaces as DRIFT.
+function authoredView(entry, derived) {
+  if (!derived || !derived.length) return entry;
+  const out = Object.assign({}, entry);
+  for (const f of derived) delete out[f];
+  return out;
+}
 
 // Field-level diff (order-insensitive): [{path, file, registry}] leaf mismatches.
 function diffFields(a, b, prefix, out) {
@@ -89,7 +116,7 @@ function collectFileEntries() {
     const excluded = new Set(src.exclude || []);
     for (const entry of (doc.entries || [])) {
       if (excluded.has(entry.id)) continue; // documented reuse copy; original row owns the name
-      if (!byName.has(entry.id)) byName.set(entry.id, { kind: src.kind, file: src.file, entry: entry });
+      if (!byName.has(entry.id)) byName.set(entry.id, { kind: src.kind, file: src.file, entry: entry, derived: src.derived });
     }
   }
   return byName;
@@ -105,8 +132,9 @@ async function classifyAll(storage, byName) {
     const adopted = await storage.getAdoptedVariant(name);
     if (adopted) {
       if (adopted.kind !== info.kind) { rows.push({ name, kind: info.kind, status: 'MISSING-IN-REGISTRY', detail: 'def exists but kind=' + adopted.kind }); continue; }
-      if (deepEqualUnordered(info.entry, adopted.data)) rows.push({ name, kind: info.kind, status: 'MATCH', variant_no: adopted.variant_no });
-      else rows.push({ name, kind: info.kind, status: 'DRIFT', variant_no: adopted.variant_no, diff: diffFields(info.entry, adopted.data) });
+      const fileView = authoredView(info.entry, info.derived); // REQ-0352: authored fields only
+      if (deepEqualUnordered(fileView, adopted.data)) rows.push({ name, kind: info.kind, status: 'MATCH', variant_no: adopted.variant_no });
+      else rows.push({ name, kind: info.kind, status: 'DRIFT', variant_no: adopted.variant_no, diff: diffFields(fileView, adopted.data) });
       continue;
     }
     const def = await storage.getContentDefByName(name);
@@ -159,7 +187,7 @@ async function main() {
   process.exit(counts.DRIFT > 0 ? 1 : 0);
 }
 
-module.exports = { canonical, deepEqualUnordered, diffFields, collectFileEntries, classifyAll, summarize, COVERED };
+module.exports = { canonical, deepEqualUnordered, diffFields, authoredView, collectFileEntries, classifyAll, summarize, COVERED };
 
 if (require.main === module) {
   main().catch((e) => { console.error('FATAL', (e && e.stack) || e); process.exit(2); });
