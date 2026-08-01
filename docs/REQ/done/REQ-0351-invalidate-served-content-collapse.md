@@ -1,6 +1,6 @@
 # REQ-0351 — Collapse `invalidateServedContent()`'s double refresh to one
 
-**Status:** Built (all gates green; awaiting merge/deploy/acceptance)
+**Status:** Done (merged, deployed, live-verified)
 **Reserved:** 2026-07-31
 **Slug:** invalidate-served-content-collapse
 **Origin:** REQ-0348 §9 "Follow-ups this REQ deliberately did not take"
@@ -155,3 +155,22 @@ await, same determinism contract.
 
 - 2026-08-01 — implemented, all §7 gates green, todo → built (code commit
   fc0bb166). Not merged, not deployed.
+
+## 11. Deploy record (2026-08-01)
+
+- Merged to master as **458b09e1** (no-ff) on user go-ahead ("go merge").
+- Released as part of the combined REQ-0351 + REQ-0349 + REQ-0350 release: a
+  concurrent session merged 0349/0350 on top of 458b09e1 and ran
+  `tools/release.sh` over the combined tree — full unscoped gate + content
+  drift gate GREEN (MATCH=413 DRIFT=0), dist rebuild **1b88a2ac**, ci-receipt
+  written for the master tree.
+- Pushed to origin and offsite (master @ 1b88a2ac); `backpack-api` restarted
+  09:02:47 UTC.
+- Live-verified: the running checkout has zero `Promise.all` in
+  `routes/content.cjs` (the collapse is what is serving); `/api/content` 200
+  both on 127.0.0.1:8802 and via https://backpack-dev.qtie.jp.
+
+## 9″. Status log (cont.)
+
+- 2026-08-01 — merged (458b09e1), released (1b88a2ac), deployed, live-verified;
+  built → done.
