@@ -252,6 +252,16 @@ node tools/check_scaling_coverage.cjs --gate
 stage "[3.996/7] REQ-0298 monster-pack formation-fill inspection (self-test + HARD --gate: every monster_pack >= 30% fill; REQ-0303 flipped from advisory)"
 node tools/inspect_pack_formation.cjs --self-test
 node tools/inspect_pack_formation.cjs --gate
+stage "[3.997/7] REQ-0306 predeploy powerLevel recalibration (self-test, DB-free) + calibration-drift ADVISORY"
+node tools/predeploy_recalibrate_powerlevel.cjs --self-test
+# ADVISORY ONLY (report-only, REQ-0306): dirty = level-affecting content changed
+# since the last calibration IN THIS CHECKOUT (--check is checkout-relative;
+# = live only on the main checkout @ master). HARD enforcement lives in the
+# predeploy script (content-deploy runbook step, docs/llm_managed/
+# content_deploy_runbook.md), NOT here: a hard ci gate would block WIP branches
+# that edited content before recalibrating. "Flip to hard gate" = delete the
+# || echo guard below.
+node tools/autobalance_pack_powerlevel.cjs --check || echo "[advisory] powerLevel drift -- run: node tools/predeploy_recalibrate_powerlevel.cjs (REQ-0306)"
 stage "[4/7] server api tests (files backend)"
 node server/tests/api_test.cjs
 stage "[4.05/7] REQ-0240 presentation-pacing unit gates (paceEvents floors/coalesce/clamp/legacy passthrough/roster)"
