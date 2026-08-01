@@ -198,8 +198,15 @@ const ATT_EVS = new Set(['att_fire', 'att_reveal', 'att_disarm', 'att_open', 'at
 // run.events stays byte-identical (goldens + the api determinism gate green).
 // Every join is derived from data that already exists outside the sim at serve
 // time: the roster (instanceId / slot) and the rolled-def gimic map.
-function enrichDecoration(dec, enemyIdxByInstance, slotByBp, gimicByAtt) {
+function enrichDecoration(dec, enemyIdxByInstance, slotByBp, gimicByAtt, rayField) {
   const ev = dec.ev;
+  // (v) REQ-0355: stamp the owning ray's target field onto served hit copies.
+  // ray_hit carries no `field` in the sim log (only ray_fire does), so the
+  // client's dock reducer could never tell a player-taken hit from an
+  // enemy-taken one -- the enemy-HP gate `ev.field==='enemy'` was never true.
+  if ((ev === 'ray_hit' || ev === 'ray_aoe' || ev === 'ray_hit_all') && typeof dec.field !== 'string' && typeof rayField === 'string') {
+    dec.field = rayField;
+  }
   // (ii) direct ray_hit -> enemy roster index. Only an UNMASKED dst (a real
   // `frost_gnoll#0` instance id) resolves; a masked strike carries dst '?',
   // matches nothing, and stays anonymous -- the reveal semantics are preserved.
@@ -247,8 +254,10 @@ function decorateVisible(run, elapsedSecs) {
   }
   const gimicByAtt = (run && run.gimics) || null;
   const out = [];
+  let rayField = null; // REQ-0355: walking ray context -- tracked over ALL events (not just visible ones)
   for (let i = 0; i < events.length; i++) {
     const ev = events[i];
+    if (ev && ev.ev === 'ray_fire' && typeof ev.field === 'string') rayField = ev.field;
     if (paced) {
       const ptv = paced.pt[i];
       const visSecs = typeof ptv === 'number' ? ptv / 1000 : (typeof ev.t === 'number' ? ev.t : Infinity);
@@ -256,7 +265,7 @@ function decorateVisible(run, elapsedSecs) {
       const dec = Object.assign({}, ev, { pt: ptv });
       if (paced.coalesce && paced.coalesce[i]) dec.pcoalesce = paced.coalesce[i];
       if (paced.hidden && paced.hidden[i]) dec.pcoalesceHidden = true;
-      enrichDecoration(dec, enemyIdxByInstance, slotByBp, gimicByAtt);
+      enrichDecoration(dec, enemyIdxByInstance, slotByBp, gimicByAtt, rayField);
       out.push(dec);
     } else {
       const visSecs = typeof ev.t === 'number' ? ev.t : Infinity;
@@ -270,15 +279,39 @@ function decorateVisible(run, elapsedSecs) {
 // result.bps' squadSlot tag) + enemy hints (id/name/hpMax/footprint/packId)
 // from the ROLLED def + content defs. Player hpMax is exact; enemy hpMax is
 // the def's upper bound (hp[1]) so hp_after/hpMax never exceeds 100%.
-function buildRoster(result, dungeonDef, defs) {
+// REQ-0355: the lean, SERVABLE view of one frozen squad snapshot -- just what
+// the Monitor needs to DRAW a seat (BP cells/colour/unit disc + placed PO
+// icons). Captured at startRun from the same snapshots the sim compiled, so a
+// viewer finally sees ALL FOUR seats' squads, not only their own (previously
+// the client composed seat visuals from the VIEWER's local squad store, and a
+// seat held by another owner rendered as an empty placeholder).
+function leanSeatCanvas(snap) {
+  if (!snap) return null;
+  const bps = (Array.isArray(snap.bps) ? snap.bps : []).map((b) => ({
+    id: b.id,
+    name: typeof b.name === 'string' ? b.name : null,
+    color: typeof b.color === 'string' ? b.color : null,
+    shape: Array.isArray(b.shape) ? b.shape : [],
+    origin: Array.isArray(b.origin) ? b.origin : [1, 1],
+    unit: b.unit && b.unit.id ? { id: b.unit.id, off: Array.isArray(b.unit.off) ? b.unit.off : null } : null,
+  }));
+  const pos = (Array.isArray(snap.pos) ? snap.pos : [])
+    .filter((p) => p && p.loc === 'grid' && Array.isArray(p.cell))
+    .map((p) => ({ id: p.id, loc: 'grid', cell: p.cell, rot: typeof p.rot === 'number' ? p.rot : 0 }));
+  return { bps, pos };
+}
+
+function buildRoster(result, dungeonDef, defs, squadSnapshots) {
   const monsterPackDefsById = (defs && defs.monsterPackDefsById) || {};
   const enemyDefsById = (defs && defs.enemyDefsById) || {};
   const SLOTS = ['unit1', 'unit2', 'unit3', 'unit4'];
   const bySlot = new Map(SLOTS.map((s) => [s, []]));
   for (const b of (result && result.bps) || []) {
-    if (b.squadSlot && bySlot.has(b.squadSlot)) bySlot.get(b.squadSlot).push({ id: b.id, hpMax: b.hpMax });
+    // REQ-0355: bpIdx rides along (sim tags it at compile) so slot+bpIdx-
+    // attributed events can be joined back to this pool entry mid-run.
+    if (b.squadSlot && bySlot.has(b.squadSlot)) bySlot.get(b.squadSlot).push({ id: b.id, hpMax: b.hpMax, bpIdx: (typeof b.bpIdx === 'number' ? b.bpIdx : bySlot.get(b.squadSlot).length) });
   }
-  const slots = SLOTS.map((slot, i) => ({ slot, index: i, bps: bySlot.get(slot) }));
+  const slots = SLOTS.map((slot, i) => ({ slot, index: i, bps: bySlot.get(slot), canvas: leanSeatCanvas(Array.isArray(squadSnapshots) ? squadSnapshots[i] : null) }));
   const enemies = [];
   const seen = new Set();
   for (const enc of (dungeonDef && dungeonDef.encounters) || []) {
@@ -329,4 +362,5 @@ module.exports = {
   eventPtSecs,
   decorateVisible,
   buildRoster,
+  leanSeatCanvas, // REQ-0355 (tests)
 };

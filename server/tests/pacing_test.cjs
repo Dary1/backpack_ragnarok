@@ -135,8 +135,10 @@ T('buildRoster: per-slot player BPs (exact hpMax) + enemy hints', () => {
   };
   const roster = P.buildRoster(result, dungeonDef, defs);
   assert.strictEqual(roster.slots.length, 4);
-  assert.deepStrictEqual(roster.slots[0].bps, [{ id: 'bp_a', hpMax: 100 }, { id: 'bp_b', hpMax: 120 }]);
+  // REQ-0355: bps carry bpIdx (falls back to push order when the sim never tagged it).
+  assert.deepStrictEqual(roster.slots[0].bps, [{ id: 'bp_a', hpMax: 100, bpIdx: 0 }, { id: 'bp_b', hpMax: 120, bpIdx: 1 }]);
   assert.strictEqual(roster.slots[1].bps.length, 0);
+  assert.strictEqual(roster.slots[0].canvas, null); // no squadSnapshots passed -> null canvas, legacy-safe
   assert.deepStrictEqual(roster.enemies[0], { id: 'gob', instanceId: 'gob#0', at: 'B2', fieldCells: [[2, 2]], name: 'Goblin', nameJa: 'ゴブリン', hpMax: 45, footprint: [1, 1], packId: 'pk1', masked: false });
 });
 
@@ -204,6 +206,46 @@ T('REQ-0276 A2(ii..iv) decorateVisible: serve-time attribution on COPIES only', 
   assert.strictEqual(out[5].slot, 2, 'unit_charge via src: bp_c in unit3 -> slot 2');
   assert.strictEqual(JSON.stringify(events), before, 'stored run.events (incl nested hits) byte-identical');
   assert.ok(events.every((e) => e.enemyIdx === undefined && e.gimicId === undefined && e.slot === undefined), 'no attribution leaked onto stored events');
+});
+
+
+// ---- REQ-0355: served `field` stamping + per-seat lean canvases ----------
+
+T('REQ-0355: decorateVisible stamps the walking ray field onto served hit copies', () => {
+  const events = [
+    { t: 0, seq: 0, ev: 'ray_fire', field: 'enemy', src: 'blade' },
+    { t: 0, seq: 1, ev: 'ray_hit', dst: 'gob#0', amount: 5, hp_after: 40 },
+    { t: 1, seq: 2, ev: 'ray_fire', field: 'player', src: 'gob' },
+    { t: 1, seq: 3, ev: 'ray_hit', dst: 'bp_a', amount: 3, hp_after: 97, slot: 0, bpIdx: 0 },
+    { t: 1, seq: 4, ev: 'ray_aoe', center: [1, 1], radius: 1, hits: [{ dst: 'bp_a', amount: 1, hp_after: 96, slot: 0, bpIdx: 0 }] },
+  ];
+  const paced = P.paceEvents(events);
+  const run = { events, pacingVersion: paced.pacingVersion, presentation: paced.presentation, roster: null };
+  const out = P.decorateVisible(run, 1e9);
+  assert.strictEqual(out[1].field, 'enemy', 'hit after an enemy-field fire is field:enemy');
+  assert.strictEqual(out[3].field, 'player', 'hit after a player-field fire is field:player');
+  assert.strictEqual(out[4].field, 'player', 'aoe inherits the walking ray field');
+  assert.strictEqual(out[3].slot, 0, 'sim slot attribution passes through serving untouched');
+  assert.strictEqual(events[1].field, undefined, 'stored events never mutated');
+});
+
+T('REQ-0355: buildRoster serves a lean per-seat canvas from the frozen squad snapshots', () => {
+  const result = { bps: [{ id: 'bp_a', hpMax: 100, hp: 80, squadSlot: 'unit1', bpIdx: 0 }] };
+  const dungeonDef = { encounters: [] };
+  const snapshots = [
+    { bps: [{ id: 'bp_a', name: 'Alpha', color: '#BF9000', hpMax: 100, shape: [[0, 0], [0, 1]], origin: [1, 1], unit: { id: 'dwarf', off: [0, 1] } }],
+      pos: [{ id: 'blade', loc: 'grid', rot: 0, uid: 'p1', cell: [1, 1] }, { id: 'stowed', loc: 'inv', uid: 'p2' }],
+      sis: [{ uid: 's1' }] },
+    null, { bps: [], pos: [], sis: [] }, null,
+  ];
+  const roster = P.buildRoster(result, dungeonDef, {}, snapshots);
+  assert.deepStrictEqual(roster.slots[0].canvas, {
+    bps: [{ id: 'bp_a', name: 'Alpha', color: '#BF9000', shape: [[0, 0], [0, 1]], origin: [1, 1], unit: { id: 'dwarf', off: [0, 1] } }],
+    pos: [{ id: 'blade', loc: 'grid', cell: [1, 1], rot: 0 }],
+  }, 'lean pick: draw fields only; non-grid POs and sis dropped');
+  assert.strictEqual(roster.slots[1].canvas, null, 'empty seat -> null canvas');
+  assert.deepStrictEqual(roster.slots[2].canvas, { bps: [], pos: [] });
+  assert.deepStrictEqual(roster.slots[0].bps, [{ id: 'bp_a', hpMax: 100, bpIdx: 0 }]);
 });
 
 T('REQ-0276 A2: no roster -> no attribution (legacy-safe, masked stays masked)', () => {
