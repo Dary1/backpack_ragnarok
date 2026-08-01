@@ -70,7 +70,7 @@ function walkRay(opts) {
     if (occ == null) continue; // empty / destroyed = passable
     flushSteps();
     const hitResult = dealHitFn(occ, mult(bounces), { allField: false });
-    events.push({ ev: 'ray_hit', dst: hitResult.dstLabel, amount: hitResult.amount, bounce_mult: mult(bounces), hp_after: hitResult.hpAfter });
+    events.push(Object.assign({ ev: 'ray_hit', dst: hitResult.dstLabel, amount: hitResult.amount, bounce_mult: mult(bounces), hp_after: hitResult.hpAfter }, hitResult.ident || {})); // REQ-0355: + slot/bpIdx on player targets
     if (mode === 'detection' && hitResult.isDiscovery) {
       return { events, landing: cell.slice(), discovered: true, aborted, bounces };
     }

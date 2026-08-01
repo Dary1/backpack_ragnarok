@@ -601,6 +601,16 @@ export interface ApiRunEvent {
    * places the item-cooldown overlay on the right squad board, paired with the
    * item id already in `src`. Absent on enemy ray_fire (which use `srcInst`). */
   slot?: number;
+  /** REQ-0355: on a player-target ray_hit / apply_status / status_tick (and on
+   * each ray_aoe / ray_hit_all hits[] member), the struck BP's index within its
+   * squad's bps -- with `slot` this joins back to ApiRunRosterSlot.bps[bpIdx],
+   * so the dock can drain per-seat HP mid-run (previously full bars until
+   * run_end). Absent on enemy-target events and on pre-REQ-0355 runs. */
+  bpIdx?: number;
+  /** REQ-0355: serve-time stamp (decorateVisible) of the owning ray's target
+   * field onto ray_hit / ray_aoe / ray_hit_all copies -- 'player' | 'enemy'.
+   * The stored sim log carries `field` only on ray_fire. */
+  field?: string;
   /** REQ-0280 / REQ-0264 s9.2: on a `ray_fire`, the skills.json skill-def id of
    * the firing skill. Present ONLY where one honestly exists -- enemy / trap /
    * door skills (threaded through sim compilation). ABSENT on player-item rays
@@ -642,10 +652,36 @@ export interface ApiRunEvent {
 
 /** REQ-0240 M1: one squad slot's BP pool (exact hpMax) the monitor dock +
  * stage plates read. */
+/** REQ-0355: the lean, frozen view of one seat's squad canvas as snapshotted
+ * at startRun -- just what the Monitor needs to DRAW the seat (BP cells /
+ * colour / unit disc + placed PO icons). Served for EVERY seat so a troop
+ * member finally sees all four squads, not only their own. Null on legacy
+ * runs stored before REQ-0355 and on empty seats. */
+export interface ApiSeatCanvasBp {
+  id: string;
+  name: string | null;
+  color: string | null;
+  shape: [number, number][];
+  origin: [number, number];
+  unit: { id: string; off: [number, number] | null } | null;
+}
+export interface ApiSeatCanvasPo {
+  id: string;
+  loc: 'grid';
+  cell: [number, number];
+  rot: number;
+}
+export interface ApiSeatCanvas {
+  bps: ApiSeatCanvasBp[];
+  pos: ApiSeatCanvasPo[];
+}
 export interface ApiRunRosterSlot {
   slot: string; // 'unit1'..'unit4'
   index: number; // 0..3
-  bps: { id: string; hpMax: number }[];
+  /** REQ-0355: bpIdx = index within this squad's own bps -- the join key
+   * slot/bpIdx-attributed events (ray_hit / status_tick / aoe hits) carry. */
+  bps: { id: string; hpMax: number; bpIdx?: number }[];
+  canvas?: ApiSeatCanvas | null; // REQ-0355
 }
 
 /** REQ-0240 M1: one enemy the run will field -- a leak-safe HINT (the client
