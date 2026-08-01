@@ -15,6 +15,21 @@ REL_T0=$(date +%s)
 # scoping mechanism rests on a hand-written classification table. If that table
 # is ever wrong, the run that must not be the one to find out is this one.
 # So: no scoping on the release path, stated in one obvious line, not implied.
+# REQ-0353 (section 6, choice (a)): the content drift gate, ACTUALLY RUN.
+# tools/verify_content_registry_parity.cjs has described itself as "the standing
+# drift check the deploy runs on LIVE" since REQ-0178 -- but no deploy path ever
+# ran it, so its STOP printed to nobody: 44 monsters shipped without their
+# REQ-0299 flavor skills (REQ-0353) and monster_pack drifted unseen (REQ-0352).
+# It runs HERE, against the live DB (server/.env), and DRIFT fails the release.
+# A missing server/.env also fails the release, deliberately: a gate that is
+# skipped when credentials are absent is exactly the not-run gate this fixes.
+echo "[release] content registry drift gate (REQ-0353)"
+(
+  set -a; . server/.env; set +a
+  export STORAGE_BACKEND=pg
+  node tools/verify_content_registry_parity.cjs
+)
+
 export CI_SCOPE=both
 bash tools/ci.sh
 (cd client && pnpm run build)
