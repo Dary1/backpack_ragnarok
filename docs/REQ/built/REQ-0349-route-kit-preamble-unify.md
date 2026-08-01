@@ -262,3 +262,10 @@ own small REQ.
     `errToStatus`, zero literal `'method not allowed'` outside `route_kit.cjs`,
     zero requires of the deleted `route_auth.cjs`
   Moved `todo -> built`: code complete and green, NOT merged or deployed.
+
+## Deploy record (2026-08-01)
+
+- Merged to master as 9bcff577 (after the REQ-0348/0352/0353 train and REQ-0351).
+- Released via `tools/release.sh` on the merged tree (full gate incl. the
+  REQ-0353 live drift gate), pushed, `backpack-api` restarted same day.
+- `built -> done` awaits user acceptance.

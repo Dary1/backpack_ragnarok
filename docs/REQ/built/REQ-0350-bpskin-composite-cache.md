@@ -240,3 +240,10 @@ suite.
 docroot, so a rebuild is required to run the gates, but this repo carries dist
 rebuilds as their own `tools/release.sh` commit — so that is left for release
 rather than mixed into a source REQ.
+
+## Deploy record (2026-08-01)
+
+- Merged to master as 26aad185 (after the REQ-0348/0352/0353 train and REQ-0351).
+- Released via `tools/release.sh` on the merged tree (full gate incl. the
+  REQ-0353 live drift gate), pushed, `backpack-api` restarted same day.
+- `built -> done` awaits user acceptance.
