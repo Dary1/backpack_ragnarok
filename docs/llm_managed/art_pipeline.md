@@ -10,6 +10,7 @@
 ## 0. What changed, and what you must not undo
 
 Two user decisions, both taken 2026-07-13, both binding:
+(Authority copy: `docs/user_managed/art_canon.md`, promoted 2026-08-02.)
 
 1. **One route: `flux2`.** FLUX.2 klein 4B distilled, GGUF Q8_0, Apache 2.0.
    **SDXL is retired and its code is deleted** — Juggernaut XL, DreamShaper XL,
