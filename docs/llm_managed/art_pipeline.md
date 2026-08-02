@@ -341,3 +341,17 @@ eyeball found the lock necessary but NOT sufficient** — containment passes whi
 the composition still breaks the backpack "snug fit"; the binding authoring rules
 (imagine-first, topology-prompt consistency, center-line rule, violation-based
 fit, instruments-as-optimizer loop) are `item_content_pipeline.md` §0.2.
+
+## Resident-RSS mitigations (LIVE — do not remove)
+
+Folded 2026-08-02 (REQ-0358) from the 2026-07-17 session log (now archive/).
+
+- `comfyui.service` drop-in: `MemoryMax=14G`, `MemorySwapMax=1G` — ComfyUI is
+  reclaimed/killed inside its own cgroup instead of swap-thrashing the box.
+- `comfyui-idle-free` drop-in: `RSS_RESTART_MB=6000` — restart ComfyUI when idle
+  and bloated.
+- The structural fix is REQ-0233 family scheduling (at most one model stack
+  resident at a time); the drop-ins are the backstop.
+- Deferred note (from the archived SSD playbook): torch >= 2.8 (cu126) unlocks
+  DynamicVRAM / `--fast-disk`. Sampler settings are RATIFIED — after any torch
+  upgrade, regenerate one known-good artwork and roll the venv back on drift.
