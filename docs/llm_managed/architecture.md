@@ -177,6 +177,11 @@ them pass. Full rationale: server/README.md, "Suite membership".
   hoisting at the root — each is a recorded decision; revisit via REQ,
   not drive-by.
 
+- Pixi v8 (hard-won): eventMode="none" on ALL decorative nodes (empty hitTest is truthy and halts sibling search); ONE Application per board FOREVER (destroy/recreate = GL teardown race); call render() synchronously after a scene rebuild (rAF is throttled in background tabs); boundingRect-gate pointermove for multi-board input; multi-root SVG needs a synthetic-root wrap before DOMParser.
+- e2e verification runs Playwright on the server (the Chrome-extension route was retired as flaky); drags need explicit intermediate pointermoves.
+- Build artifacts get NEW filenames (sprite v4->v10 chain); never overwrite.
+- Doc hygiene: when a file is deleted/renamed, sweep the docs for mentions THE SAME DAY.
+
 ## 9. Known debt (deliberate, tracked)
 
 - `BoardRenderer.render()` (~690 LOC) — left for the upcoming UI rework.
