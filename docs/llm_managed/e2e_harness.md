@@ -1,7 +1,7 @@
 # E2E harness (hermetic) — usage since REQ-0214 / REQ-0217
 
-Premise: the post-REQ-0217 hermetic harness is current; the freeze README is still armed.
-Expires-when: superseded by a harness rewrite. Freeze section dies separately once remaining worktrees are verified rebased.
+Premise: the post-REQ-0217 hermetic harness is current.
+Expires-when: superseded by a harness rewrite.
 
 2026-07-17. Supersedes every older description of the e2e rig.
 
@@ -61,20 +61,16 @@ timeout).
    for crash forensics — the default root archives to
    /tmp/bp_e2e_workers_logs_last).
 
-## The freeze (temporary)
-The pre-REQ-0217 harness backed up/cleared/restored LIVE state and wrote
-the LIVE dev profile every run (2026-07-17 incident). Until every worktree
-is rebased onto the merged harness, a daemon holds the e2e box lock so old
-runs cannot start: see ~/.cache/backpack/E2E_FREEZE_README.txt. Scoped
-hermetic runs are unaffected. Lift the freeze by killing the flock/sleep
-pair once old worktrees are gone.
+## The freeze -- LIFTED (REQ-0236; doc truth-up 2026-08-02, REQ-0359)
 
-Since REQ-0234 the freeze pins ONLY the legacy shared-port path: ci.sh's
-[7/7] auto-scopes from a req- worktree, and the admin + registry harnesses
-take per-REQ locks (~/.cache/backpack/e2e.<req>.lock) instead of the box
-lock — rebased trees run the full gate chain without ever touching the
-frozen lock. tools/e2e_run.sh also names the lock holder (and points at the
-freeze README) IMMEDIATELY instead of stalling silently for E2E_LOCK_WAIT.
+The 2026-07-17 freeze (reboot-persistent `backpack-e2e-freeze` user unit holding
+the e2e box lock so pre-REQ-0217 harnesses could not run) was lifted under
+REQ-0236 after the worktree sweep (104 pre-harness trees removed, 2026-07-27).
+Verified 2026-08-02: unit inactive AND disabled; all 12 `req-*` worktrees contain
+the merged hermetic harness (ancestor check vs `35a8edce`);
+`~/.cache/backpack/e2e.box.lock` remains as an inert 0-byte file (advisory lock,
+no holder). Accepted residual: `monsters-002-style-bakeoff` (HANDS-OFF art WIP)
+predates the harness and is never used for e2e.
 
 ## Rules that stay
 - Box lock (REQ-0117) still guards the LEGACY shared-port path.
