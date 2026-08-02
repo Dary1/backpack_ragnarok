@@ -811,3 +811,44 @@ re-planning, and it is better to learn that in week one.
   problem and would swamp the matchmaking signal we actually want.
 - **No hidden privileges.** If the fleet needs a dev seam to play, that seam is a
   missing feature and should be built as one.
+
+---
+
+## Appendix — decisions & findings folded from the program handoff (2026-08-02, REQ-0358; original: archive/2026-07-27-fleet-program-handoff.md)
+
+User-ratified decisions (2026-07-27):
+
+1. **Tidy first** — the engine moved into `shared/` (REQ-0309) so `bpk` calls
+   `shared/` instead of re-implementing the client canvas layer.
+2. **Reactive, not autonomous** — bots never HOST a Troop; they wake on a
+   player's recruitment and drip-fill seats ~2 min apart; they never cancel.
+   This deletes the matchmaking/anti-deadlock apparatus; fragmentation is
+   structurally impossible. The LLM's work moves to the housekeeping window
+   after a Troop disbands.
+
+Consequences easy to lose:
+- Polling is not autonomy: a cheap deterministic daemon watches the event feed;
+  the LLM wakes only when a real choice exists.
+- The escape hatch is mandatory: the deploy gate blocks a uid across active
+  rooms and auto-restarts forever (`runs.cjs:323`). Rule: 解散はしないが、席は
+  返す — leave when the host is absent T hours or opens a new Troop.
+- Without the housekeeping session the LLM is a cron job: seat-filling is a
+  shell script; the value is claim/dismantle/gacha/market/rebuild plus the
+  one-sentence `why` each verb carries.
+
+Findings a fresh session must not re-derive:
+- Co-op Troops do not exist: `rooms.cjs:111` hardcodes `visibility:'self'`; a
+  slot is a bare `squadIndex`; `startRun` sets `participants=[room.ownerId]`.
+  BUT `sim/lib/dungeon.cjs:32` `distributeRewardsUniform` is already
+  multi-participant — the combat core needs no change.
+- Gacha, warehouse claim and the fresh-profile seed are client-authoritative:
+  the server rolls/reserves; the CLIENT mutates the canvas and PUTs, and that
+  PUT is the commit (why REQ-0310 existed).
+- Identity hazard: live `data/config/dev_user.json` has no `dev_mode` key and
+  `admin.cjs:71` defaults it to true — a token-less request silently resolves
+  to the DEV player. `bpk` must fail closed on this.
+- `tools/ci.sh` is not reliably green at its default 4 e2e workers (observed
+  twice independently, different specs; green at `E2E_PARALLEL=1`) — recorded
+  as an addendum to REQ-0222.
+- Salvage: `~/backpack_ragnarok_salvage/req-0073-build_dungeon_preview.patch`
+  (145 lines of real uncommitted work).
