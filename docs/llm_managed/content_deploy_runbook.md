@@ -1,5 +1,8 @@
 # Content-deploy runbook (live dungeon/skill/monster content)
 
+Premise: main checkout @ master IS live (mtime hot-reload); recalibrate marker flow per REQ-0306.
+Expires-when: replaced by an automated deploy gate.
+
 _Created by REQ-0306 to give deploy-time powerLevel recalibration a concrete,
 named chokepoint. There is NO separate "live checkout": the MAIN checkout
 `~/backpack_ragnarok` @ `master` IS live (the `backpack-api` user unit serves

@@ -1,5 +1,8 @@
 # E2E harness (hermetic) — usage since REQ-0214 / REQ-0217
 
+Premise: the post-REQ-0217 hermetic harness is current; the freeze README is still armed.
+Expires-when: superseded by a harness rewrite. Freeze section dies separately once remaining worktrees are verified rebased.
+
 2026-07-17. Supersedes every older description of the e2e rig.
 
 ## Principles

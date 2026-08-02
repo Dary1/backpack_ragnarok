@@ -1,5 +1,8 @@
 # 2026-07-14 — Cowork mount silently truncates files (root cause of tail truncation)
 
+Premise: the Cowork mount truncates on Windows-write -> Linux-read (stale size cache) and cannot host git.
+Expires-when: a coherence retest passes after a Cowork update -- then retire the PROJECT.md rule with it.
+
 Status: measured and reproduced. Rule lives in PROJECT.md ("Where to edit — NON-NEGOTIABLE");
 this file is the evidence behind it.
 

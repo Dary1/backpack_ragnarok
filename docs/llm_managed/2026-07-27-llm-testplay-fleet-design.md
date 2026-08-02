@@ -1,5 +1,8 @@
 # LLM Test-Play Fleet — Overall Technical Design (pre-REQ)
 
+Premise: the fleet program (REQ-0309..0320) is in flight.
+Expires-when: program complete or superseded by as-built docs.
+
 - **Date**: 2026-07-27
 - **Status**: DESIGN ONLY. No REQ reserved yet, no code written. This document exists
   to be argued with before any number is burned.

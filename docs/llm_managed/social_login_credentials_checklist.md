@@ -1,5 +1,8 @@
 # Social Login — credentials YOU must obtain (for REQ-0118a / 0118b)
 
+Premise: REQ-0118 family not fully done (a/c built, b draft).
+Expires-when: REQ-0118 family done -> archive.
+
 Purpose: the external accounts, keys, and secrets that only you can register (they are
 tied to your identity / payment). I cannot fetch these. For each item: what it is, where
 to get it, cost, and **what value to hand back** (place secrets in `server/.env` on the

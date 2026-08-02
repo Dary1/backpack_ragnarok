@@ -2,6 +2,9 @@
 
 # Combat Spec — v0.3-draft (for owner review)
 
+Premise: draft v0.3 awaiting owner ratification.
+Expires-when: ratified -> promote to user_managed; rejected -> archive.
+
 > Design-only pass. No code or server state was touched. This spec designs the
 > **combat half** of the game so it plugs into the existing **placement half**
 > (`shared/engine.js`) without contradicting it. It cites the exact vocab
