@@ -29,11 +29,6 @@ All steps run on the MAIN checkout, in order:
 4. `systemctl --user restart backpack-api`
    (needs `export XDG_RUNTIME_DIR=/run/user/$(id -u)`).
 
-Known gaps (manual `node tools/autobalance_pack_powerlevel.cjs --emit` still
-required; outside the sha dirty-set -- candidates for their own REQ):
-
-- `content/scaling_profile.json` edits and sim-code changes are
-  level-affecting but NOT detected by `--check`.
-- Additive SOURCE batches (batch-005/006/007 `packs.json`) carry no
-  powerLevel; sync them before any wholesale re-promotion (flagged by
-  `--emit` output), or the re-promotion drifts.
+Known gaps -> REQ-0360 (draft/): scaling_profile / sim-code edits invisible to
+--check; powerLevel-less source batches drift on re-promotion. Details and the
+fail-closed proposal live there.
