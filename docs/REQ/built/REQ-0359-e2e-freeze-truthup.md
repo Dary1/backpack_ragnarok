@@ -21,8 +21,7 @@ an armed freeze. No operational change was made or needed by this REQ.
 - `docs/llm_managed/e2e_harness.md`: freeze section rewritten as closed;
   Premise/Expires-when header updated.
 - `~/.cache/backpack/E2E_FREEZE_README.txt` rewritten as a tombstone
-  (out-of-repo file; old text preserved in this REQ's git history? no --
-  it was never in git; its operative content is quoted by REQ-0217/0234/0236).
+  (out-of-repo file, never in git; its operative content is quoted by REQ-0217/0234/0236).
 
 ## Note for the next auditor
 REQ-0236's file (in done/) still carries "Status: draft" prose from its
