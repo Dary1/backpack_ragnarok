@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { E2E_CODE_ROOT, E2E_DATA_ROOT, E2E_CLI_ENV } from './e2e-env';
 import { test, expect, type Page } from '@playwright/test';
 import { GUEST_AUTH_TRACKED_FILES_PATH, PLAYERS_DIR, PROFILES_DIR } from './global-setup';
-import { bootApp, cx, cy, drag, waitForAutoSave } from './helpers';
+import { bootApp, bx, by, cx, cy, drag, waitForAutoSave } from './helpers';
 
 const REPO_ROOT = E2E_DATA_ROOT;
 const CLI_INVITE_PATH = join(E2E_CODE_ROOT, 'server', 'cli_invite.cjs');
@@ -585,10 +585,18 @@ test.describe('BP move handle', () => {
 
       // CANVAS board: grab the badge at the BP's top-left cell (3,3) and
       // drop it at (6,6) -- an empty region.
+      //
+      // REQ-0290: this test always SAID "the badge" but pressed cx/cy -- the
+      // cell CENTRE, which is the unit core's 26px circle, not the badge at
+      // +14,+14. It passed because the core was a BP drag handle too. With the
+      // core inert the coordinate has to mean what the test name says, and
+      // here that matters: this fixture covers every legally coverable cell,
+      // so the empty-cell handles are all gone and the badge is the ONLY
+      // remaining affordance -- precisely the scenario under test.
       const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
       await drag(
         page,
-        { x: canvasBox.x + cx(3), y: canvasBox.y + cy(3) },
+        { x: canvasBox.x + bx(3), y: canvasBox.y + by(3) },
         { x: canvasBox.x + cx(6), y: canvasBox.y + cy(6) }
       );
 
@@ -603,11 +611,11 @@ test.describe('BP move handle', () => {
       expect(movedPo.cell).toEqual([6, 7]); // (3,4) + the (+3,+3) badge-drag delta
 
       // INVENTORY board: same scenario, grab the badge at (3,3) on the
-      // inventory board this time, drop at (6,6).
+      // inventory board this time, drop at (6,6). (REQ-0290, as above.)
       const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
       await drag(
         page,
-        { x: invBox.x + cx(3), y: invBox.y + cy(3) },
+        { x: invBox.x + bx(3), y: invBox.y + by(3) },
         { x: invBox.x + cx(6), y: invBox.y + cy(6) }
       );
 

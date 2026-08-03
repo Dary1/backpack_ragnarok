@@ -19,6 +19,15 @@ export const CELL = 80;
 export const PAD = 38;
 export const cx = (c: number) => PAD + (c - 1) * CELL + CELL / 2;
 export const cy = (r: number) => PAD + (r - 1) * CELL + CELL / 2;
+// REQ-0290: the ✥ move-handle badge's centre, given the BP's TOP-LEFT-most
+// cell (r0,c0) -- BoardRenderer draws it at PAD+(c0-1)*CELL+14 / PAD+(r0-1)*
+// CELL+14 (REQ-0042). Specs that used to grab a BP by its unit SEAT need this:
+// REQ-0290 made the seat inert, and the badge + empty BP cells are now the
+// whole BP drag/rotate surface. Note both coordinates stay INSIDE cell
+// (r0,c0), so a grab that moves from the seat cell to the badge in that SAME
+// cell keeps its grabOff -- and therefore its drop maths -- unchanged.
+export const bx = (c: number) => PAD + (c - 1) * CELL + 14;
+export const by = (r: number) => PAD + (r - 1) * CELL + 14;
 
 /** Drags from (screen) grab to drop with >=5 intermediate move steps,
  * matching the task spec's "multi-step move" requirement (trusted CDP

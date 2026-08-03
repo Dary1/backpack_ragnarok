@@ -3,11 +3,20 @@
 // Engine-level rotation math (canRotateBP/rotateBP, invCanRotateBP/
 // invRotateBP) is unit-tested in mock-src/tests/run.cjs; this spec covers
 // the CLIENT interaction wiring: double-click on a BP's move-handle
-// badge, its unit core, or an empty BP cell all trigger the SAME
-// rotation (client/src/board/BoardRenderer.ts's handleBPPointerDown),
+// badge, or an empty BP cell, triggers the SAME rotation
+// (client/src/board/BoardRenderer.ts's handleBPPointerDown),
 // on BOTH the canvas and inventory boards, and a PO's OWN dblclick-rotate
 // (handlePOPointerDown) is never intercepted by the BP handler even when
 // the PO sits on top of a BP.
+//
+// REQ-0290 migration: the unit CORE used to be a third rotate/drag trigger
+// and this spec exercised it as such. REQ-0290 retired it -- the seat cell is
+// now 'not-allowed' and inert on every unit -- so the two tests that drove
+// rotation through the core were re-pointed at the ✥ badge. The badge sits
+// inside the SAME cell as the BP's top-left corner, so only the click
+// coordinate moved; every rotation assertion below is unchanged, which is
+// the point: REQ-0290 removes a HANDLE, not a behaviour. That the seat is
+// now inert is asserted positively in locked-affordances.spec.ts.
 //
 // Reference-model decision (REQ-0045 design note, made explicit since the
 // spec's own design notes did not cover this): per REQ-0033's reference
@@ -24,7 +33,7 @@
 // since the underlying mechanism already can't reach across containers
 // (rotateBP never looks at st.inv, invRotateBP never looks at st.bps).
 import { test, expect } from '@playwright/test';
-import { bootApp, cx, cy, waitForAutoSave } from './helpers';
+import { bootApp, bx, by, cx, cy, waitForAutoSave } from './helpers';
 
 const saveAndFetch = async (page: import('@playwright/test').Page) => {
   await waitForAutoSave(page);
@@ -85,19 +94,16 @@ function makeCanvas() {
 }
 
 test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
-  test('double-click the unit core rotates the BP on the CANVAS board (shape+unit+contained PO all remap)', async ({ page }) => {
+  test('double-click the ✥ badge rotates the BP on the CANVAS board (shape+unit+contained PO all remap)', async ({ page }) => {
     await page.request.put('/api/profile/default/canvas', { data: makeCanvas() });
     await bootApp(page);
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
-    // Unit core sits at local offset [2,1] from origin [2,2] -> absolute
-    // (4,3). (A PO can no longer sit UNDER the core -- REQ-0273 made the
-    // unit cell unoccupiable at the data level -- so this dblclick now
-    // exercises the core's own hit area with the contained PO on the
-    // adjacent cell; gUnits stays above gItems regardless, pinned by
-    // bp-transfer.spec.ts's through-the-unit-cell grabs.)
-    const x = canvasBox.x + cx(3);
-    const y = canvasBox.y + cy(4);
+    // REQ-0290: was the unit core at absolute (4,3); the core is inert now.
+    // The ✥ badge anchors at the BP's TOP-LEFT-most cell, which for this
+    // L-shape (shape [[0,0],[1,0],[2,0],[2,1]], origin [2,2]) is (2,2).
+    const x = canvasBox.x + bx(2);
+    const y = canvasBox.y + by(2);
     await page.mouse.dblclick(x, y);
     await page.waitForTimeout(200);
 
@@ -148,21 +154,20 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     await bootApp(page);
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
-    // The unit cell (always a live grab/rotate hit area, see
-    // BoardRenderer's `core` circle) physically relocates on every single
-    // rotation, so the correct screen coordinate to double-click must be
-    // RECOMPUTED from the BP's own CURRENT unit.off + origin before each
-    // of the 4 attempts, rather than assumed fixed -- re-fetching the
-    // saved canvas between clicks (auto-save has already committed the
-    // PREVIOUS rotation by the time each next click is issued, thanks to
-    // the waitForTimeout below covering the debounce window).
+    // REQ-0290: this loop used to recompute the UNIT CELL before each click,
+    // because the seat physically relocates on every rotation. The badge
+    // relocates too -- it anchors on the BP's top-left-most CELL, which the
+    // shape change moves -- so the recomputation survives verbatim; only its
+    // source changed from unit.off to the shape's own min-row/min-col. The
+    // re-fetch between clicks is unchanged (auto-save has committed the
+    // previous rotation by then, thanks to the waitForTimeout below).
     for (let i = 0; i < 4; i++) {
       const canvas = await saveAndFetch(page);
       const bp = canvas.bps.find((b: any) => b.id === 'canvas_l');
-      const unitRow = bp.origin[0] + bp.unit.off[0];
-      const unitCol = bp.origin[1] + bp.unit.off[1];
-      const x = canvasBox.x + cx(unitCol);
-      const y = canvasBox.y + cy(unitRow);
+      const r0 = Math.min(...bp.shape.map((s: number[]) => s[0]));
+      const c0 = Math.min(...bp.shape.filter((s: number[]) => s[0] === r0).map((s: number[]) => s[1]));
+      const x = canvasBox.x + bx(bp.origin[1] + c0);
+      const y = canvasBox.y + by(bp.origin[0] + r0);
       await page.mouse.dblclick(x, y);
       await page.waitForTimeout(300);
     }
