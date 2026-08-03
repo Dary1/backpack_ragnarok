@@ -21,8 +21,9 @@
 
 ## Gates
 - Docs-only: no code, content, or service touched; no restarts.
-- Post-edit sweep: "Unit = ex-Unit" absent from the live tree (REQ/done/ and
-  archive/ excluded as immutable history); no remaining live pointer treats
+- Post-edit sweep: "Unit = ex-Unit" absent from the live tree (REQ/done/,
+  archive/, and this file's own quotations excepted); no remaining live
+  pointer treats
   the archived rename-suggestions list as current.
 - done/ untouched except the single granted State-line edit above.
 
