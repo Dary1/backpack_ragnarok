@@ -287,6 +287,17 @@ export class BoardRenderer {
   ghostProbe: { kind: CarryKind; cells: Cell[]; hasArt: boolean; legal: boolean } | null = null;
   /** REQ-0288: how many revert ("snapped home") cues this board has fired. */
   revertCount = 0;
+  /** REQ-0288: the BP id the LAST render() resolved as airborne (null when
+   * nothing is being carried off this board). The lift shadow was originally
+   * evidenced by screenshot alone, and a screenshot gate stays green while
+   * the behaviour it depicts quietly stops happening -- which is precisely
+   * what the 559-commit master merge did to it. This is the structural seam
+   * that makes the lift assertable. */
+  liftProbe: string | null = null;
+  /** REQ-0288: has THIS board already repainted for the current carry's arm?
+   * One-shot per carry (cleared when the carry ends). See onGlobalPointerMove's
+   * arm block for why the repaint cannot live inside the `!carry.armed` branch. */
+  private armRendered = false;
   /** REQ-0287: every ownership ribbon drawn by the last render(), for the
    * e2e probe seam (published to usageRibbonProbe.ts / __backpackDebug). */
   usageRibbonProbe: UsageRibbonProbeEntry[] = [];
@@ -346,7 +357,7 @@ export class BoardRenderer {
     // __backpackDebug (specs assert structured seams, never canvas pixels).
     const pw = window as unknown as { __backpackBoardProbes?: Record<string, () => unknown> };
     pw.__backpackBoardProbes = pw.__backpackBoardProbes || {};
-    pw.__backpackBoardProbes[boardIdKey(this.boardId)] = () => ({ ghost: this.ghostProbe, reverts: this.revertCount });
+    pw.__backpackBoardProbes[boardIdKey(this.boardId)] = () => ({ ghost: this.ghostProbe, reverts: this.revertCount, lift: this.liftProbe });
   }
 
   static async mount(canvas: HTMLCanvasElement, deps: BoardDeps): Promise<BoardRenderer> {
@@ -619,6 +630,7 @@ export class BoardRenderer {
         ? (container.bps.find((b) => b.id === activeCarry.bpId) ?? null)
         : null;
     const carriedBPId = carriedBP ? carriedBP.id : null;
+    this.liftProbe = carriedBPId; // REQ-0288: e2e seam -- see the field's doc
 
     // grid cells: canvas tints by BP color (dead-space cells get a flat
     // dark fill); inventory boards use a NEUTRAL grid background for every
@@ -1782,6 +1794,7 @@ export class BoardRenderer {
         this.gCarry.removeChildren();
         this.gTarget.removeChildren();
         this.ghostProbe = null; // REQ-0288: carry ended
+        this.armRendered = false; // REQ-0288: re-arm the one-shot for the next carry
         // REQ-0345: an unresolved drop (outside both boards, or on a tab
         // button) clears the overlays with NO engine call and therefore no
         // notifyStateChanged()/render() -- nothing else would repaint here.
@@ -1808,12 +1821,29 @@ export class BoardRenderer {
     if (!carry.armed) {
       if (Math.hypot(e.clientX - carry.sx, e.clientY - carry.sy) < DRAG_ARM_THRESHOLD) return;
       armCarry();
-      // Re-render so the carried item's original-position art disappears
-      // (matches the mock's `hideTip();renderAll();` on arm) -- the
-      // carriedUids computation in render() reads getCarry() fresh. Only
-      // the ORIGIN board needs this (a cross-board carry's item never
-      // rendered on the destination board in the first place).
-      if (boardIdEquals(carry.originBoard, this.boardId)) this.render(this.lastState);
+    }
+    // Re-render so the carried item's original-position art disappears
+    // (matches the mock's `hideTip();renderAll();` on arm) -- the carriedUids
+    // computation in render() reads getCarry() fresh. Only the ORIGIN board
+    // needs this (a cross-board carry's item never rendered on the destination
+    // board in the first place).
+    //
+    // REQ-0288 -- WHY THIS IS NOT INSIDE THE `!carry.armed` BRANCH ABOVE.
+    // Every Pixi Application's EventSystem listens on `document`, so BOTH
+    // boards run this handler for EVERY pointermove (the REQ-0031 note just
+    // below spells that out). armCarry() is global and one-shot: whichever
+    // board's handler crosses the threshold first arms the carry. With the
+    // repaint inside that branch, an origin board that LOST the race saw
+    // `carry.armed === true` on its own pass, skipped the branch, and never
+    // repainted -- the item stayed fully painted at its origin. Which board
+    // won was pure mount order, so this was a silent, order-dependent flake
+    // for the PO hide-in-place case long before REQ-0288; the BP lift shadow
+    // simply made it impossible to miss (found by reading the evidence
+    // screenshot, NOT by a gate -- the gate was the screenshot).
+    // The latch keeps it one repaint per carry, not one per pointermove.
+    if (carry.armed && !this.armRendered && boardIdEquals(carry.originBoard, this.boardId)) {
+      this.armRendered = true;
+      this.render(this.lastState);
     }
     // REQ-0031 Phase A bug fix (BP inventory<->canvas transfer sometimes
     // silently failing): every PixiJS Application's EventSystem listens

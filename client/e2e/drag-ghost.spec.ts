@@ -49,7 +49,11 @@ async function routeDaggerRegistryOnly(page: Page, withArt: boolean): Promise<vo
   });
 }
 
-type Probe = { ghost: { kind: string; cells: [number, number][]; hasArt: boolean; legal: boolean } | null; reverts: number };
+type Probe = {
+  ghost: { kind: string; cells: [number, number][]; hasArt: boolean; legal: boolean } | null;
+  reverts: number;
+  lift: string | null;
+};
 const canvasProbe = (page: Page): Promise<Probe | null> =>
   page.evaluate(() => {
     const reg = (window as unknown as { __backpackBoardProbes?: Record<string, () => unknown> }).__backpackBoardProbes;
@@ -111,6 +115,12 @@ test('T3: BP drag ghosts the whole bag on legal AND illegal hovers', async ({ pa
   expect(p!.ghost!.legal).toBe(true);
   expect(p!.ghost!.cells.length).toBe(6);
   expect(p!.ghost!.hasArt, 'contained-PO art must ride along (blade/flame_tablet)').toBe(true);
+  // The ORIGIN must be lifted, not merely ghosted elsewhere. Asserted through
+  // BoardRenderer.liftProbe (what render() resolved as airborne) rather than
+  // through the screenshot below: the screenshot was this behaviour's ONLY
+  // evidence before, and it stayed green across a merge that silently stopped
+  // the lift from happening at all.
+  expect(p!.lift, 'the origin bag must render as a lift shadow while carried').toBe('alpha');
   await page.screenshot({ path: 'test-results/req0288-bp-ghost-legal.png' });
   // Glide onto beta's footprint -> illegal, but the ghost must STILL draw.
   await page.mouse.move(b.x + cx(4), b.y + cy(1), { steps: 4 });
