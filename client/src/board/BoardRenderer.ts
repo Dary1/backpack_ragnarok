@@ -54,6 +54,7 @@ import {
   boardIdEquals,
   boardIdKey,
   cancelCarry,
+  cancelCarryWithFeedback,
   ensurePointerUpWired,
   getCarry,
   registerBoard,
@@ -61,6 +62,7 @@ import {
   subscribeCarry,
   updateCarry,
   type BoardId,
+  type CarryKind,
   type CarryState,
   type DropTarget,
 } from './drag';
@@ -76,7 +78,7 @@ import { activeUnitSkinKey, defaultSkinId, pickedSkinId, resolveUnitIcon, unitIc
 import { resolveBpSkin } from './skin/bpSkinResolve';
 import { bpSkinDefs, hasBpSkin } from './skin/skinRegistry';
 import { bpSkinSprite } from './skin/bpSkinTexture';
-import { resolveItemIcon } from './itemArt'; // REQ-0133: item cells resolve registry-first
+import { itemTex } from './itemArt'; // REQ-0133 registry-first chain; itemTex lives there since REQ-0288 (ghosts share it)
 import { drawChargeRing } from './chargeRing';
 import { drawPOOutline } from './poOutline'; // REQ-0273: per-PO footprint outlines
 import { OVERLAY } from './overlayPalette'; // REQ-0143: colourblind-safe overlay palette (single source, BS-G1)
@@ -101,10 +103,7 @@ import { traceUnit } from './linkTrace';
 // so has() says no and the chain falls through to the sprite symbol; missing art
 // never blocks a draw. Contain-fit / aspect handling is unchanged at every call
 // site (fitSpriteToBox), so a non-square item raster is fitted, never stretched.
-function itemTex(textures: Map<string, Texture>, id: string, spriteKey: string): Texture | undefined {
-  const res = resolveItemIcon(id, spriteKey, (k) => textures.has(k));
-  return res.key ? textures.get(res.key) : undefined;
-}
+// (itemTex moved to board/itemArt.ts -- REQ-0288: the ghosts must resolve through the same chain.)
 
 /** REQ-0345: count every frame this Application submits, at the one seam both
  * producers share -- see paintProbe.ts for why the obvious lower-level
@@ -283,6 +282,23 @@ export class BoardRenderer {
   // the hover/highlight path needs no change -- it simply never matches a null dir
   // against a traced direction, which is correct: there is no direction to trace.
   beamSegs: { from: string; dir: number | null; x0: number; y0: number; x1: number; y1: number }[] = [];
+  /** REQ-0288: honest e2e seam -- what the LAST ghost pass on this board drew
+   * (null when no armed carry has hovered it / the pointer left it). Exposed
+   * via window.__backpackBoardProbes[boardIdKey(this.boardId)]. */
+  ghostProbe: { kind: CarryKind; cells: Cell[]; hasArt: boolean; legal: boolean } | null = null;
+  /** REQ-0288: how many revert ("snapped home") cues this board has fired. */
+  revertCount = 0;
+  /** REQ-0288: the BP id the LAST render() resolved as airborne (null when
+   * nothing is being carried off this board). The lift shadow was originally
+   * evidenced by screenshot alone, and a screenshot gate stays green while
+   * the behaviour it depicts quietly stops happening -- which is precisely
+   * what the 559-commit master merge did to it. This is the structural seam
+   * that makes the lift assertable. */
+  liftProbe: string | null = null;
+  /** REQ-0288: has THIS board already repainted for the current carry's arm?
+   * One-shot per carry (cleared when the carry ends). See onGlobalPointerMove's
+   * arm block for why the repaint cannot live inside the `!carry.armed` branch. */
+  private armRendered = false;
   /** REQ-0287: every ownership ribbon drawn by the last render(), for the
    * e2e probe seam (published to usageRibbonProbe.ts / __backpackDebug). */
   usageRibbonProbe: UsageRibbonProbeEntry[] = [];
@@ -343,6 +359,11 @@ export class BoardRenderer {
     this.app.stage.eventMode = 'static';
     this.app.stage.hitArea = this.app.screen;
     this.wireGlobalInteraction();
+    // REQ-0288: e2e probe registry -- same rationale as boot.ts's
+    // __backpackDebug (specs assert structured seams, never canvas pixels).
+    const pw = window as unknown as { __backpackBoardProbes?: Record<string, () => unknown> };
+    pw.__backpackBoardProbes = pw.__backpackBoardProbes || {};
+    pw.__backpackBoardProbes[boardIdKey(this.boardId)] = () => ({ ghost: this.ghostProbe, reverts: this.revertCount, lift: this.liftProbe });
   }
 
   static async mount(canvas: HTMLCanvasElement, deps: BoardDeps): Promise<BoardRenderer> {
@@ -605,6 +626,19 @@ export class BoardRenderer {
     const tintRedSet = ops.isCanvas ? new Set<string>() : tint.red;
     const tintYellowSet = ops.isCanvas ? tint.canvasYellow : tint.yellow;
 
+    // REQ-0288 (lift): resolve an armed BP carry ONCE, up front -- the grid
+    // tint, the BP outline/skin/badge/handle sections and the beam layer all
+    // need to know which bag (if any) is airborne. Container-scoped lookup:
+    // a board that does not hold the carried bag resolves null and renders
+    // exactly as before.
+    const activeCarry = getCarry();
+    const carriedBP =
+      activeCarry && activeCarry.armed && activeCarry.kind === 'bp' && activeCarry.bpId
+        ? (container.bps.find((b) => b.id === activeCarry.bpId) ?? null)
+        : null;
+    const carriedBPId = carriedBP ? carriedBP.id : null;
+    this.liftProbe = carriedBPId; // REQ-0288: e2e seam -- see the field's doc
+
     // grid cells: canvas tints by BP color (dead-space cells get a flat
     // dark fill); inventory boards use a NEUTRAL grid background for every
     // cell regardless of BP occupancy (REQ-0030 spec item 1: "neutral grid
@@ -618,8 +652,9 @@ export class BoardRenderer {
         const g = new Graphics();
         g.rect(PAD + (c - 1) * CELL, PAD + (r - 1) * CELL, CELL, CELL);
         if (bp) {
-          g.fill({ color: bp.color, alpha: 0.26 });
-          g.stroke({ color: bp.color, alpha: 0.35, width: 1 });
+          const liftedCell = bp.id === carriedBPId; // REQ-0288: lift shadow
+          g.fill({ color: bp.color, alpha: liftedCell ? 0.12 : 0.26 });
+          g.stroke({ color: bp.color, alpha: liftedCell ? 0.4 : 0.35, width: 1 });
         } else {
           g.fill({ color: '#191919', alpha: 1 });
           g.stroke({ color: '#242424', alpha: 1, width: 1 });
@@ -634,6 +669,7 @@ export class BoardRenderer {
     for (const bp of container.bps) {
       drawGuarded('BP', bp.id, () => {
         const cells = engine.bpCells(bp);
+        const lifted = bp.id === carriedBPId; // REQ-0288: this bag is airborne
         // REQ-0266 (item 23): the bag wears its skin. The 5-rung chain lives in
         // skin/bpSkinResolve.ts (instance -> profile -> set -> neutral -> plain).
         // `instanceSkinId` is null because a BP instance carries no bp_skin slot
@@ -669,7 +705,7 @@ export class BoardRenderer {
         const skinSprite = bpSkin.skinId
           ? bpSkinSprite(cells, bpSkinDefs()[bpSkin.skinId], () => notifyStateChanged())
           : null;
-        if (skinSprite) {
+        if (skinSprite && !lifted) { // REQ-0288: the skin composite rides with the ghost
           skinSprite.eventMode = 'none'; // decorative, see constructor note
           this.gSkins.addChild(skinSprite);
         }
@@ -683,7 +719,7 @@ export class BoardRenderer {
           if (!cellSet.has(`${r},${c - 1}`)) outline.moveTo(x, y).lineTo(x, y + CELL);
           if (!cellSet.has(`${r},${c + 1}`)) outline.moveTo(x + CELL, y).lineTo(x + CELL, y + CELL);
         }
-        outline.stroke({ color: bp.color, width: 3, cap: 'square' });
+        outline.stroke({ color: bp.color, width: 3, cap: 'square', alpha: lifted ? 0.4 : 1 }); // REQ-0288: shadow when airborne
         outline.eventMode = 'none'; // decorative, see constructor note
         this.gBase.addChild(outline);
 
@@ -710,6 +746,16 @@ export class BoardRenderer {
         label.y = PAD + (r0 - 1) * CELL - 18;
         label.eventMode = 'none'; // decorative, see constructor note
         this.gBase.addChild(label);
+
+        // REQ-0288: an airborne bag leaves ONLY its lift shadow behind. Every
+        // draw below this line is bag furniture that rides with the ghost --
+        // the ✥ move badge, the REQ-0287 ownership ribbons (a wedge hovering
+        // over a lifted footprint reads as 'the bag is still here') and the
+        // empty-cell grab handles (re-grabbing an airborne bag is nonsense).
+        // They are the tail of this closure, so one early return serves all
+        // three. The label above deliberately STAYS: it names the origin the
+        // bag snaps back to when the drop is cancelled.
+        if (lifted) return;
 
         // REQ-0042: move-handle badge at the BP's TOP-LEFT cell (r0,c0,
         // same top-left this label already computed above), on BOTH boards
@@ -867,6 +913,7 @@ export class BoardRenderer {
       }
 
       for (const bm of engine.traceBeams(state)) {
+        if (carriedBPId && (bm.from === carriedBPId || bm.to === carriedBPId)) continue; // REQ-0288: airborne bag's links lift with it
         const bp = bpById(bm.from);
         const lc = engine.unitCell(bp);
         const x0base = cx(lc[1]);
@@ -968,13 +1015,20 @@ export class BoardRenderer {
     const asm = ops.isCanvas ? engine.assembly(state) : null;
     // A carried blade/hilt should not render as the merged visual (matches
     // the mock's `mergeSword=asm&&state.linked&&!carriedUids.length`).
-    const activeCarry = getCarry();
     const carriedUids = new Set<string>();
     if (activeCarry && activeCarry.armed) {
       if (activeCarry.kind === 'po' || activeCarry.kind === 'si') carriedUids.add(activeCarry.uid);
       else if (activeCarry.kind === 'asm' && asm) {
         carriedUids.add(asm.blade.uid);
         carriedUids.add(asm.hilt.uid);
+      } else if (activeCarry.kind === 'bp' && carriedBP) {
+        // REQ-0288: the bag lifts WITH its contents. Containment is geometric
+        // (anchor-cell membership -- a PO fits entirely inside ONE BP, law),
+        // so one rule serves canvas and inventory containers alike.
+        const cbCells = new Set(engine.bpCells(carriedBP).map(([r, c]) => `${r},${c}`));
+        for (const p of container.pos) {
+          if (p.loc === 'grid' && p.cell && cbCells.has(`${p.cell[0]},${p.cell[1]}`)) carriedUids.add(p.uid);
+        }
       }
     }
     const mergeSword = !!(asm && state.linked && carriedUids.size === 0);
@@ -1256,6 +1310,7 @@ export class BoardRenderer {
         // removed every one that did. If a stale save ever produces one anyway, draw
         // the bag and skip the unit -- a degraded board beats a blank one.
         if (!bp.unit) return;
+        if (bp.id === carriedBPId) return; // REQ-0288: the unit core + art ride with the ghost
         const lc = engine.unitCell(bp);
         const x = cx(lc[1]);
         const y = cy(lc[0]);
@@ -1839,6 +1894,8 @@ export class BoardRenderer {
       if (!carry) {
         this.gCarry.removeChildren();
         this.gTarget.removeChildren();
+        this.ghostProbe = null; // REQ-0288: carry ended
+        this.armRendered = false; // REQ-0288: re-arm the one-shot for the next carry
         // REQ-0345: an unresolved drop (outside both boards, or on a tab
         // button) clears the overlays with NO engine call and therefore no
         // notifyStateChanged()/render() -- nothing else would repaint here.
@@ -1865,12 +1922,29 @@ export class BoardRenderer {
     if (!carry.armed) {
       if (Math.hypot(e.clientX - carry.sx, e.clientY - carry.sy) < DRAG_ARM_THRESHOLD) return;
       armCarry();
-      // Re-render so the carried item's original-position art disappears
-      // (matches the mock's `hideTip();renderAll();` on arm) -- the
-      // carriedUids computation in render() reads getCarry() fresh. Only
-      // the ORIGIN board needs this (a cross-board carry's item never
-      // rendered on the destination board in the first place).
-      if (boardIdEquals(carry.originBoard, this.boardId)) this.render(this.lastState);
+    }
+    // Re-render so the carried item's original-position art disappears
+    // (matches the mock's `hideTip();renderAll();` on arm) -- the carriedUids
+    // computation in render() reads getCarry() fresh. Only the ORIGIN board
+    // needs this (a cross-board carry's item never rendered on the destination
+    // board in the first place).
+    //
+    // REQ-0288 -- WHY THIS IS NOT INSIDE THE `!carry.armed` BRANCH ABOVE.
+    // Every Pixi Application's EventSystem listens on `document`, so BOTH
+    // boards run this handler for EVERY pointermove (the REQ-0031 note just
+    // below spells that out). armCarry() is global and one-shot: whichever
+    // board's handler crosses the threshold first arms the carry. With the
+    // repaint inside that branch, an origin board that LOST the race saw
+    // `carry.armed === true` on its own pass, skipped the branch, and never
+    // repainted -- the item stayed fully painted at its origin. Which board
+    // won was pure mount order, so this was a silent, order-dependent flake
+    // for the PO hide-in-place case long before REQ-0288; the BP lift shadow
+    // simply made it impossible to miss (found by reading the evidence
+    // screenshot, NOT by a gate -- the gate was the screenshot).
+    // The latch keeps it one repaint per carry, not one per pointermove.
+    if (carry.armed && !this.armRendered && boardIdEquals(carry.originBoard, this.boardId)) {
+      this.armRendered = true;
+      this.render(this.lastState);
     }
     // REQ-0031 Phase A bug fix (BP inventory<->canvas transfer sometimes
     // silently failing): every PixiJS Application's EventSystem listens
@@ -1907,12 +1981,14 @@ export class BoardRenderer {
     if (!withinBounds) {
       this.gCarry.removeChildren();
       this.gTarget.removeChildren();
+      this.ghostProbe = null; // REQ-0288: the pointer left this board
       this.requestRender(); // REQ-0345: the ghost/tint just went away -- repaint without them
       return;
     }
     const local = clientToLocal(this, e.clientX, e.clientY);
     this.gCarry.removeChildren();
     this.gTarget.removeChildren();
+    this.ghostProbe = null; // REQ-0288: repopulated by whichever branch draws
     const state = this.lastState;
     const { engine, ops } = this.deps;
     const cell = cellAt(this, local.x, local.y);
@@ -1952,6 +2028,7 @@ export class BoardRenderer {
         // concrete DropTarget so the centralized pointerup commit has
         // somewhere to route to (commitPODrop for this direction ignores
         // drop.anchor entirely, so the exact cell recorded here is moot).
+        let probeCells: Cell[] = [anchor]; // REQ-0288 ghost probe
         if (carry.originBoard.loc === 'canvas' && this.boardId.loc === 'inv') {
           drop = { type: 'grid', anchor, board: this.boardId };
           paintNeutralReturn(this, anchor);
@@ -1961,10 +2038,12 @@ export class BoardRenderer {
             : previewCrossBoardPO(this, state, p.uid, carry.originBoard, p.rot, anchor);
           drop = chk.ok ? { type: 'grid', anchor, board: this.boardId } : null;
           paint(chk.cells, chk.ok);
+          probeCells = chk.cells;
         }
         const def = this.deps.items[p.id];
         const { w, h } = engine.shapeInfo(p.id, p.rot);
-        renderGhostPO(this, p, def, local.x - (w * CELL) / 2, local.y - (h * CELL) / 2);
+        const hasArt = renderGhostPO(this, p, def, local.x - (w * CELL) / 2, local.y - (h * CELL) / 2);
+        this.ghostProbe = { kind: 'po', cells: probeCells, hasArt, legal: drop !== null };
       }
     } else if (carry.kind === 'asm') {
       // Assemblies are canvas-only -- a cross-board 'asm' carry never
@@ -1979,6 +2058,7 @@ export class BoardRenderer {
           drop = chk.ok ? { type: 'grid', anchor, board: this.boardId } : null;
           paint(chk.cells, chk.ok);
           renderGhostAssembly(this, asm, local.x, local.y);
+          this.ghostProbe = { kind: 'asm', cells: chk.cells, hasArt: true, legal: chk.ok }; // REQ-0288
         }
       }
     } else if (carry.kind === 'bp' && carry.bpId) {
@@ -1991,7 +2071,16 @@ export class BoardRenderer {
           : engine.canTransferBP(state, carry.originBoard, this.boardId, carry.bpId, origin);
         drop = chk.ok ? { type: 'bp', origin, board: this.boardId } : null;
         paint(chk.cells, chk.ok);
-        if (chk.ok && chk.cells) renderGhostBP(this, bp.color, chk.cells);
+        // REQ-0288: the WHOLE bag ghosts at the snapped origin, legal or not
+        // (illegal reads dimmer, under the red target paint above) -- with
+        // its unit disc and contained-PO art riding along.
+        const hasArt = renderGhostBP(this, originContainer, bp, origin, chk.ok);
+        this.ghostProbe = {
+          kind: 'bp',
+          cells: bp.shape.map(([dr, dc]) => [origin[0] + dr, origin[1] + dc] as Cell),
+          hasArt,
+          legal: chk.ok,
+        };
       }
     } else if (carry.kind === 'si') {
       const originContainer = carry.originBoard.loc === 'canvas' ? state : state.inv!.pages[carry.originBoard.page];
@@ -2047,9 +2136,11 @@ export class BoardRenderer {
           }
         }
         const siDef = this.deps.siDefs[a.id];
+        let siHasArt = false; // REQ-0288 ghost probe
         if (siDef) {
           const tex = itemTex(this.deps.textures, a.id, siDef.icon);
           if (tex) {
+            siHasArt = true;
             const sprite = new Sprite(tex);
             sprite.x = local.x - 16;
             sprite.y = local.y - 16;
@@ -2059,6 +2150,7 @@ export class BoardRenderer {
             this.gCarry.addChild(sprite);
           }
         }
+        this.ghostProbe = { kind: 'si', cells: [cell], hasArt: siHasArt, legal: drop !== null }; // REQ-0288
       }
     }
     updateCarry(local.x, local.y, drop);
@@ -2074,7 +2166,7 @@ export class BoardRenderer {
    * then unsplices. Same rationale as previewCrossBoardPO. */
   onWindowKeyDown = (e: KeyboardEvent): void => {
     if (e.key === 'Escape' && getCarry()) {
-      cancelCarry();
+      cancelCarryWithFeedback(); // REQ-0288: the origin board flashes "snapped home"
       this.gCarry.removeChildren();
       this.gTarget.removeChildren();
       // REQ-0345: render(state) paints; the no-state case still has cleared

@@ -2,7 +2,8 @@
 // Moved MECHANICALLY from BoardRenderer.ts (this. -> self. receiver).
 import type { Cell, GameState, Socket } from '../engine/engine.d.ts';
 import { boardIdEquals } from './drag';
-import type { BoardCommitApi, BoardId, DropTarget } from './drag';
+import type { BoardCommitApi, BoardId, CarryState, DropTarget } from './drag';
+import { flash } from './ghosts'; // REQ-0288: the revert cue reuses the flash mechanism (neutral grey)
 import { notifyStateChanged } from '../store';
 import type { BoardRenderer } from './BoardRenderer';
 
@@ -12,6 +13,14 @@ export function makeCommitApi(self: BoardRenderer, ): BoardCommitApi {
       commitAsm: (originBoard, drop) => commitAsmDrop(self, originBoard, drop),
       commitBP: (bpId, originBoard, drop) => commitBPDrop(self, bpId, originBoard, drop),
       commitSI: (uid, originBoard, drop) => commitSIDrop(self, uid, originBoard, drop),
+      // REQ-0288: "snapped home" cue for an armed carry that ended with NO
+      // commit. Neutral grey -- NOT the red reject flash: this is "returned",
+      // not "refused". State was never touched on those paths.
+      revertFeedback: (c: CarryState) => {
+        if (self.disposed || !self.lastState) return;
+        self.revertCount++;
+        flash(self, carryHomeCells(self, c), '#8a8a8a');
+      },
     };
   }
 
@@ -375,3 +384,30 @@ export function previewCrossBoardSocket(self: BoardRenderer, state: GameState, u
     }
     return result;
   }
+
+/** REQ-0288: the ORIGIN cells an aborted carry snaps back to. State was never
+ * mutated on a revert path -- the item never left; this only LOCATES it so the
+ * revert flash outlines the right cells. Bound to `self`'s own container, so
+ * it is correct on canvas and inventory boards alike. */
+function carryHomeCells(self: BoardRenderer, c: CarryState): Cell[] {
+  const state = self.lastState;
+  if (!state) return [];
+  const container = self.deps.ops.container(state);
+  if (c.kind === 'bp' && c.bpId) {
+    const bp = container.bps.find((b) => b.id === c.bpId);
+    return bp ? self.deps.engine.bpCells(bp) : [];
+  }
+  if (c.kind === 'po' || c.kind === 'asm') {
+    const p = container.pos.find((z) => z.uid === c.uid);
+    return p && p.loc === 'grid' && p.cell ? self.deps.ops.cellsOf(state, p) : [];
+  }
+  const a = container.sis.find((z) => z.uid === c.uid);
+  if (!a || !a.host || typeof a.host !== 'object') return [];
+  const host = a.host as { po?: string; cell?: Cell };
+  if (host.cell) return [host.cell];
+  if (host.po) {
+    const hp = container.pos.find((z) => z.uid === host.po);
+    return hp && hp.loc === 'grid' && hp.cell ? self.deps.ops.cellsOf(state, hp) : [];
+  }
+  return [];
+}
