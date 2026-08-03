@@ -147,6 +147,23 @@ market.cjs me.cjs notifications.cjs profile.cjs public.cjs ragnarok.cjs
 schedule.cjs skins.cjs starter.cjs warehouse.cjs workshop.cjs'
 KNOWN_SERVER_ROUTES_ADMIN='admin.cjs art.cjs content.cjs'
 
+# REQ-0365: the THIRD reason a spec can be testIgnore'd out of the default
+# suite. Until now there was exactly one -- "only an admin harness can run it"
+# -- and S5 below encoded that as `testIgnore set == admin specs`. signed-out
+# .spec.ts breaks that equality without breaking the intent: it is PUBLIC
+# surface (store/boot.ts, App.tsx, LandingPage, Settings) but it needs a fleet
+# worker seeded dev_mode:false, and every worker of the default fleet seeds
+# dev_mode:true because the other 45 specs rely on that fallback for their
+# identity. So it runs under its own harness (tools/signed_out_e2e.sh, ci.sh
+# [6.7/8]) while staying public for scope purposes -- an admin-only diff must
+# NOT run it, and a public-only diff MUST.
+#
+# Declared here rather than inferred so the invariant stays checkable: this
+# list is the ONLY licence to be in testIgnore without being admin, and S5/S6
+# below both read it. Adding a name here is a deliberate act, not a side effect
+# of editing playwright.config.ts.
+KNOWN_HARNESS_ONLY_PUBLIC_SPECS='signed-out.spec.ts'
+
 # =============================================================================
 # Path collection
 # =============================================================================
@@ -317,33 +334,64 @@ ci_scope_selftest() {
 
   # S5 -- cross-check against client/playwright.config.ts, which is maintained
   # independently of this file. The specs testIgnore'd out of the DEFAULT suite
-  # are exactly the specs only the admin harnesses can run, so they must be
-  # exactly the specs this table calls admin. Two files, one fact.
-  local ignored_specs classified_admin
+  # are exactly the specs the default fleet cannot run: the admin-harness specs,
+  # PLUS the declared harness-only PUBLIC specs (REQ-0365 -- see
+  # KNOWN_HARNESS_ONLY_PUBLIC_SPECS at the top of this file for why that second
+  # category exists). Two files, one fact.
+  local ignored_specs harness_only
   ignored_specs=$(sed -n '/testIgnore:/p' client/playwright.config.ts \
     | grep -o '[A-Za-z0-9._-]*\.spec\.ts' | sort -u)
-  classified_admin=$(for e in client/e2e/*.spec.ts; do
-      if [ "$(ci_scope_classify "$e")" = admin ]; then basename "$e"; fi; done | sort -u)
-  _st_sets 'S5 playwright testIgnore set == the specs classified admin' \
-    "$classified_admin" "$ignored_specs" \
-    'client/playwright.config.ts and this table disagree about the admin suite'
+  harness_only=$( { for e in client/e2e/*.spec.ts; do
+        if [ "$(ci_scope_classify "$e")" = admin ]; then basename "$e"; fi; done
+      for e in $KNOWN_HARNESS_ONLY_PUBLIC_SPECS; do echo "$e"; done; } | sort -u)
+  _st_sets 'S5 playwright testIgnore set == admin specs + declared harness-only public specs' \
+    "$harness_only" "$ignored_specs" \
+    'client/playwright.config.ts and this table disagree about what the default suite cannot run'
+
+  # S5b (REQ-0365) -- every declared harness-only public spec must EXIST, and
+  # must classify public. Without this the escape hatch above would also be a
+  # way to silently downgrade an admin spec, or to keep a dead name forever.
+  bad=''
+  for e in $KNOWN_HARNESS_ONLY_PUBLIC_SPECS; do
+    if [ ! -f "client/e2e/$e" ]; then bad="${bad} MISSING:$e"; continue; fi
+    c="$(ci_scope_classify "client/e2e/$e")"
+    [ "$c" = public ] || bad="${bad} $e=$c"
+  done
+  _st_empty 'S5b declared harness-only public specs exist and classify public' "$bad" \
+    'the testIgnore escape hatch is only for PUBLIC specs that need their own fleet seed'
 
   # S6 -- every spec an isolated harness actually drives must NOT be public.
   # Derived from the tree: the harness scripts name their config, the config
   # names its testMatch. This is the check that found dex-admin.spec.ts, which
   # is in the default suite AND is what [6.6/8] drives.
-  local cfg spec
+  # REQ-0365: harness configs now live in TWO places -- client/e2e/<n>.config.ts
+  # (the admin ones, which redefine every path) and client/<n>.config.ts (the
+  # signed-out one, which SPREADS playwright.config.ts and so must sit beside
+  # it for the inherited relative paths to resolve). Both shapes are collected;
+  # a config this loop cannot find is a failure, never a silent skip.
+  local cfg spec cfgpath
   bad=''
-  for cfg in $(grep -ho -- '--config=e2e/[A-Za-z0-9._-]*\.config\.ts' tools/*_e2e.sh \
-               | sed 's#^--config=e2e/##' | sort -u); do
-    if [ ! -f "client/e2e/$cfg" ]; then bad="${bad} MISSING:client/e2e/$cfg"; continue; fi
-    spec=$(grep -o 'testMatch:[^,]*' "client/e2e/$cfg" \
+  for cfg in $(grep -ho -- '--config=[A-Za-z0-9._/-]*\.config\.ts' tools/*_e2e.sh \
+               | sed 's#^--config=##' | sort -u); do
+    cfgpath="client/$cfg"
+    if [ ! -f "$cfgpath" ]; then bad="${bad} MISSING:$cfgpath"; continue; fi
+    spec=$(grep -o 'testMatch:[^,]*' "$cfgpath" \
            | grep -o '[A-Za-z0-9._-]*\.spec\.ts' | head -1)
     if [ -z "$spec" ]; then bad="${bad} NO-testMatch:$cfg"; continue; fi
     c="$(ci_scope_classify "client/e2e/$spec")"
-    case "$c" in admin|both) ;; *) bad="${bad} $cfg->$spec=$c" ;; esac
+    case "$c" in
+      admin|both) ;;
+      public)
+        # Allowed ONLY for a declared harness-only public spec (REQ-0365): its
+        # harness is a PUBLIC-scoped ci.sh stage ([6.7/8]), so public is right.
+        case " $KNOWN_HARNESS_ONLY_PUBLIC_SPECS " in
+          *" $spec "*) ;;
+          *) bad="${bad} $cfg->$spec=public-undeclared" ;;
+        esac ;;
+      *) bad="${bad} $cfg->$spec=$c" ;;
+    esac
   done
-  _st_empty 'S6 every spec an isolated harness drives classifies admin or both' "$bad" \
+  _st_empty 'S6 every spec an isolated harness drives is admin/both, or a declared harness-only public spec' "$bad" \
     'a spec [6.5]/[6.6] runs would be skipped by an admin-scoped run'
 
   if [ "$_st_rc" != 0 ]; then
