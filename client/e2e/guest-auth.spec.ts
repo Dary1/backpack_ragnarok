@@ -191,8 +191,15 @@ test.describe('per-player board isolation', () => {
   });
 });
 
-test.describe('logout', () => {
-  test('logout clears the stored token and reload returns to the dev-mode/default state', async ({ page }) => {
+// REQ-0362: this used to drive the account block's own Logout button
+// (.settings-logout-btn), which cleared the invite token and reloaded IN
+// PLACE. That button is deleted; AuthBlock's single sign-out control replaces
+// it. Note WHICH AuthBlock branch renders it here: this build carries no
+// Supabase env, so auth.configured is false -- and rendering the button in
+// that branch too is exactly the REQ-0362 requirement this test pins, because
+// the REQ-0037 invite token is the only credential an env-less build holds.
+test.describe('sign out', () => {
+  test('sign out clears the stored token and returns to the landing in the dev-mode/default state', async ({ page }) => {
     await page.goto(`/app/#/invite/${playerA.token}`);
     await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
     const storedBefore = await page.evaluate(() => localStorage.getItem('backpack_ragnarok:auth_token'));
@@ -201,14 +208,15 @@ test.describe('logout', () => {
     await page.locator('.nav-link', { hasText: 'Settings' }).click();
     await expect(page.locator('.settings-page')).toBeVisible();
     await expect(page.locator('.settings-field-value.settings-field-mono')).toHaveText(playerA.playerId);
+    // The dead REQ-0037 button must not come back.
+    await expect(page.locator('.settings-logout-btn')).toHaveCount(0);
 
-    await page.locator('.settings-logout-btn').click();
-    // logout() reloads the page -- wait for the app to boot again.
-    await page.waitForSelector('.data-source-badge', { timeout: 10000 });
-    await page.waitForFunction(
-      () => document.querySelector('.data-source-badge')?.textContent?.trim() === 'live',
-      { timeout: 10000 }
-    );
+    await page.getByTestId('settings-signout').click();
+    // signOut() sets the hash to '#/' and reloads. Wait for the app to boot
+    // again ON THE LANDING: the rail + HUD header (and so .data-source-badge)
+    // are not rendered on that route -- .landing-stage is its own root.
+    await expect(page).toHaveURL(/#\/$/, { timeout: 10000 });
+    await expect(page.locator('.landing-stage')).toBeVisible({ timeout: 10000 });
 
     const storedAfter = await page.evaluate(() => localStorage.getItem('backpack_ragnarok:auth_token'));
     expect(storedAfter).toBeNull();
@@ -216,7 +224,7 @@ test.describe('logout', () => {
     // Back on Settings -- the account block now shows the dev-mode
     // fallback identity (dev_mode defaults true on this box), not
     // player A's.
-    await page.locator('.nav-link', { hasText: 'Settings' }).click();
+    await page.goto('/app/#/settings');
     await expect(page.locator('.settings-page')).toBeVisible();
     const meResp = await page.request.get('/api/me');
     const me = await meResp.json();
@@ -226,7 +234,7 @@ test.describe('logout', () => {
 });
 
 test.describe('settings page content', () => {
-  test('shows the account block (name/id/roles/logout) and the bot-mode placeholder block', async ({ page }) => {
+  test('shows the account block (name/id/roles) and the bot-mode placeholder block', async ({ page }) => {
     await page.goto(`/app/#/invite/${playerA.token}`);
     await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
 
@@ -236,7 +244,10 @@ test.describe('settings page content', () => {
     await expect(page.locator('.settings-account')).toBeVisible();
     await expect(page.locator('.settings-account .settings-field-value').first()).toHaveText(playerA.name);
     await expect(page.locator('.settings-field-value.settings-field-mono')).toHaveText(playerA.playerId);
-    await expect(page.locator('.settings-logout-btn')).toBeVisible();
+    // REQ-0362: the account block no longer carries a logout control at all;
+    // the one sign-out button lives in the sign-in block below it.
+    await expect(page.locator('.settings-logout-btn')).toHaveCount(0);
+    await expect(page.getByTestId('settings-signout')).toBeVisible();
 
     await expect(page.locator('.settings-bot-placeholder')).toBeVisible();
     await expect(page.locator('.settings-bot-placeholder')).toContainText('API / Bot mode');

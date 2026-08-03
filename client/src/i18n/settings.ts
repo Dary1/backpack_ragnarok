@@ -10,7 +10,6 @@ export const settingsEn = {
   'settings.name': 'Name',
   'settings.roles': 'Roles',
   'settings.rolesNone': '(none)',
-  'settings.logout': 'Log out',
   'settings.accountLoadError': 'Failed to load account info',
   // REQ-0118c: Supabase sign-in (Discord + guest).
   'settings.signInTitle': 'Sign in',
@@ -19,7 +18,11 @@ export const settingsEn = {
   'settings.playAsGuest': 'Play as guest',
   'settings.playingAsGuest': 'Playing as a guest. Link Discord to keep your progress on any device.',
   'settings.signedInDiscord': 'Signed in with Discord as {name}',
-  'settings.signOutDiscord': 'Sign out of Discord',
+  // REQ-0362: provider-neutral -- the ONE sign-out button now also ends guest
+  // and invite-link sessions, so "Sign out of Discord" was wrong in two of its
+  // four states.
+  'settings.signedInWithInvite': 'Signed in with an invite link.',
+  'settings.signOut': 'Sign out',
   'settings.botTitle': 'API / Bot mode',
   'settings.botComingSoon': 'Coming soon',
   'settings.botNote': 'Programmatic access for bots/automation will land in a future update.',
@@ -46,7 +49,6 @@ export const settingsJa = {
   'settings.name': '名前',
   'settings.roles': '権限',
   'settings.rolesNone': '（なし）',
-  'settings.logout': 'ログアウト',
   'settings.accountLoadError': 'アカウント情報の読み込みに失敗しました',
   // REQ-0118c: Supabase sign-in (Discord + guest).
   'settings.signInTitle': 'サインイン',
@@ -55,7 +57,8 @@ export const settingsJa = {
   'settings.playAsGuest': 'ゲストとしてプレイ',
   'settings.playingAsGuest': 'ゲストとしてプレイ中です。Discordを連携すると、どの端末でも進行状況を引き継げます。',
   'settings.signedInDiscord': 'Discordで{name}としてサインイン中',
-  'settings.signOutDiscord': 'Discordからサインアウト',
+  'settings.signedInWithInvite': '招待リンクでサインイン中です。',
+  'settings.signOut': 'サインアウト',
   'settings.botTitle': 'API・ボットモード',
   'settings.botComingSoon': '近日公開予定',
   'settings.botNote': 'ボットや自動化向けのプログラム的アクセスは今後追加予定です。',
