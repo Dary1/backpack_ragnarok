@@ -174,7 +174,16 @@ export function routeFromHash(hash: string): Route {
 }
 
 export interface StoreSnapshot {
-  status: 'loading' | 'ready' | 'error';
+  /** REQ-0365: 'signed_out' is a FOURTH terminal status, not an error and not
+   * a variant of 'ready'. It means the server refused to identify the caller
+   * (/api/me 401) -- which only happens when dev_mode is OFF, since a dev_mode
+   * server hands every anonymous caller the dev player (server/admin.cjs's
+   * resolveAuth). Deliberately a status rather than a boolean flag: every
+   * board/panel in the app already guards on `status !== 'ready'`, so a new
+   * status keeps them all in their unmounted branch for free, whereas a flag
+   * beside status:'ready' would have left them asserting a non-null engine
+   * that boot() never built. */
+  status: 'loading' | 'ready' | 'error' | 'signed_out';
   source: DataSource | null;
   error: string | null;
   gameData: GameData | null;

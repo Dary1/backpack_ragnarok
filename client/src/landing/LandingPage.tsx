@@ -61,9 +61,16 @@ const MENU: MenuEntry[] = [
 interface LandingPageProps {
   locale: Locale;
   me: ApiMe | null;
+  /** REQ-0365: the server refused to identify the caller (status:'signed_out').
+   * Everything behind the menu needs a profile, so the deep-link entries are
+   * genuinely disabled rather than routed-then-bounced -- a button that visibly
+   * does nothing when pressed is the exact defect REQ-0362 was filed for, and
+   * a bounce is the same lie with extra steps. Only 設定/Settings stays live,
+   * because that is where sign-in is. */
+  signedOut?: boolean;
 }
 
-export function LandingPage({ locale, me }: LandingPageProps) {
+export function LandingPage({ locale, me, signedOut = false }: LandingPageProps) {
   const pfxRef = useRef<HTMLCanvasElement | null>(null);
 
   // Perf-gated, E2E-off ember/snow field (see particles.ts's gating
@@ -103,16 +110,29 @@ export function LandingPage({ locale, me }: LandingPageProps) {
 
       <nav className="landing-menu panel ornate" aria-label="title menu">
         <i className="k tl" /><i className="k tr" /><i className="k br" /><i className="k bl" />
-        {MENU.map((entry) => (
-          <button key={entry.route} type="button" className="landing-mi" onClick={() => setRoute(entry.route)}>
-            <span className="landing-mi-rune rune" aria-hidden="true">
-              {entry.rune}
-            </span>
-            {t(locale, entry.labelKey)}
-            {entry.noteKey ? <span className="landing-mi-note">{t(locale, entry.noteKey)}</span> : null}
-          </button>
-        ))}
-        {me ? <div className="landing-savechip">{t(locale, 'landing.signedInAs', { name: me.name })}</div> : null}
+        {MENU.map((entry) => {
+          const locked = signedOut && entry.route !== 'settings';
+          return (
+            <button key={entry.route} type="button" className={'landing-mi' + (locked ? ' landing-mi-locked' : '')}
+              disabled={locked} data-testid={'landing-mi-' + entry.route}
+              onClick={() => setRoute(entry.route)}>
+              <span className="landing-mi-rune rune" aria-hidden="true">
+                {entry.rune}
+              </span>
+              {t(locale, entry.labelKey)}
+              {entry.noteKey ? <span className="landing-mi-note">{t(locale, entry.noteKey)}</span> : null}
+            </button>
+          );
+        })}
+        {signedOut ? (
+          <div className="landing-signin-cta" data-testid="landing-signed-out">
+            <span>{t(locale, 'landing.signInRequired')}</span>
+            <button type="button" className="landing-signin-btn" data-testid="landing-signin"
+              onClick={() => setRoute('settings')}>
+              {t(locale, 'landing.signIn')}
+            </button>
+          </div>
+        ) : me ? <div className="landing-savechip">{t(locale, 'landing.signedInAs', { name: me.name })}</div> : null}
       </nav>
 
       <div className="landing-corner landing-corner-tr">

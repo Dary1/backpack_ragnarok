@@ -117,7 +117,7 @@ import { FirstRunGuide } from './guide/FirstRunGuide'; // REQ-0141
 import { ContextualHint } from './guide/ContextualHint'; // REQ-0141
 import { Tabs } from './Tabs';
 import { RenderErrorBoundary } from './RenderErrorBoundary'; // REQ-0336
-import { initRouting, setLocale, useGameStore } from './store';
+import { initRouting, setLocale, setRoute, useGameStore } from './store';
 
 /** The inventory column's actual content (Tabs + board-wrap +
  * InventoryBoard + note) -- extracted to its own function so it can be
@@ -188,6 +188,17 @@ function App() {
   // game state and no Pixi surface; everything below (crucially the
   // always-mounted backpacks-view) renders exactly as before.
   const onLanding = route === 'landing';
+  // REQ-0365: signed out (server said 401 to /api/me -- only reachable with
+  // dev_mode OFF). There is no engine, no state and no profile, so every route
+  // except the landing and Settings would render an empty shell; Settings is
+  // exempt because it is where the sign-in controls live. Sending the rest to
+  // the landing is what makes the title screen's locked menu the single honest
+  // description of this state.
+  const signedOut = snapshot.status === 'signed_out';
+  useEffect(() => {
+    if (!signedOut) return;
+    if (route !== 'landing' && route !== 'settings') setRoute('landing');
+  }, [signedOut, route]);
 
   return (
     <DexCardProvider locale={snapshot.locale}>
@@ -314,7 +325,7 @@ function App() {
             needed for the portaled copy). */}
         {inventorySlot !== null ? createPortal(<InventoryColumn locale={snapshot.locale} ready={inventoryReady} resetKey={snapshot.activeInvPage} />, inventorySlot) : null}
 
-        {route === 'landing' ? <LandingPage locale={snapshot.locale} me={snapshot.me} /> : null}
+        {route === 'landing' ? <LandingPage locale={snapshot.locale} me={snapshot.me} signedOut={signedOut} /> : null}
         {route === 'schedule' ? <SchedulePage locale={snapshot.locale} /> : null}
         {route === 'sortie' ? <SortiePage locale={snapshot.locale} focusDungeonId={snapshot.sortieFocusDungeonId} /> : null}
         {route === 'warehouse' ? <WarehousePage locale={snapshot.locale} /> : null}

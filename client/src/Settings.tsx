@@ -14,7 +14,7 @@
 // ChimeEngine picks up changes live through the CHIME_PREFS_EVENT that
 // saveChimePrefs dispatches.
 import { useEffect, useState } from 'react';
-import { clearStoredToken, fetchMe, getStoredToken, type ApiMe } from './api';
+import { ApiError, clearStoredToken, fetchMe, getStoredToken, type ApiMe } from './api';
 import { t } from './i18n';
 import { setRoute, type Locale } from './store';
 import { loadChimePrefs, saveChimePrefs, type ChimePrefs } from './schedule/chimes/chimePrefs';
@@ -133,6 +133,11 @@ function AuthBlock({ locale }: { locale: Locale }) {
 export function Settings({ locale }: SettingsProps) {
   const [me, setMe] = useState<ApiMe | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // REQ-0365: a 401 here is not a load failure -- it is the server saying there
+  // is no account to show (dev_mode OFF + no credential). Showing
+  // 'Failed to load account info' for it would send the one user who CAN fix it
+  // looking for an outage instead of at the sign-in block right below.
+  const [signedOut, setSignedOut] = useState(false);
   const [chimePrefs, setChimePrefs] = useState<ChimePrefs>(() => loadChimePrefs());
   const [motionPrefs, setMotionPrefs] = useState<MotionPrefs>(() => loadMotionPrefs()); // REQ-0143
 
@@ -145,6 +150,7 @@ export function Settings({ locale }: SettingsProps) {
       .catch((e) => {
         if (!cancelled) {
           setMe(null);
+          if (e instanceof ApiError && e.status === 401) { setSignedOut(true); setError(null); return; }
           setError(e instanceof Error ? e.message : String(e));
         }
       });
@@ -195,6 +201,10 @@ export function Settings({ locale }: SettingsProps) {
                 {me.roles.length > 0 ? me.roles.join(', ') : t(locale, 'settings.rolesNone')}
               </span>
             </div>
+          </div>
+        ) : signedOut ? (
+          <div className="settings-account-signedout" data-testid="settings-account-signedout">
+            {t(locale, 'settings.notSignedIn')}
           </div>
         ) : (
           <div className="settings-account-error">

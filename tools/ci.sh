@@ -53,6 +53,11 @@
 #                contentadmin.spec.ts:884 seeds an adopted po_def and asserts
 #                REQ-0182b's 409 + registry_kind + edit_at, UNCONDITIONALLY;
 #                :903 covers the relocated grant-to-warehouse control.
+#       [6.7/8]  signed_out_e2e.sh            REQ-0365: NOT a registry stage --
+#                listed here only so this map stays the whole [6.x] inventory.
+#                It is FILES mode like (A), with one worker seeded
+#                dev_mode:false so /api/me 401s and the signed-out client path
+#                is reachable at all. Needs no pg.
 #       [6.6/8]  registry_first_e2e.sh        REQ-0221: runs the FLEET-SHAPED
 #                spec (dex-admin.spec.ts) against a seeded pg registry so its
 #                409 test runs instead of skipping, and FAILS the run if any
@@ -465,6 +470,26 @@ elif [ "${SKIP_E2E:-0}" != "1" ] && [ "${SKIP_PG:-0}" != "1" ] && [ "${SKIP_CLIE
   stage "[6.6/8] registry-first serving e2e SKIPPED -- ci-scope is '$CI_SCOPE' (same reason)"
 else
   stage "[6.5/8] admin e2e harnesses SKIPPED"
+fi
+# REQ-0365: [6.7/8] the SIGNED-OUT app (dev_mode OFF).
+#
+# Not foldable into [7/7]: every worker of that fleet seeds dev_mode:true, which
+# is what the other 45 spec files rely on for their identity (they present no
+# credential at all). tools/signed_out_e2e.sh boots the same hermetic rig with
+# E2E_DEV_MODE_OFF=0 for one worker, so /api/me actually 401s and the signed-out
+# client path is reachable.
+#
+# Grouped with the PUBLIC scope, not admin: it needs no pg and no registry, and
+# every path it covers (store/boot.ts, App.tsx, LandingPage, Settings) is
+# client-public. It is guarded by SKIP_E2E/SKIP_CLIENT only -- deliberately NOT
+# by SKIP_PG, unlike [6.5]/[6.6].
+if [ "${SKIP_E2E:-0}" != "1" ] && [ "${SKIP_CLIENT:-0}" != "1" ] && scope_has public; then
+  stage "[6.7/8] signed-out e2e (dev_mode OFF fleet worker, REQ-0365)"
+  bash tools/signed_out_e2e.sh
+elif [ "${SKIP_E2E:-0}" != "1" ] && [ "${SKIP_CLIENT:-0}" != "1" ]; then
+  stage "[6.7/8] signed-out e2e SKIPPED -- ci-scope is '$CI_SCOPE' (no public-surface path in the diff)"
+else
+  stage "[6.7/8] signed-out e2e SKIPPED"
 fi
 if [ "${SKIP_E2E:-0}" != "1" ] && scope_has public; then
   # REQ-0234 (F2, implements REQ-0225's default-flip): from a req-NNNN

@@ -32,6 +32,10 @@ const MANIFEST = path.join(ROOT, 'manifest.json');
 const BASE_PORT = Number(process.env.E2E_FLEET_BASE_PORT || 8810);
 const API_ENTRY = path.join(__dirname, '..', 'server', 'api.cjs'); // this worktree's api (PORT env-aware); content/data still sourced from REPO
 
+// REQ-0365: see the dev_mode seed inside buildHome() below.
+const DEV_MODE_OFF = new Set(
+  String(process.env.E2E_DEV_MODE_OFF || '').split(',').filter((s) => s !== '').map(Number));
+
 function buildHome(i) {
   const dir = path.join(ROOT, 'w' + i);
   const bp = path.join(dir, 'home', 'backpack_ragnarok');
@@ -52,6 +56,24 @@ function buildHome(i) {
   // snapshot of the legacy files-backend dev state this suite has always
   // asserted against. Never sourced from the live checkout's data/.
   fs.cpSync(path.join(FIXTURES, 'config'), path.join(bp, 'data', 'config'), { recursive: true });
+  // REQ-0365: E2E_DEV_MODE_OFF=<csv of worker indices> seeds those workers with
+  // dev_mode:false, so a spec can drive the SIGNED-OUT app (/api/me 401).
+  //
+  // It has to be a per-worker seed rather than a flag on the api process
+  // because dev_mode is not an env var -- server/admin.cjs's readDevUser()
+  // reads data/config/dev_user.json and nothing else, and that stays the ONE
+  // source of truth (adding an env override would give the live box two ways
+  // to be in dev_mode and no way to tell which won).
+  //
+  // Default OFF for every worker, which is what keeps the other 45 spec files
+  // untouched: they boot with no credential at all and rely on the dev_mode
+  // fallback for their identity.
+  if (DEV_MODE_OFF.has(i)) {
+    const p = path.join(bp, 'data', 'config', 'dev_user.json');
+    const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
+    cfg.dev_mode = false;
+    fs.writeFileSync(p, JSON.stringify(cfg));
+  }
   fs.cpSync(path.join(FIXTURES, 'profiles'), path.join(bp, 'data', 'profiles'), { recursive: true });
   return path.join(dir, 'home');
 }

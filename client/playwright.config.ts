@@ -68,7 +68,14 @@ export default defineConfig({
   // gate to make them green, would re-arm exactly that incident -- the gate is
   // untouchable. They are NOT skipped coverage: tools/ci.sh runs all three
   // harnesses as its own explicit step (see "[6.5/8] admin e2e harnesses").
-  testIgnore: ['**/artadmin.spec.ts', '**/artinspect.spec.ts', '**/contentadmin.spec.ts'],
+  //
+  // REQ-0365 adds a FOURTH, for a different reason: signed-out.spec.ts needs a
+  // backend seeded dev_mode:false, and every worker of THIS fleet seeds
+  // dev_mode:true (which is what the other 45 spec files rely on for their
+  // identity -- they present no credential at all). It runs under
+  // tools/signed_out_e2e.sh via client/signedout.config.ts, which boots this
+  // same rig with E2E_DEV_MODE_OFF=0. ci.sh runs it as its own step.
+  testIgnore: ['**/artadmin.spec.ts', '**/artinspect.spec.ts', '**/contentadmin.spec.ts', '**/signed-out.spec.ts'],
   timeout: 30_000,
   expect: { timeout: 5_000 },
   fullyParallel: false, // REQ-0083: file-level parallelism (each file -> one worker/backend), respects within-file order

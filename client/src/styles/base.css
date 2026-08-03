@@ -1306,6 +1306,14 @@ html, body {
   font-size: 13px;
 }
 
+/* REQ-0365: the 401 case. Deliberately NOT --bad: "you are not signed in" is a
+   normal state of the app, not a fault, and colouring it like one sends the
+   reader hunting for an outage instead of at the sign-in block below. */
+.settings-account-signedout {
+  color: var(--bone-2, #b9b2a4);
+  font-size: 13px;
+}
+
 /* REQ-0362: renamed from .settings-logout-btn. The account block's Logout
    button carried this styling while the sign-out button that actually worked
    (AuthBlock's) had no rule at all, so the live control looked like the

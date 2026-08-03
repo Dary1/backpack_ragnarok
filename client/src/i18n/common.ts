@@ -24,8 +24,11 @@ export const commonEn = {
   'landing.menu.expeditions': 'Watch expeditions',
   'landing.menu.hall': 'Hall — Ragnarok',
   'landing.menu.settings': 'Settings',
-  'landing.menu.settingsNote': 'Language & logout',
+  'landing.menu.settingsNote': 'Language & account',
   'landing.signedInAs': 'Signed in as {name}',
+  // REQ-0365: shown INSTEAD of signedInAs when the server returned 401.
+  'landing.signInRequired': 'Sign in to play.',
+  'landing.signIn': 'Sign in',
   'landing.copyright': 'backpack_ragnarok © 2026',
 
   // Invite banner (InviteBanner.tsx)
@@ -56,8 +59,10 @@ export const commonJa = {
   'landing.menu.expeditions': '遠征を見守る',
   'landing.menu.hall': '殿堂 — ラグナロク',
   'landing.menu.settings': '設定',
-  'landing.menu.settingsNote': '言語・ログアウト',
+  'landing.menu.settingsNote': '言語・アカウント',
   'landing.signedInAs': '{name} としてログイン中',
+  'landing.signInRequired': 'プレイするにはサインインが必要です。',
+  'landing.signIn': 'サインイン',
   'landing.copyright': 'backpack_ragnarok © 2026',
 
   'invite.welcome': 'ようこそ、{name} さん！',

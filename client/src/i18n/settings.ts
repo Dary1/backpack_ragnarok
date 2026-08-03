@@ -11,6 +11,8 @@ export const settingsEn = {
   'settings.roles': 'Roles',
   'settings.rolesNone': '(none)',
   'settings.accountLoadError': 'Failed to load account info',
+  // REQ-0365: the 401 case, kept distinct from accountLoadError above.
+  'settings.notSignedIn': 'Not signed in. Sign in below to play.',
   // REQ-0118c: Supabase sign-in (Discord + guest).
   'settings.signInTitle': 'Sign in',
   'settings.signInUnconfigured': 'Sign-in is not configured in this build.',
@@ -50,6 +52,7 @@ export const settingsJa = {
   'settings.roles': '権限',
   'settings.rolesNone': '（なし）',
   'settings.accountLoadError': 'アカウント情報の読み込みに失敗しました',
+  'settings.notSignedIn': 'サインインしていません。下のサインインからプレイを開始してください。',
   // REQ-0118c: Supabase sign-in (Discord + guest).
   'settings.signInTitle': 'サインイン',
   'settings.signInUnconfigured': 'このビルドではサインインは設定されていません。',

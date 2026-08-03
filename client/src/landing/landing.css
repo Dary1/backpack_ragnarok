@@ -183,6 +183,58 @@
   color: var(--gold);
 }
 
+/* REQ-0365: the signed-out title menu. The locked entries stay VISIBLE and
+   readable -- hiding them would make the title screen look broken rather than
+   gated -- but they are really disabled, so :hover cannot light them up and a
+   press cannot navigate. */
+.landing-mi-locked {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.landing-mi-locked:hover,
+.landing-mi-locked:focus-visible {
+  border-color: transparent;
+  color: var(--bone);
+  background: transparent;
+}
+
+.landing-mi-locked:hover .landing-mi-rune {
+  color: var(--bone-3);
+}
+
+.landing-signin-cta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 6px 14px 4px 48px;
+  padding: 7px 12px;
+  border: 1px dashed rgba(201, 169, 89, 0.35);
+  border-radius: 2px;
+  font-size: 11.5px;
+  color: var(--bone-2);
+  letter-spacing: 0.05em;
+  line-height: 1.7;
+}
+
+.landing-signin-btn {
+  background: transparent;
+  border: 1px solid rgba(201, 169, 89, 0.55);
+  border-radius: 2px;
+  padding: 5px 14px;
+  color: var(--gold-hi);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.landing-signin-btn:hover,
+.landing-signin-btn:focus-visible {
+  background: rgba(201, 169, 89, 0.12);
+}
+
 .landing-savechip {
   margin: 6px 14px 4px 48px;
   padding: 7px 12px;

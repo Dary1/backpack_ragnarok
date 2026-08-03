@@ -9,7 +9,7 @@ import { ribbonProbeFor } from '../board/usageRibbonProbe'; // REQ-0287
 import { paintCounts } from '../board/paintProbe'; // REQ-0345
 import { cursorProbeFor } from '../board/cursorProbe'; // REQ-0290
 import { bpSkinProbe, resetBpSkinProbe } from '../board/skin/bpSkinProbe'; // REQ-0350
-import { fetchMe, getStoredToken, resolveGameData, setStoredToken } from '../api';
+import { ApiError, fetchMe, getStoredToken, resolveGameData, setStoredToken } from '../api';
 import type { ApiMe } from '../api';
 import { INVITE_HASH_RE, snapshot, setSnapshot } from './core';
 import type { Locale } from './core';
@@ -57,7 +57,12 @@ async function fetchMeWithRetry(attempts = 3, delayMs = 500): Promise<ApiMe | nu
   for (let i = 0; i < attempts; i++) {
     try {
       return await fetchMe();
-    } catch {
+    } catch (e) {
+      // REQ-0365: a 401 is an ANSWER, not a failure -- the server has told us
+      // there is no identity behind this request. Rethrow so bootInner() can
+      // turn it into status:'signed_out'; retrying it would only ask the same
+      // question three times and then silently degrade to the 'default' alias.
+      if (e instanceof ApiError && e.status === 401) throw e;
       if (!getStoredToken()) return null;
       if (i < attempts - 1) await sleep(delayMs * (i + 1));
     }
@@ -171,7 +176,30 @@ async function bootInner(): Promise<void> {
   //     getSession(), which awaits auth-js's initializePromise and therefore
   //     the URL detection itself.
   await initSupabaseAuth(await createSupabaseClient());
-  const me: ApiMe | null = await fetchMeWithRetry();
+  // REQ-0365: STOP HERE when the server will not identify us.
+  //
+  // Why this early return has to exist, and why it is not paranoia: with
+  // dev_mode OFF and no credential, /api/me and /api/profile/<id>/canvas both
+  // 401, but /api/content does NOT (content serving is public). resolveGameData
+  // swallows the canvas 401 (`fetchCanvas(profileId).catch(() => null)`) and
+  // reports source:'live' with isFreshProfile:true -- so boot() used to SUCCEED
+  // into a pristine scenario board that looked completely normal and whose
+  // every auto-save 401'd in silence. Measured on a scratch dev_mode:false api,
+  // 2026-08-03; see this REQ's Investigation section.
+  //
+  // So the signed-out branch must be taken BEFORE resolveGameData, not after:
+  // once the scenario board exists there is nothing left to distinguish it from
+  // a real one.
+  let me: ApiMe | null = null;
+  try {
+    me = await fetchMeWithRetry();
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 401) {
+      setSnapshot({ ...snapshot, me: null, status: 'signed_out', source: null, error: null });
+      return;
+    }
+    throw e;
+  }
   if (me) setSnapshot({ ...snapshot, me });
 
   // REQ-0266 (item 24): the player's skin PICKS, fetched ALONGSIDE the canvas
