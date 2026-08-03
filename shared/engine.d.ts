@@ -361,6 +361,14 @@ export interface EngineInstance {
    * same discipline as moveBP. */
   rotateBP: (st: GameState, bpId: string) => { ok: boolean; why?: string; cells?: Cell[] };
   poInBP: (st: GameState, p: PO, bp: BP) => boolean;
+  /** REQ-0290 (surface widened; predicate itself is REQ-0209). True if
+   * canvas PO `p` sits inside a LOCKED (starter-unit) BP. A PO's cells are
+   * guaranteed same-BP by placement law, so this tests one cell. This is
+   * the exact predicate seatSI/stowSI refuse through -- exported so the
+   * client can render the matching affordance without re-deriving lock
+   * topology from cellBPMap + bp.locked itself. Returns false for a PO
+   * that is not on the grid. */
+  poInLockedBP: (st: GameState, p: PO) => boolean;
 
   assembly: (st: GameState) => Assembly | null;
   canPlaceAssembly: (st: GameState, anchor: Cell) => PlacementCheck;
@@ -458,6 +466,10 @@ export interface EngineInstance {
    * `bp`'s footprint (both from the SAME page's arrays). Container-
    * independent shape math, callable with any {bps,pos,sis}-shaped page. */
   poInBPIn: (p: PO, bp: BP) => boolean;
+  /** REQ-0290: page twin of poInLockedBP, container-parameterized the same
+   * way cellBPMapIn/invOccupancy are (an inventory page is a {bps,pos,...}
+   * container). Same answer, same law, one page instead of the canvas. */
+  poInLockedBPIn: (container: { bps: BP[]; pos: PO[] }, p: PO) => boolean;
 
   /** TM (Transmutator) model -- REQ-0042. tmCanPlace mirrors
    * invCanPlaceSI's 1x1/page-bounds/BP-overlap/occupancy rule exactly,

@@ -2427,6 +2427,13 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
   return {connTargets,portTargets,connectionsFrom,allConnections,contactPairs,rotOffsets,shapeInfo,bpCells,bpHpMax,unitCell,cellBPMap,unitMap,cellsOf,occupancy,
           canPlacePO,movePO,rotatePO,canMoveBP,moveBP,canRotateBP,rotateBP,poInBP,assembly,canPlaceAssembly,moveAssembly,
           sockets,hostOk,seatSI,stowSI,unseatOrphans,combos,traceBeams,connShapeOf,DIRS,key,
+          // REQ-0290: lock TOPOLOGY becomes a query. Both predicates already
+          // existed as module-locals (REQ-0209) and are the same functions
+          // seatSI/stowSI + their page twins refuse through; this only widens
+          // the exported surface so the client's affordance layer reads the
+          // engine's own answer instead of re-deriving cellBPMap -> bp.locked.
+          // Purely additive: no call site changes, no behavioural change.
+          poInLockedBP,poInLockedBPIn,
           // Inventory model (REQ-0030 Phase 1) -- additive exports only.
           PAGE_COUNT,emptyInventory,invCanPlacePO,invMovePO,invRotatePO,invCanPlaceSI,invMoveSI,
           pageSockets,invSeatSI,invStowSI,invCanPlaceBP,invMoveBP,invCanRotateBP,invRotateBP,poInBPIn,cellsOfIn,cellBPMapIn,

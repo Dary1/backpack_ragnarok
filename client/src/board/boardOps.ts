@@ -87,6 +87,13 @@ export interface BoardOps {
   canPlaceSI(state: GameState, uid: string, anchor: Cell): PlacementCheck;
   moveSI(state: GameState, uid: string, anchor: Cell): MoveResult;
 
+  /** REQ-0290: is PO `p` inside a LOCKED (starter-unit) BP on THIS board?
+   * Delegates to engine.poInLockedBP / engine.poInLockedBPIn -- the same
+   * "delegate, don't reimplement" rule every other query here follows. The
+   * affordance layer (cursor + padlock + the seated-SI refusal) must not
+   * re-derive lock topology; the engine owns it. */
+  poInLockedBP(state: GameState, p: PO): boolean;
+
   hostOk(state: GameState, siUid: string, sock: Socket): { ok: boolean; why?: string };
   seatSI(state: GameState, siUid: string, skey: string): { ok: boolean; why?: string };
   stowSI(state: GameState, siUid: string): { ok: boolean };
@@ -139,6 +146,9 @@ export function makeCanvasOps(engine: EngineInstance): BoardOps {
     },
     moveSI() {
       return { ok: false, why: 'SIs cannot be free-placed on canvas' };
+    },
+    poInLockedBP(state, p) {
+      return engine.poInLockedBP(state, p);
     },
     hostOk(state, siUid, sock) {
       return engine.hostOk(state, siUid, sock);
@@ -224,6 +234,9 @@ export function makeInvOps(engine: EngineInstance, page: number): BoardOps {
     },
     moveSI(state, uid, anchor) {
       return engine.invMoveSI(state, page, uid, anchor);
+    },
+    poInLockedBP(state, p) {
+      return engine.poInLockedBPIn(pageContainer(state), p);
     },
     hostOk(state, siUid, sock) {
       // pageSockets()-derived Socket shape matches canvas Socket shape

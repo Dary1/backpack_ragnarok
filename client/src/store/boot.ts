@@ -7,6 +7,7 @@ import { fetchSkinPrefs } from '../api/skins'; // REQ-0266
 import { setItemArtUrls } from '../board/itemArt'; // REQ-0133
 import { ribbonProbeFor } from '../board/usageRibbonProbe'; // REQ-0287
 import { paintCounts } from '../board/paintProbe'; // REQ-0345
+import { cursorProbeFor } from '../board/cursorProbe'; // REQ-0290
 import { bpSkinProbe, resetBpSkinProbe } from '../board/skin/bpSkinProbe'; // REQ-0350
 import { fetchMe, getStoredToken, resolveGameData, setStoredToken } from '../api';
 import type { ApiMe } from '../api';
@@ -312,6 +313,12 @@ async function bootInner(): Promise<void> {
     isSquadDeployable: (n: number) => engine.isSquadDeployable(state, n),
     // REQ-0287: per-board ownership-ribbon probe (canvas | inv:<page>).
     usageRibbonProbe: (boardKey: string) => ribbonProbeFor(boardKey),
+    // REQ-0290: per-board affordance probe -- the cursor the renderer ASSIGNED
+    // to each interactive object on its last render (canvas | inv:<page>). A
+    // board is one canvas with one live cursor, so this is the only way to
+    // assert "the seat says not-allowed AND the badge still says grab" without
+    // walking a real mouse over every cell. See cursorProbe.ts.
+    cursorProbe: (boardKey: string) => cursorProbeFor(boardKey),
     // REQ-0345: frames each board Application has submitted, keyed by
     // boardIdKey. Asserts BOTH directions of the on-demand rule: the count
     // must climb when something visibly changed, and must not move at all
