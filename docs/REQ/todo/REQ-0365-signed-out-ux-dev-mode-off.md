@@ -94,8 +94,42 @@ per-box runtime config, and the fleet seeds its own
 
 ## Gates
 
-<pending>
+`CI_SCOPE=both tools/ci.sh`: **CI GREEN**, 390s. Receipt tree
+`b8d5db5c0c80aaec304fba919cbd6ffbaef16cb3`; the run was against a dirty tree and
+the dist commit reproduces that hash exactly (`git rev-parse HEAD^{tree}`).
+
+- `[0.5/7]` ci_scope self-check: GREEN, including the new S5b and the rewritten
+  S5/S6. It went RED first, correctly: S5 encoded "testIgnore set == admin
+  specs", and signed-out.spec.ts is testIgnore'd while being public. The
+  invariant was widened with a DECLARED third category
+  (`KNOWN_HARNESS_ONLY_PUBLIC_SPECS`) rather than by mislabelling the spec
+  admin -- which would have inverted its scope (an admin-only diff would run it;
+  a public-only diff would not).
+- `[6/7]` client typecheck + build: clean.
+- `[6.5/8]` + `[6.6/8]` admin harnesses: green (forced by CI_SCOPE=both).
+- `[6.7/8]` signed-out e2e (NEW): 5 passed.
+- `[7/7]` client e2e: 212 passed -- the whole existing suite, unchanged, on
+  dev_mode:true workers. That number not moving is the point of the
+  `E2E_DEV_MODE_OFF` default-off knob.
+- `oxlint`: 45 warnings / 0 errors, identical to the master baseline; none in a
+  file this REQ touched.
+
+### Negative control (the gate was verified to FAIL, not just to pass)
+
+`client/src/store/boot.ts`'s 401 branch was made unreachable (`e.status === 401`
+-> `499`, a status that never occurs -- chosen over `if (false && ...)`, which
+does not typecheck and therefore left the OLD bundle in place and produced a
+false green on the first attempt). Rebuilt, re-ran `tools/signed_out_e2e.sh`:
+
+    2 failed, 3 passed
+      x  the landing locks its deep-link entries and offers sign-in instead
+      x  boot does NOT fall through to an unsaveable scenario board
+
+Exactly the two client-gate assertions, and only those. Tests 1/2 (server-side)
+and 5 (Settings, which has its own independent 401 handling) correctly stayed
+green -- confirming the three mechanisms are separately covered rather than one
+assertion wearing three hats.
 
 ## Outcome
 
-<pending>
+<pending: merge + live dev_mode flip>
