@@ -2020,6 +2020,77 @@ T('REQ-0045 invCanRotateBP: inventory page -- blocked by an UNRELATED free-place
     ok(!r2.ok&&r2.why==='locked unit','unseat refused: '+r2.why);
   });
 
+  // REQ-0290 -- the lock predicate is now EXPORTED so the client's affordance
+  // layer (seat X / fixed-PO padlock / locked-SI refusal) can ask the engine
+  // instead of re-deriving cellBPMap -> bp.locked for itself. These tests pin
+  // the export to the BEHAVIOUR it is supposed to mirror -- the refusal the
+  // engine already performs -- rather than to a second copy of its logic, so a
+  // future change to either one cannot drift them apart silently. That matters
+  // more than usual here: tools/check_engine_types.cjs does not cover these two
+  // members (its member scanner skips doc-comment-prefixed declarations, so its
+  // "49 declared members verified" excludes them), which makes this suite their
+  // only mechanical gate.
+  T('REQ-0290 canvas: exported poInLockedBP agrees with seatSI/stowSI\'s own refusal, both ways',()=>{
+    const {st,E}=fresh();
+    const p5=st.pos.find(x=>x.uid==='p5');
+    const bp=st.bps.find(b=>at(b,p5.cell));
+    const edge=E.sockets(st).find(s=>s.host==='p5'&&s.t==='edge');
+    ok(typeof E.poInLockedBP==='function','poInLockedBP is exported');
+    // unlocked: predicate false AND the seat the predicate speaks for succeeds
+    eq(E.poInLockedBP(st,p5),false,'unlocked BP -> false');
+    ok(E.seatSI(st,'a3',edge.skey).ok,'and the seat itself is allowed');
+    // locked: predicate true AND the matching op is refused with why:'locked unit'
+    bp.locked=true;
+    eq(E.poInLockedBP(st,p5),true,'locked BP -> true');
+    const r=E.stowSI(st,'a3');
+    ok(!r.ok&&r.why==='locked unit','and the unseat it speaks for is refused: '+r.why);
+    // a PO that is not on the grid is never "in" a locked BP
+    const inv=st.pos.find(x=>x.loc!=='grid');
+    if(inv)eq(E.poInLockedBP(st,inv),false,'non-grid PO -> false');
+    eq(E.poInLockedBP(st,null),false,'missing PO -> false, never a throw');
+  });
+
+  T('REQ-0290 page: exported poInLockedBPIn is the same law, one page instead of the canvas',()=>{
+    const {st:raw,E}=fresh();
+    const st=E.migrateState(raw);
+    const p5c=st.pos.find(x=>x.uid==='p5');
+    const bpRef=st.bps.find(b=>at(b,p5c.cell));
+    let homeBp=null,homePg=-1;
+    st.inv.pages.forEach((pg,i)=>{const b=pg.bps.find(x=>x.id===bpRef.id);if(b){homeBp=b;homePg=i;}});
+    ok(homeBp,'fixture: home BP found');
+    const container=st.inv.pages[homePg];
+    const inside=container.pos.filter(p=>p.loc==='grid'&&E.poInBPIn(p,homeBp));
+    ok(inside.length,'fixture: the home BP contains at least one PO');
+    ok(typeof E.poInLockedBPIn==='function','poInLockedBPIn is exported');
+    homeBp.locked=false;
+    for(const p of inside)eq(E.poInLockedBPIn(container,p),false,p.uid+' unlocked -> false');
+    homeBp.locked=true;
+    for(const p of inside)eq(E.poInLockedBPIn(container,p),true,p.uid+' locked -> true');
+    // a PO on the SAME page but outside the locked BP is unaffected
+    const outside=container.pos.find(p=>p.loc==='grid'&&!E.poInBPIn(p,homeBp));
+    if(outside)eq(E.poInLockedBPIn(container,outside),false,'PO outside the locked BP -> false');
+    eq(E.poInLockedBPIn(container,null),false,'missing PO -> false, never a throw');
+  });
+
+  T('REQ-0290 parity: canvas and page predicates answer identically for the SAME locked BP',()=>{
+    const {st:raw,E}=fresh();
+    const st=E.migrateState(raw);
+    const p5=st.pos.find(x=>x.uid==='p5');
+    const bpRef=st.bps.find(b=>at(b,p5.cell));
+    let homeBp=null,homePg=-1;
+    st.inv.pages.forEach((pg,i)=>{const b=pg.bps.find(x=>x.id===bpRef.id);if(b){homeBp=b;homePg=i;}});
+    ok(homeBp,'fixture: home BP found');
+    const container=st.inv.pages[homePg];
+    const homePo=container.pos.find(p=>p.loc==='grid'&&E.poInBPIn(p,homeBp));
+    ok(homePo,'fixture: a PO inside the home BP');
+    for(const locked of [false,true,false]){
+      bpRef.locked=locked;homeBp.locked=locked;
+      eq(E.poInLockedBP(st,p5),locked,'canvas @locked='+locked);
+      eq(E.poInLockedBPIn(container,homePo),locked,'page @locked='+locked);
+      eq(E.poInLockedBP(st,p5),E.poInLockedBPIn(container,homePo),'canvas/page parity @locked='+locked);
+    }
+  });
+
   T('REQ-0209 canvas: BP rotation legality is UNAFFECTED by the lock (rotation-only rule)',()=>{
     const {st,E}=fresh();
     const p5=st.pos.find(x=>x.uid==='p5');

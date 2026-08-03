@@ -84,6 +84,7 @@ import { drawPOOutline } from './poOutline'; // REQ-0273: per-PO footprint outli
 import { OVERLAY } from './overlayPalette'; // REQ-0143: colourblind-safe overlay palette (single source, BS-G1)
 import { paintUsageRibbons, cellsBBoxPx, topRightCellBBoxPx, topLeftCellBBoxPx } from './usageRibbons'; // REQ-0287
 import { publishRibbonProbe, type UsageRibbonProbeEntry } from './usageRibbonProbe'; // REQ-0287
+import { publishCursorProbe, type CursorProbeEntry } from './cursorProbe'; // REQ-0290
 import { countPaint } from './paintProbe'; // REQ-0345
 import { flash, paintNeutralReturn, pulseCellsSuccess, renderGhostAssembly, renderGhostBP, renderGhostPO } from './ghosts';
 import { notifyStateChanged } from '../store';
@@ -301,6 +302,11 @@ export class BoardRenderer {
   /** REQ-0287: every ownership ribbon drawn by the last render(), for the
    * e2e probe seam (published to usageRibbonProbe.ts / __backpackDebug). */
   usageRibbonProbe: UsageRibbonProbeEntry[] = [];
+  /** REQ-0290: the cursor assigned to every interactive object drawn by the
+   * last render(), for the e2e probe seam (published to cursorProbe.ts /
+   * __backpackDebug). See cursorProbe.ts for why the assignment is recorded
+   * rather than read back off the canvas element. */
+  cursorProbe: CursorProbeEntry[] = [];
 
   private constructor(app: Application, deps: BoardDeps) {
     this.app = app;
@@ -583,6 +589,7 @@ export class BoardRenderer {
     // backdrop (alpha 0.22) already drawn at similar alpha levels nearby.
     const tint = engine.tintSets(state);
     this.usageRibbonProbe = []; // REQ-0287: rebuilt fresh per render (probe seam)
+    this.cursorProbe = []; // REQ-0290: same per-render discipline (probe seam)
     // REQ-0143: colourblind-safe usage wash from the central overlay palette
     // (was red 0xff3b3b / yellow 0xffd23b -- two warm hues that collapse under
     // deuteranopia). selfSquad=vermillion, otherSquad=blue: a blue/warm split
@@ -788,6 +795,11 @@ export class BoardRenderer {
         // the empty-cell handles (further below) both call -- reused
         // verbatim, not a new drag code path.
         badgeGlyph.on('pointerdown', (e: FederatedPointerEvent) => this.handleBPPointerDown(e, bp.id));
+        // REQ-0290: with the seat core retired as a handle, this badge and the
+        // empty-cell hits below are the WHOLE BP drag/rotate surface. Probed so
+        // the spec pins that they still say 'grab' (design item 5: do not
+        // over-lock -- 'grab' here even on a locked starter unit).
+        this.cursorProbe.push({ uid: 'badge:' + bp.id, cursor: 'grab' });
         this.gBadges.addChild(badgeGlyph);
         // REQ-0287: ownership ribbons for this BP, drawn AFTER the badge so the
         // corner wedge never occludes the centred handle glyph. tr anchors on
@@ -815,6 +827,7 @@ export class BoardRenderer {
           hit.eventMode = 'static';
           hit.cursor = 'grab';
           hit.on('pointerdown', (e: FederatedPointerEvent) => this.handleBPPointerDown(e, bp.id));
+          this.cursorProbe.push({ uid: 'cell:' + bp.id + ':' + ck, cursor: 'grab' }); // REQ-0290
           this.gBase.addChild(hit);
         }
       });
@@ -1038,7 +1051,16 @@ export class BoardRenderer {
       hit.rect(box.x, box.y, box.w, box.h);
       hit.fill({ color: '#000000', alpha: 0.001 });
       hit.eventMode = 'static';
-      hit.cursor = 'grab';
+      // REQ-0290 design item 3 (user ruling 3, 2026-07-22): a FIXED PO shows
+      // the DEFAULT arrow -- explicitly NOT 'not-allowed'. The ruling reserves
+      // the X for the seat cell alone; a fixed interior piece instead shows no
+      // grab affordance at all plus the persistent padlock drawn below, so its
+      // immovability is stated BEFORE the click rather than discovered by one.
+      // ('grab' was the pre-REQ-0290 lie: the engine has refused both drag and
+      // rotate for these since REQ-0051, and handlePOPointerDown has
+      // short-circuited them since -- the cursor simply never said so.)
+      hit.cursor = p.fixed ? 'default' : 'grab';
+      this.cursorProbe.push({ uid: p.uid, cursor: hit.cursor }); // REQ-0290
       const isAssemblyPart = !!(state.linked && asm && (p.uid === asm.blade.uid || p.uid === asm.hilt.uid));
       hit.on('pointerdown', (e: FederatedPointerEvent) => this.handlePOPointerDown(e, p, isAssemblyPart, asm));
       hit.on('pointerup', () => this.handleItemTap('po', p.id, box, p.uid));
@@ -1058,6 +1080,44 @@ export class BoardRenderer {
       // REQ-0287: ownership ribbon over the PO footprint bbox (into gBadges).
       const poRibbonBbox = cellsBBoxPx(ops.cellsOf(state, p));
       paintUsageRibbons(this, p.uid, poRibbonBbox, poRibbonBbox, tintRedSet, tintYellowSet);
+      // REQ-0290 design item 3, second half: the persistent padlock. Drawn into
+      // gBadges (above gItems, same reason the ✥ badge is there -- a PO's own
+      // sprite must never occlude it) and eventMode 'none' so it cannot eat the
+      // hit rect underneath it.
+      //
+      // Corner arbitration with REQ-0287's shared-usage ribbon: the REQ ratified
+      // "top-right of the footprint bbox, and if REQ-0287's ribbon occupies that
+      // corner, nudge one cell-corner inward -- whichever REQ lands second
+      // implements the nudge". REQ-0287 is live, so this is that nudge. It is
+      // deterministic and always lands INSIDE the footprint bbox: one cell left
+      // if the footprint has a second column, else one cell down if it has a
+      // second row, else (a 1x1 fixed PO, where no cell corner exists to move to)
+      // inset by the ribbon's own leg so the glyph clears the wedge. Only the
+      // SHARED (tr) ribbon contends -- REQ-0287's self ribbon is a tl wedge.
+      if (p.fixed) {
+        const RIBBON_LEG = 16; // usageRibbons.ts LEG -- the wedge's reach along each edge
+        let lockX = poRibbonBbox.x + poRibbonBbox.w - 3;
+        let lockY = poRibbonBbox.y + 3;
+        if (tintYellowSet.has(p.uid)) {
+          if (poRibbonBbox.w > CELL) lockX -= CELL;
+          else if (poRibbonBbox.h > CELL) lockY += CELL;
+          else { lockX -= RIBBON_LEG; lockY += RIBBON_LEG; }
+        }
+        const padlock = new Text({ text: '🔒', style: { fill: '#f2fbff', fontSize: 9 } });
+        padlock.anchor.set(1, 0);
+        padlock.x = lockX;
+        padlock.y = lockY;
+        padlock.alpha = 0.85;
+        padlock.eventMode = 'none'; // decorative, see constructor note
+        this.gBadges.addChild(padlock);
+        // REQ-0290 gate "padlock exactly once per fixed PO": recorded so the
+        // spec can COUNT the glyph. 'inert' is not a CSS cursor -- the padlock
+        // is eventMode 'none' and therefore has no cursor at all; the value
+        // records exactly that while keeping one probe shape (see
+        // cursorProbe.ts). A second entry for one uid means the fixed branch
+        // ran twice in a single render.
+        this.cursorProbe.push({ uid: 'lock:' + p.uid, cursor: 'inert' });
+      }
       const texture = itemTex(textures, p.id, def.icon);
       if (texture) {
         const sprite = new Sprite(texture);
@@ -1258,9 +1318,28 @@ export class BoardRenderer {
         core.circle(x, y, 26);
         core.fill({ color: '#0e0d0b', alpha: ops.isCanvas ? 0.55 : INV_UNIT_ALPHA });
         core.stroke({ color: '#59d6d6', alpha: ops.isCanvas ? 0.5 : INV_UNIT_ALPHA, width: 1 });
+        // REQ-0290 design item 1 -- the seat cell is X and INERT, on EVERY
+        // unit (starter and normal) and on BOTH boards. Reading of record
+        // (user ruling, 2026-07-22): the X states that a Unit PIECE can never
+        // be moved or re-seated -- its seat is stamped at mint (canvas_spec
+        // law, true for every unit), which is a different and permanent fact
+        // from "this BP is locked". So the affordance is unconditional here
+        // and does NOT consult bp.locked.
+        //
+        // eventMode stays 'static' for ONE reason only: a Pixi hit object is
+        // what carries `cursor`, so the core must remain hit-testable for the
+        // X to render at all. Its pointerdown wiring is GONE -- and with it
+        // the dblclick-rotate path that used to run THROUGH this core, since
+        // that trigger was handleBPPointerDown's own double-tap branch. BP
+        // drag and rotate consolidate on the two handles that remain (the
+        // badge above, empty BP cells below), which keep 'grab'.
+        //
+        // NOT over-locked (REQ-0290 design item 5): moving/transferring/
+        // rotating a locked starter unit's BAG stays legal (REQ-0209 design).
+        // Only this one cell stops being a handle.
         core.eventMode = 'static';
-        core.cursor = 'grab';
-        core.on('pointerdown', (e: FederatedPointerEvent) => this.handleBPPointerDown(e, bp.id));
+        core.cursor = 'not-allowed';
+        this.cursorProbe.push({ uid: 'seat:' + bp.id, cursor: 'not-allowed' });
         this.gUnits.addChild(core);
         // REQ-0125a: the art in a Unit cell is no longer a string literal. It
         // comes from THE resolver (board/unitIcon.ts), through the ratified G6
@@ -1367,9 +1446,23 @@ export class BoardRenderer {
           const a = container.sis.find((z) => z.uid === s.siUid);
           if (!a) return;
           const siDef = this.deps.siDefs[a.id];
+          // REQ-0290 design item 4: an SI seated inside a PO that sits in a
+          // LOCKED BP cannot be unseated -- engine.js's seatSI/stowSI (and the
+          // page twins) have refused it with why:'locked unit' since REQ-0209.
+          // Until now the client still said 'grab' and let the drag start, so
+          // the refusal only surfaced at DROP time, reading as a malfunction.
+          // Lock topology comes from the engine through ops.poInLockedBP (never
+          // re-derived here); a bond socket has no single host PO, hence the
+          // 'bond' guard -- the same guard engine.seatSI itself uses.
+          const hostPo = s.host !== 'bond' ? container.pos.find((z) => z.uid === s.host) : undefined;
+          const siLocked = !!hostPo && ops.poInLockedBP(state, hostPo);
           const g = new Container();
           g.eventMode = 'static';
-          g.cursor = 'grab';
+          // Default arrow, NOT 'not-allowed' -- consistent with the fixed-PO
+          // ruling above (the X belongs to the seat cell alone). No glyph
+          // either: the REQ is explicit that the padlock is a fixed-PO mark.
+          g.cursor = siLocked ? 'default' : 'grab';
+          this.cursorProbe.push({ uid: a.uid, cursor: g.cursor }); // REQ-0290
           if (a.id === 'acc_guard') {
             const bar = new Graphics();
             bar.roundRect(x - 23, y - 7, 46, 14, 6);
@@ -1411,7 +1504,13 @@ export class BoardRenderer {
           hitCircle.circle(x, y, 15);
           hitCircle.fill({ color: '#000000', alpha: 0.001 });
           g.addChild(hitCircle);
-          g.on('pointerdown', (e: FederatedPointerEvent) => this.beginDrag(e, 'si', a.uid, undefined));
+          // REQ-0290: mirror of handlePOPointerDown's fixed-PO short-circuit --
+          // never lift, flash the cell instead. Tap-to-inspect (pointerup) is
+          // untouched: a locked SI is still inspectable, just not draggable.
+          g.on('pointerdown', (e: FederatedPointerEvent) => {
+            if (siLocked) { flash(this, [cellAt(this, x, y)]); return; }
+            this.beginDrag(e, 'si', a.uid, undefined);
+          });
           g.on('pointerup', () => this.handleItemTap('si', a.id, { x: x - 16, y: y - 16, w: 32, h: 32 }, a.uid));
           this.gSock.addChild(g);
         } else {
@@ -1527,6 +1626,8 @@ export class BoardRenderer {
     // caller's next pointer event, not one animation frame later.
     // REQ-0287: publish this board's ribbon probe snapshot (e2e read seam).
     publishRibbonProbe(boardIdKey(this.boardId), this.usageRibbonProbe);
+    // REQ-0290: ditto for the affordance (cursor) snapshot.
+    publishCursorProbe(boardIdKey(this.boardId), this.cursorProbe);
     this.paintNow();
   }
   /**

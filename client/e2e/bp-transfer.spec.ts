@@ -53,9 +53,20 @@
 // there the whole time). Test 4 (illegal overlap rejection) is UNCHANGED
 // -- a rejected transfer still leaves both sides exactly as they were,
 // which is equally true under either model.
+//
+// REQ-0290 migration: every BP grab in this spec used to press the unit SEAT
+// cell, which was a whole-BP drag handle. REQ-0290 made the seat inert (it now
+// shows 'not-allowed' and carries no pointerdown), so each of those grabs moved
+// to the ✥ move-handle badge. In every fixture here the seat and the badge are
+// in the SAME cell -- test_empty/test_full/nudge_bp all seat their unit at
+// off [0,0], i.e. the BP's top-left-most cell, which is exactly where the badge
+// anchors -- and bx/by land inside that cell just as cx/cy did. beginDrag
+// derives grabOff from the CELL (cellAt), so the drop maths is bit-for-bit
+// unchanged and not one assertion below moved. Drop coordinates are untouched
+// throughout: only the grab is a handle.
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { autoSaveAndFetch, bootApp, cx, cy, drag } from './helpers';
+import { autoSaveAndFetch, bootApp, bx, by, cx, cy, drag } from './helpers';
 
 const FIXTURE_PATH = new URL('./fixtures/bp-transfer-fixture.json', import.meta.url);
 
@@ -78,12 +89,12 @@ test.describe('BP inventory <-> canvas transfer', () => {
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
-    // test_empty: 1x2 BP at inv page0 origin (1,1) -- grab via its unit
-    // core cell (1,1), drop so the origin lands on free canvas cells
-    // (6,5)-(6,6).
+    // test_empty: 1x2 BP at inv page0 origin (1,1) -- grab via its ✥ badge,
+    // which sits in that same cell (1,1) (REQ-0290 retired the seat handle),
+    // drop so the origin lands on free canvas cells (6,5)-(6,6).
     await drag(
       page,
-      { x: invBox.x + cx(1), y: invBox.y + cy(1) },
+      { x: invBox.x + bx(1), y: invBox.y + by(1) }, // REQ-0290: ✥ badge, was the seat cell
       { x: canvasBox.x + cx(5), y: canvasBox.y + cy(6) }
     );
 
@@ -107,8 +118,8 @@ test.describe('BP inventory <-> canvas transfer', () => {
 
     // test_full: 2-cell BP at inv page0 origin (1,4) (cells (1,4) unit
     // + (1,5) free), hosting PO p100 (hilt) at (1,5) with SI a100
-    // (acc_gem) seated on its gem socket. Grab via its unit cell (1,4),
-    // drop onto free canvas cells (6,4)-(6,5).
+    // (acc_gem) seated on its gem socket. Grab via its ✥ badge in cell (1,4)
+    // (REQ-0290), drop onto free canvas cells (6,4)-(6,5).
     //
     // REQ-0033 Phase 2 fixture note: test_full was originally a 1x1 BP
     // whose SOLE cell was also its unit cell, with p100 sitting on that
@@ -127,7 +138,7 @@ test.describe('BP inventory <-> canvas transfer', () => {
     // client bug.
     await drag(
       page,
-      { x: invBox.x + cx(4), y: invBox.y + cy(1) },
+      { x: invBox.x + bx(4), y: invBox.y + by(1) }, // REQ-0290: ✥ badge, was the seat cell
       { x: canvasBox.x + cx(4), y: canvasBox.y + cy(6) }
     );
 
@@ -178,7 +189,7 @@ test.describe('BP inventory <-> canvas transfer', () => {
     // home (still at [1,1]) is untouched.
     await drag(
       page,
-      { x: invBox.x + cx(1), y: invBox.y + cy(1) },
+      { x: invBox.x + bx(1), y: invBox.y + by(1) }, // REQ-0290: ✥ badge, was the seat cell
       { x: canvasBox.x + cx(5), y: canvasBox.y + cy(6) }
     );
     let canvas = await saveAndFetch(page);
@@ -199,7 +210,7 @@ test.describe('BP inventory <-> canvas transfer', () => {
     const canvasBox2 = (await page.locator('canvas.board-canvas').first().boundingBox())!;
     await drag(
       page,
-      { x: canvasBox2.x + cx(5), y: canvasBox2.y + cy(6) },
+      { x: canvasBox2.x + bx(5), y: canvasBox2.y + by(6) }, // REQ-0290: ✥ badge, was the seat cell
       { x: invBox2.x + cx(3), y: invBox2.y + cy(3) }
     );
     canvas = await saveAndFetch(page);
@@ -210,8 +221,8 @@ test.describe('BP inventory <-> canvas transfer', () => {
 
     // Step C: drag it forward again -- inv -> canvas once more to
     // complete the "round trip" (canvas -> inventory -> canvas), grabbing
-    // from the home's REAL (unmoved) position [1,1], landing back at
-    // (6,5) on canvas.
+    // the home's ✥ badge at its REAL (unmoved) position [1,1], landing back
+    // at (6,5) on canvas.
     await page.reload();
     await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
     await page.waitForTimeout(400);
@@ -219,7 +230,7 @@ test.describe('BP inventory <-> canvas transfer', () => {
     const canvasBox3 = (await page.locator('canvas.board-canvas').first().boundingBox())!;
     await drag(
       page,
-      { x: invBox3.x + cx(1), y: invBox3.y + cy(1) },
+      { x: invBox3.x + bx(1), y: invBox3.y + by(1) }, // REQ-0290: ✥ badge, was the seat cell
       { x: canvasBox3.x + cx(5), y: canvasBox3.y + cy(6) }
     );
     canvas = await saveAndFetch(page);
@@ -243,10 +254,11 @@ test.describe('BP inventory <-> canvas transfer', () => {
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
     // Attempt to drop test_empty onto canvas cell (1,1) -- already
-    // occupied by BP "alpha" in the fixture. Grab via unit cell (1,1).
+    // occupied by BP "alpha" in the fixture. Grab via the ✥ badge in cell
+    // (1,1) (REQ-0290 -- the seat is no longer a handle).
     await drag(
       page,
-      { x: invBox.x + cx(1), y: invBox.y + cy(1) },
+      { x: invBox.x + bx(1), y: invBox.y + by(1) }, // REQ-0290: ✥ badge, was the seat cell
       { x: canvasBox.x + cx(1), y: canvasBox.y + cy(1) }
     );
 
@@ -317,11 +329,11 @@ test.describe('BP move WITHIN the inventory board (same page) -- REQ-0045 bug (a
     await bootApp(page);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
 
-    // Grab the unit core at (3,3) (empty of any PO), drop one cell to
-    // the right at (3,4).
+    // Grab the ✥ badge in cell (3,3) (REQ-0290 -- was the unit core, same
+    // cell), drop one cell to the right at (3,4).
     await drag(
       page,
-      { x: invBox.x + cx(3), y: invBox.y + cy(3) },
+      { x: invBox.x + bx(3), y: invBox.y + by(3) }, // REQ-0290: ✥ badge, was the seat cell
       { x: invBox.x + cx(4), y: invBox.y + cy(3) }
     );
 
@@ -370,7 +382,7 @@ test.describe('BP move WITHIN the inventory board (same page) -- REQ-0045 bug (a
 
     await drag(
       page,
-      { x: invBox.x + cx(3), y: invBox.y + cy(3) },
+      { x: invBox.x + bx(3), y: invBox.y + by(3) }, // REQ-0290: ✥ badge, was the seat cell
       { x: invBox.x + cx(4), y: invBox.y + cy(3) }
     );
 

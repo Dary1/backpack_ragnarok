@@ -37,7 +37,7 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
-import { autoSaveAndFetch, bootApp, cx, cy, drag } from './helpers';
+import { autoSaveAndFetch, bootApp, bx, by, cx, cy, drag } from './helpers';
 
 const FIXTURE_PATH = new URL('./fixtures/reference-model-fixture.json', import.meta.url);
 
@@ -251,13 +251,22 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
     expect(await usedByCurrent(page, 'p910')).toBe(true);
     expect(await usedByCurrent(page, 'p911')).toBe(false);
 
-    // Now drag the BP itself (grab via its unit cell, home-absolute
-    // [3,1]) from inventory to canvas, landing at origin [5,1] --
-    // deliberately OUTSIDE canvas_bp1's [1,1]-[3,6] footprint (a
+    // Now drag the BP itself from inventory to canvas, landing at origin
+    // [5,1] -- deliberately OUTSIDE canvas_bp1's [1,1]-[3,6] footprint (a
     // transferred BP does not need to land inside another BP).
+    //
+    // REQ-0290: this used to grab the unit SEAT (home-absolute [3,1], i.e.
+    // origin [1,1] + unit off [2,0]) and drop on (7,1). The seat is inert now,
+    // so the grab moved to the ✥ badge -- which anchors on the BP's TOP-LEFT
+    // cell [1,1], NOT the seat. beginDrag takes grabOff = grabCell - origin
+    // (BoardRenderer.beginDrag), so grabOff went [2,0] -> [0,0] and the DROP
+    // cell must absorb exactly that difference: (7,1) -> (5,1). Same landing
+    // origin [5,1], so every assertion below is unchanged. The badge wins the
+    // hit test over p910 sitting in the same cell because gBadges draws above
+    // gItems (REQ-0042's whole reason for putting it there).
     const invBox2 = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox2 = (await page.locator('canvas.board-canvas').first().boundingBox())!;
-    await drag(page, { x: invBox2.x + cx(1), y: invBox2.y + cy(3) }, { x: canvasBox2.x + cx(1), y: canvasBox2.y + cy(7) });
+    await drag(page, { x: invBox2.x + bx(1), y: invBox2.y + by(1) }, { x: canvasBox2.x + cx(1), y: canvasBox2.y + cy(5) });
 
     canvas = await autoSaveAndFetch(page);
     const bpRef = canvas.bps.find((b: any) => b.id === 'homebp');
@@ -290,18 +299,22 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
 
     // Transfer homebp (with both p910+p911, no pre-exclusion this time)
     // inv -> canvas at origin [5,1] (outside canvas_bp1's footprint).
-    await drag(page, { x: invBox.x + cx(1), y: invBox.y + cy(3) }, { x: canvasBox.x + cx(1), y: canvasBox.y + cy(7) });
+    // REQ-0290: ✥ badge at the BP's top-left cell [1,1] instead of the (now
+    // inert) seat at [3,1]; grabOff [2,0] -> [0,0], so the drop follows from
+    // (7,1) to (5,1) and the landing origin is unchanged. See test 6.
+    await drag(page, { x: invBox.x + bx(1), y: invBox.y + by(1) }, { x: canvasBox.x + cx(1), y: canvasBox.y + cy(5) });
     let canvas = await autoSaveAndFetch(page);
     expect(canvas.bps.find((b: any) => b.id === 'homebp')).toBeTruthy();
     expect(canvas.pos.find((p: any) => p.uid === 'p910')).toBeTruthy();
     expect(canvas.pos.find((p: any) => p.uid === 'p911')).toBeTruthy();
 
-    // Drag it back canvas -> inventory (drop cell irrelevant, grab via
-    // its canvas unit cell -- home unit offset [2,0] from origin
-    // [5,1] puts the unit at absolute [7,1]).
+    // Drag it back canvas -> inventory. The drop cell is irrelevant here (a
+    // canvas -> inventory drag REMOVES the reference; there is nothing to
+    // place), so only the grab moved: REQ-0290 retired the seat at absolute
+    // [7,1], and the ✥ badge sits on the BP's top-left cell, absolute [5,1].
     const invBox2 = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox2 = (await page.locator('canvas.board-canvas').first().boundingBox())!;
-    await drag(page, { x: canvasBox2.x + cx(1), y: canvasBox2.y + cy(7) }, { x: invBox2.x + cx(7), y: invBox2.y + cy(7) });
+    await drag(page, { x: canvasBox2.x + bx(1), y: canvasBox2.y + by(5) }, { x: invBox2.x + cx(7), y: invBox2.y + cy(7) });
 
     canvas = await autoSaveAndFetch(page);
     // Cascade removal: BP reference + both nested PO references gone from canvas.

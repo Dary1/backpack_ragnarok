@@ -27,7 +27,7 @@
 // paints nothing at all (bpSkinTexture's THE GUARD) and would make this spec
 // vacuous -- which is what the `composites >= 1` wait below is really for.
 import { test, expect, type Page } from '@playwright/test';
-import { autoSaveAndFetch, cx, cy, drag, loadFixtureAndBoot } from './helpers';
+import { autoSaveAndFetch, bx, by, cx, cy, drag, loadFixtureAndBoot } from './helpers';
 
 interface Probe { composites: number; hits: number }
 
@@ -89,8 +89,10 @@ async function waitForFirstComposite(page: Page): Promise<void> {
  * is a state no real client could produce, and migrateCanvasToReferencesV3
  * would first-fit it onto a page mid-boot and move the very cells this spec
  * measures (board-render-ondemand.spec.ts's fixture says the same, and
- * bp-rotate.spec.ts's before it). No POs on the BP, so every one of its cells
- * is an empty-cell grab handle for test 2's move. */
+ * bp-rotate.spec.ts's before it). REQ-0290: the BP's cells are NOT all grab
+ * handles -- the unit's SEAT cell never was one (the empty-cell loop skips it
+ * via unitMap) and is now inert besides, so test 2 moves the BP by its ✥
+ * badge, which sits in that same cell (2,2) and keeps grabOff at [0,0]. */
 function makeCanvas() {
   const bp = {
     id: 'e2e_skincache_bp',
@@ -155,7 +157,7 @@ test.describe('REQ-0350 -- the BP-skin composite is cached, not recomputed', () 
     const box = (await page.locator('canvas.board-canvas').first().boundingBox())!;
     await drag(
       page,
-      { x: box.x + cx(2), y: box.y + cy(2) },
+      { x: box.x + bx(2), y: box.y + by(2) }, // REQ-0290: ✥ badge; cx/cy here hit the (now inert) seat
       { x: box.x + cx(5), y: box.y + cy(5) },
     );
 
