@@ -74,7 +74,37 @@ e2e_harness_name() {
   EXPORTDIR="$(mktemp -d)"
   HOMEDIR="$TMPROOT/w0/home"
   mkdir -p "$HOMEDIR"
-  ln -s "$WT" "$HOMEDIR/backpack_ragnarok"
+  # REQ-0365: the home used to be `ln -s "$WT" .../backpack_ragnarok`, one
+  # symlink to the whole checkout. That quietly included data/ -- and
+  # server/admin.cjs anchors CONFIG_DIR at $HOME/backpack_ragnarok/data/config,
+  # so every "isolated" admin harness was in fact reading the BOX's live
+  # data/config/dev_user.json and taking its item_admin rights from that box's
+  # dev_mode fallback.
+  #
+  # Found the moment it mattered: flipping the live box to dev_mode:false
+  # (REQ-0365's whole point) turned [6.5/8] red -- 8 artadmin specs, POST
+  # /api/art/artworks 403 and #/artadmin never rendering -- with no change to
+  # the harnesses or the specs. The isolation claim in this file's header was
+  # simply not true of data/.
+  #
+  # So the home is now a DIRECTORY of per-entry symlinks with data/ excluded and
+  # replaced by a per-run real one, seeded from the committed fixtures. Same
+  # shape as e2e_fleet.cjs's buildHome(), which had this right all along
+  # (content/live copied, everything else symlinked). Code and content still
+  # resolve to the worktree; the namespace hash still keys off
+  # $HOME/backpack_ragnarok and is still unique per run.
+  mkdir -p "$HOMEDIR/backpack_ragnarok"
+  for _e in "$WT"/* "$WT"/.[!.]*; do
+    [ -e "$_e" ] || continue
+    case "$(basename "$_e")" in data) continue ;; esac
+    ln -s "$_e" "$HOMEDIR/backpack_ragnarok/$(basename "$_e")"
+  done
+  mkdir -p "$HOMEDIR/backpack_ragnarok/data/config"
+  # dev_mode is absent from this fixture, and server/admin.cjs's readDevUser()
+  # reads absent as TRUE -- which is what these harnesses need: their specs call
+  # item_admin-gated routes with no credential at all.
+  cp "$WT/client/e2e/fixtures/config/dev_user.json" \
+     "$HOMEDIR/backpack_ragnarok/data/config/dev_user.json"
   # Stand-ins: the api's model preflight only checks that these EXIST. With
   # ART_ROUTE_MOCK=1 nothing ever reads them, so a one-word file is enough --
   # and it keeps a hermetic run from needing 20 GB of real weights.

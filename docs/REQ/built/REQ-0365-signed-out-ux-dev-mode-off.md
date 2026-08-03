@@ -130,6 +130,29 @@ and 5 (Settings, which has its own independent 401 handling) correctly stayed
 green -- confirming the three mechanisms are separately covered rather than one
 assertion wearing three hats.
 
+### Follow-on defect the flip exposed: the admin harnesses were not isolated
+
+Flipping the box to `dev_mode:false` turned `[6.5/8]` RED -- 8 artadmin specs,
+`POST /api/art/artworks` 403 and `#/artadmin` never rendering -- with no change
+to the harnesses or the specs.
+
+Cause: `tools/e2e_harness.sh` built its "isolated" home as ONE symlink,
+`ln -s "$WT" $HOMEDIR/backpack_ragnarok`. That includes `data/`, and
+`server/admin.cjs` anchors `CONFIG_DIR` at `$HOME/backpack_ragnarok/data/config`
+-- so every isolated admin harness was reading the BOX's live
+`data/config/dev_user.json` and drawing its item_admin rights from that box's
+dev_mode fallback. The isolation contract in that file's own header did not hold
+for `data/`; nothing had ever perturbed the one file it depended on.
+
+Fixed here rather than deferred, because it is the same root as the REQ and
+because leaving it would mean master's gate is red on any correctly-configured
+box. The home is now a directory of per-entry symlinks with `data/` excluded and
+replaced by a per-run real one seeded from `client/e2e/fixtures/config` --
+exactly the shape `e2e_fleet.cjs`'s `buildHome()` has always used.
+
+Verified: `tools/artadmin_e2e.sh` with the live box on `dev_mode:false`,
+**8 passed** (52.5s).
+
 ## Outcome
 
 Merged to master (rebased onto REQ-0288/REQ-0290, which landed mid-flight; the
