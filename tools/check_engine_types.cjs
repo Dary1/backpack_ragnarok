@@ -1,7 +1,7 @@
 'use strict';
 // tools/check_engine_types.cjs -- REQ-0047 (e): engine type-surface drift
 // detector. client/src/engine/engine.d.ts hand-declares two runtime-
-// checkable surfaces for mock-src/engine.js (consumed AS-IS by design):
+// checkable surfaces for shared/engine.js (consumed AS-IS by design):
 //   - EngineModule  (the UMD factory's 5 exports)
 //   - EngineInstance (the object Engine.create(...) returns)
 // The d.ts is deliberately partial-by-coverage but must never DRIFT:
@@ -10,7 +10,7 @@
 // re-reading; this makes the re-read mechanical, in CI).
 const fs = require('fs');
 const path = require('path');
-const Engine = require(path.join(__dirname, '..', 'mock-src', 'engine.js'));
+const Engine = require(path.join(__dirname, '..', 'shared', 'engine.js'));
 const src = fs.readFileSync(path.join(__dirname, '..', 'shared', 'engine.d.ts'), 'utf8');
 
 function interfaceBody(name) {
@@ -70,7 +70,7 @@ for (const mm of members(interfaceBody('EngineModule'))) {
 }
 // 2) EngineInstance vs a real created instance (same call shape as
 // server/services/core.cjs makeEngine()).
-const inst = Engine.create({}, {}, { ROWS: 8, COLS: 8 }, { po_tags: {}, socket_tags: {} });
+const inst = Engine.create({}, {}, { ROWS: 8, COLS: 8 }, { po: {}, socket: {} });
 for (const mm of members(interfaceBody('EngineInstance'))) {
   const rt = inst[mm.name];
   if (rt === undefined && !mm.optional) { problems.push('EngineInstance.' + mm.name + ' missing from created instance'); continue; }

@@ -1,33 +1,24 @@
 > [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
 
-> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Unit (character piece). Verbatim pre-rename user quotes may survive unchanged.
-
 # Combat Spec — v0.3-draft (for owner review)
+
+Premise: draft v0.3 awaiting owner ratification.
+Expires-when: ratified -> promote to user_managed; rejected -> archive. Gate entry: the Ratification checklist below.
 
 > Design-only pass. No code or server state was touched. This spec designs the
 > **combat half** of the game so it plugs into the existing **placement half**
-> (`mock-src/engine.js`) without contradicting it. It cites the exact vocab
-> (`content/vocab.json` v4) and engine functions by name where it relies on them.
+> (`shared/engine.js`) without contradicting it. It cites the exact vocab
+> (`content/vocab.json` v4 -- master is now v17; re-verify = R2) and engine functions by name where it relies on them.
 > Everything below marked **[TUNABLE]** is a constant the owner/sim can move.
 > Everything marked **[LOCKED]** is an orchestrator-decided default (user can veto async).
 > Everything marked **[USER]** is a genuine open item requiring an explicit user decision.
 > Everything marked **[VX-n]** is a vocabulary/schema extension request (collected at end).
 >
-> **v0.2 headline change (retained):** the v0.1 "cover / front-rank targeting" design was
-> **DELETED** and replaced by the user-ratified **formation-ray battle system** (2026-07-05).
-> All targeting and damage geometry flow from that system. Monsters shrink to **HP + a
-> list of possessed skills** (ruling 3).
->
-> **v0.3 headline change:** the user has **ratified a closed-vocabulary mode-tag system**
-> (2026-07-05) that **RESOLVES VX-3** — the former `Tool` PO-tag placeholder is **DEAD**.
-> Encounter mode-gating is now driven by a **third, separate vocabulary axis** — **mode
-> tags** `battle` / `detection` / `unlock` — carried on POs and skills (same "separate
-> vocabulary, same pattern" philosophy as PO Tags vs Socket Types). With this, **every open
-> item is resolved**: the spec is design-complete pending a final user pass.
->
-> Retained from v0.1 (still valid): determinism/replay log, status semantics, run
-> integration, S4 tuning surface. (The event-driven seconds sim was SUPERSEDED by the
-> REQ-0256 tick loop -- §1.1.)
+> **Lineage (full history: git):** v0.1 cover/front-rank targeting was DELETED for the
+> user-ratified formation-ray system (2026-07-05); monsters shrank to HP + skill list
+> (ruling 3). v0.3: the ratified mode-tag vocabulary (battle/detection/unlock) resolved
+> VX-3 and killed the `Tool` placeholder. The v0.2 event queue was superseded by the
+> REQ-0256 tick loop (§1.1). Design-complete pending the owner pass (checklist below).
 >
 > Binding inputs honored: auto-battle (no mid-run input); seconds with decimal `[lo,hi]`
 > ranges (the SCHEDULER quantizes them to `TICK_SECS` ticks -- REQ-0256; authoring stays
@@ -39,18 +30,28 @@
 
 ---
 
-## 0. What changed v0.1 → v0.2 (orientation)
+## Ratification checklist -- the owner gate, made cheap (added 2026-08-02)
 
-| area | v0.1 | v0.2 |
-|---|---|---|
-| targeting / damage geometry | designed "front-rank cover" on the placement grid | **DELETED** → **formation-ray system** on a shared 26×18 field (§2) |
-| enemy model | flat def with `actions[]` (verb + every_secs + reach + telegraph) | **HP + skill-id list only** (ruling 3); skills use the PO pipeline (§4) |
-| player attacks | verbs hit "lowest-HP enemy" | PO effects gain an **attack-profile** → fire **rays** onto the enemy field (§3–4) |
-| two fields | one (player BPs only) | **two coexisting A1:Z18 planes** — player field + enemy field (§2.1) |
-| formations | none | **content** (`formation` defs; the 4 from formation.xlsx) (§5) |
-| cover / OQ4–OQ6 | open | **SUPERSEDED** by ray geometry |
-| open questions | 19 open | **all resolved as [LOCKED] defaults** (§9); VX-3 now **RESOLVED** by the ratified mode-tag system — **no open items** |
-| VX list | VX-1/2/3 | VX-1 (BP hp, *genuinely new*), VX-2 (enemy/formation schemas), **VX-3 RESOLVED** (`modes` vocabulary + `modes` field; `Tool` placeholder dead), VX-4 (attack-profile schema) |
+Work the five items; ALL GREEN -> promote this file to `docs/user_managed/`;
+any RED -> fix here or archive. No need to re-read the whole file.
+
+- **R1 -- §6.1 wording.** The mode-tag vocabulary was ratified in chat (2026-07-05);
+  confirm §6.1 captures that ruling correctly, then delete its marker remnant.
+- **R2 -- vocab drift.** Verified against `content/vocab.json` v4; master is at v17.
+  Re-verify the cited triggers/verbs/statuses (§4, §7, §9 dps ceilings) still exist
+  unchanged; list any renames.
+- **R3 -- as-built alignment.** Parts are no longer design: the tick loop (§1.1,
+  REQ-0256) and the formation field (§2; `user_managed/backpack_battle_spec.md`,
+  REQ-0036/0047) are LIVE in `sim/`. Mark each section as-built record vs design-ahead.
+- **R4 -- VX final states (§11).** VX-3 resolved; VX-2 has likely shipped since
+  (enemy defs + `formations.json` are live) -- confirm and close; VX-1 (BP `hpMax`)
+  and VX-4 (attack-profile schema) still seek blessing.
+- **R5 -- [LOCKED] veto pass (§9).** Orchestrator defaults stand unless vetoed;
+  [TUNABLE] constants need no gate.
+
+---
+
+## 0. v0.1 -> v0.2 change table -- removed (history; git keeps it)
 
 ---
 
@@ -145,6 +146,10 @@ diagonal, bounces, hits and splash.
 ---
 
 ## 2. The formation field (RATIFIED — replaces v0.1 §2.2 cover entirely)
+
+> Golden source: `../user_managed/backpack_battle_spec.md` (ratified field spec, live
+> in sim/). This section restates the geometry so §3 reads standalone; ON CONFLICT
+> THE GOLDEN WINS.
 
 ### 2.1 Two coexisting planes
 There are **two** independent `A1:Z18` planes (26 cols A–Z × 18 rows), per ruling 2:
@@ -469,7 +474,7 @@ growth — one per encounter/entity, not a new tag or verb.
 axis. "Discovery/unlock damage" reuses the combat loop verbatim (golden q "resolved AS
 COMBAT"), with the mode-specific ray semantics of §6.1.
 
-### 6.1 Mode tags — **RATIFIED closed vocabulary (RESOLVES VX-3)** — **[USER]**
+### 6.1 Mode tags — **RATIFIED closed vocabulary (RESOLVES VX-3)** — **[RATIFIED 2026-07-05; wording check = R1]**
 Mode-gating is driven by a **third, separate vocabulary axis** — **mode tags** — ratified
 by the user (2026-07-05). It is **NOT** a `po_tags` entry: it is its own closed vocabulary,
 exactly the "separate vocabulary, same pattern" relationship that PO Tags already have with
@@ -662,7 +667,7 @@ a formation) vs reference enemy packs using the §1–3 sim and asserts bands.
 
 ## 11. Vocabulary / schema extension requests (final state)
 
-> Per content_pipeline §2, growing a **closed vocabulary** is a golden-adjacent design
+> Per `common_content_pipeline.md` §3, growing a **closed vocabulary** is a golden-adjacent design
 > event needing user approval. **Schema** extensions (new fields, no new vocab entries)
 > are listed for visibility but are not vocab growth.
 >
@@ -672,7 +677,7 @@ a formation) vs reference enemy packs using the §1–3 sim and asserts bands.
 
 - **[VX-1] BP HP field (schema — genuinely NEW).** BPs need an HP magnitude (`hpMax`,
   current `hp`). **Verified against the server:** engine BP objects carry only
-  `{id, name, shape, origin, unit}` (`mock-src/engine.js`) and no schema file defines
+  `{id, name, shape, origin, unit}` (`shared/engine.js`) and no schema file defines
   `hp` — there is **no existing hp field to confirm**. So OQ3's "confirm existing field"
   resolves to: **there is none; VX-1 is a real schema addition** on the BP/frame def.
   *Approval sought: sanction a BP-def `hpMax`.* (No new vocab entry.)

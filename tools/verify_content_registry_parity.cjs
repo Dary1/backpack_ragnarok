@@ -53,6 +53,22 @@ const COVERED = [
   // slice). This file's own header states the rule: a kind the serving path resolves
   // but this tool does not check is a kind whose drift reaches the game unseen.
   { kind: 'unit_skin', file: contentPath('live', 'live_unit_skins.json') }, // REQ-0266
+  // REQ-0352: monster_pack joins the covered set BEFORE it is wired into
+  // services/core.cjs REGISTRY_KINDS -- gate-before-wire (REQ-0352 section 4):
+  // the instrument must show the 14 drifted packs before any data or wiring
+  // changes. `derived` lists fields the registry does NOT own (REQ-0352
+  // section 5: powerLevel is written only by tools/autobalance_pack_powerlevel.cjs
+  // and lives file-side only). They are stripped from the FILE entry before
+  // compare -- so a registry variant that ever carries one shows as DRIFT,
+  // which is exactly the authorship violation the ruling forbids.
+  { kind: 'monster_pack', file: contentPath('live', 'dungeon', 'packs.json'), derived: ['powerLevel'] }, // REQ-0352
+  // REQ-0352 section 6: gimic and dungeon have been registry-served since
+  // REQ-0211 / REQ-0185 but were never covered -- the same omission class that
+  // hid monster_pack's 14 drifted packs. The kind-list gate
+  // (server/tests/kind_lists_agree_test.cjs) now asserts COVERED ==
+  // REGISTRY_KINDS, so a kind can no longer be served-but-unchecked.
+  { kind: 'gimic', file: contentPath('live', 'dungeon', 'gimics.json') }, // REQ-0352
+  { kind: 'dungeon', file: contentPath('live', 'dungeon', 'dungeons.json') }, // REQ-0352
 ];
 
 // Canonical JSON (recursive key sort) -> order-insensitive equality.
@@ -62,6 +78,17 @@ function canonical(v) {
   return JSON.stringify(v);
 }
 function deepEqualUnordered(a, b) { return canonical(a) === canonical(b); }
+
+// REQ-0352: the FILE entry minus its derived fields (COVERED[].derived) -- the
+// authored view, which is what the registry is supposed to mirror. Stripping
+// happens on the file side ONLY: a registry variant carrying a derived field
+// still compares unequal and surfaces as DRIFT.
+function authoredView(entry, derived) {
+  if (!derived || !derived.length) return entry;
+  const out = Object.assign({}, entry);
+  for (const f of derived) delete out[f];
+  return out;
+}
 
 // Field-level diff (order-insensitive): [{path, file, registry}] leaf mismatches.
 function diffFields(a, b, prefix, out) {
@@ -89,7 +116,7 @@ function collectFileEntries() {
     const excluded = new Set(src.exclude || []);
     for (const entry of (doc.entries || [])) {
       if (excluded.has(entry.id)) continue; // documented reuse copy; original row owns the name
-      if (!byName.has(entry.id)) byName.set(entry.id, { kind: src.kind, file: src.file, entry: entry });
+      if (!byName.has(entry.id)) byName.set(entry.id, { kind: src.kind, file: src.file, entry: entry, derived: src.derived });
     }
   }
   return byName;
@@ -105,8 +132,9 @@ async function classifyAll(storage, byName) {
     const adopted = await storage.getAdoptedVariant(name);
     if (adopted) {
       if (adopted.kind !== info.kind) { rows.push({ name, kind: info.kind, status: 'MISSING-IN-REGISTRY', detail: 'def exists but kind=' + adopted.kind }); continue; }
-      if (deepEqualUnordered(info.entry, adopted.data)) rows.push({ name, kind: info.kind, status: 'MATCH', variant_no: adopted.variant_no });
-      else rows.push({ name, kind: info.kind, status: 'DRIFT', variant_no: adopted.variant_no, diff: diffFields(info.entry, adopted.data) });
+      const fileView = authoredView(info.entry, info.derived); // REQ-0352: authored fields only
+      if (deepEqualUnordered(fileView, adopted.data)) rows.push({ name, kind: info.kind, status: 'MATCH', variant_no: adopted.variant_no });
+      else rows.push({ name, kind: info.kind, status: 'DRIFT', variant_no: adopted.variant_no, diff: diffFields(fileView, adopted.data) });
       continue;
     }
     const def = await storage.getContentDefByName(name);
@@ -114,6 +142,15 @@ async function classifyAll(storage, byName) {
     rows.push({ name, kind: info.kind, status: 'UNADOPTED', detail: 'content_def has no adopted variant' });
   }
   return rows;
+}
+
+// REQ-0354 section 6: the served set == the passing set. Under --strict,
+// MISSING-IN-REGISTRY and UNADOPTED also block (a served entity with no
+// passing adopted variant IS a set mismatch), not just DRIFT. This is the
+// enforcement half of REQ-0354; the per-variant serving tag is the
+// visibility half. Ship both or neither (section 7 ruling 4).
+function strictOk(counts) {
+  return counts.DRIFT === 0 && counts['MISSING-IN-REGISTRY'] === 0 && counts.UNADOPTED === 0;
 }
 
 function summarize(rows) {
@@ -124,6 +161,7 @@ function summarize(rows) {
 
 async function main() {
   const asJson = process.argv.includes('--json');
+  const strict = process.argv.includes('--strict'); // REQ-0354 section 6
   if (process.env.STORAGE_BACKEND !== 'pg' || !process.env.DATABASE_URL) {
     console.error('verify_content_registry_parity: STORAGE_BACKEND=pg + DATABASE_URL required (source server/.env)');
     process.exit(2);
@@ -137,7 +175,7 @@ async function main() {
     try { await storage.closeContentPool(); } catch (e) { /* best effort */ }
   }
   if (asJson) {
-    console.log(JSON.stringify({ ok: counts.DRIFT === 0, counts, rows }, null, 2));
+    console.log(JSON.stringify({ ok: counts.DRIFT === 0, strict_ok: strictOk(counts), counts, rows }, null, 2));
   } else {
     // The banner names the covered kinds off COVERED itself, so it can never
     // advertise a coverage the tool does not actually check.
@@ -156,10 +194,15 @@ async function main() {
       ? '  PARITY OK (no drift; the game serves the file corpus verbatim from the registry).'
       : '  DRIFT DETECTED -- a live-file entry diverges from its adopted registry variant. STOP: surface to the user.');
   }
-  process.exit(counts.DRIFT > 0 ? 1 : 0);
+  if (strict && !asJson) {
+    console.log(strictOk(counts)
+      ? '  STRICT OK (REQ-0354 section 6: the served set == the passing set).'
+      : '  STRICT FAIL -- served set != passing set (under --strict, MISSING/UNADOPTED block too). STOP: surface to the user.');
+  }
+  process.exit(strict ? (strictOk(counts) ? 0 : 1) : (counts.DRIFT > 0 ? 1 : 0));
 }
 
-module.exports = { canonical, deepEqualUnordered, diffFields, collectFileEntries, classifyAll, summarize, COVERED };
+module.exports = { canonical, deepEqualUnordered, diffFields, authoredView, collectFileEntries, classifyAll, summarize, strictOk, COVERED }; // strictOk: REQ-0354 section 6
 
 if (require.main === module) {
   main().catch((e) => { console.error('FATAL', (e && e.stack) || e); process.exit(2); });

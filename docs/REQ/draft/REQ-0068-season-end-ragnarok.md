@@ -1,7 +1,5 @@
 > [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
 
-> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Unit (character piece). Verbatim pre-rename user quotes may survive unchanged.
-
 # REQ-0068 — Season-End Ragnarok (the event: Acts I–III)
 
 - **Status**: DRAFT (原案) — awaiting owner review (2026-07-06). REVERSE-INFERRED

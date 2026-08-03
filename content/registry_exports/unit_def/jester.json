@@ -1,0 +1,85 @@
+{
+ "system_name": "jester",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "deaec43a76552ef512fdd9b4771a7aa2fbcdffeaf61343e8a1687ad0e88717a8",
+ "provenance": {
+  "model": "claude-opus-4-8",
+  "params": {},
+  "prompt": "units003 kit design S1 (REQ-0201); reviewer-amended (REQ-0201 adoption notes)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:10:50.991Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "jester",
+  "i18n": {
+   "ja": {
+    "name": "道化師"
+   }
+  },
+  "icon": "units003_jester",
+  "name": "Jester",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       1,
+       2
+      ],
+      "t": "grant_charge"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "t": "on_connected_unit_spend"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Round and round the mischief goes.",
+  "rarity": "Uncommon",
+  "flavor_ja": "悪戯はぐるぐる巡る。",
+  "connection_shape": "shougi_keima_move"
+ }
+}

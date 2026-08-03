@@ -32,6 +32,7 @@ const { tryContentRoutes } = require('./routes/content.cjs'); // REQ-0155
 const { tryStarterRoutes } = require('./routes/starter.cjs'); // REQ-0051
 const { tryBioRoutes } = require('./routes/bio.cjs'); // REQ-0060
 const { trySkinsRoutes } = require('./routes/skins.cjs'); // REQ-0266
+const { tryNotificationsRoutes } = require('./routes/notifications.cjs'); // REQ-0327: per-player notification feed (device + bot)
 
 function handle(req, res) {
   const url = new URL(req.url, 'http://localhost');
@@ -52,6 +53,7 @@ function handle(req, res) {
   if (tryStarterRoutes(req, res, url, p) !== false) return; // REQ-0051: /api/starter/* collides with nothing, appended at the tail
   if (tryBioRoutes(req, res, url, p) !== false) return; // REQ-0060: /api/bio/* appended at the tail, collides with nothing
   if (trySkinsRoutes(req, res, url, p) !== false) return; // REQ-0266: /api/profile/:id/skins appended at the tail -- routes/profile.cjs matches ONLY .../canvas, so this collides with nothing
+  if (tryNotificationsRoutes(req, res, url, p) !== false) return; // REQ-0327: /api/notifications* appended at the tail, collides with nothing
   sendJSON(res, 404, { ok: false, error: 'not found' });
 }
 module.exports = { handle };

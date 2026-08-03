@@ -26,20 +26,9 @@ export function localizedItemName(locale: Locale, content: ApiContentPayload | n
   return entry.name;
 }
 
-/** Determines whether `itemId` is a PO (has a `shape`, lives in
- * content.items) or an SI (has a `slot`, lives in content.sis) -- the two
- * kinds a claimed warehouse item can be in practice (see server/
- * schedule.cjs's REWARD_ROLL_TO_ITEM_ID table: every resolved reward/
- * grant item id is a real live_items.json or live_sis.json entry; BPs are
- * never warehouse-claimable content in this game -- they are not defined
- * in either content file, see the REQ-0041 outcome doc's note on this).
- * Falls back to 'po' if the id is in neither map (defensive; the claim
- * response's itemId should always resolve against one of them). */
-export function itemKindOf(content: ApiContentPayload | null, itemId: string): 'po' | 'si' {
-  if (!content) return 'po';
-  if (content.sis[itemId]) return 'si';
-  return 'po';
-}
+/* REQ-0310: itemKindOf moved to shared/player_actions.mjs -- the warehouse
+ * claim transition that is its only real consumer now lives there, and a
+ * second client (REQ-0314) needs it. Import it from shared/, not from here. */
 
 /** Resolves the content entry (for its rarity + icon) for a warehouse
  * row of a given kind. TM stacks live in content.tms; plain PO/SI items

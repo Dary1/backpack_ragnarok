@@ -21,8 +21,10 @@
 //     deleted skin must never blank a unit.
 // Every skin id in a PUT is validated against the LIVE corpus: it must exist, its
 // `slot` must match the map it was written to, and it must list the unit in units[].
-const { sendJSON, readBody } = require('../lib/http_util.cjs');
-const admin = require('../admin.cjs');
+// REQ-0349: the request preamble (caller resolution, the 405 guard, the JSON
+// body read with this family's TIGHTER cap) comes from lib/route_kit.cjs.
+const { sendJSON } = require('../lib/http_util.cjs');
+const { resolveCallerOr401, methodGuard, withJsonBody } = require('../lib/route_kit.cjs');
 const storage = require('../storage.cjs');
 const content = require('../lib/content.cjs');
 
@@ -47,9 +49,14 @@ function trySkinsRoutes(req, res, url, p) {
   const m = SKINS_RE.exec(p);
   if (!m) return false;
   const urlPlayerId = decodeURIComponent(m[1]);
-  const resolved = admin.resolveAuthFromRequest(req);
-  if (!resolved.ok) { sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason }); return; }
-  const actualPlayer = resolved.player;
+  // NOTE the ORDER: identity is resolved (and a 403 for a foreign profile is
+  // answered) BEFORE the method is checked -- the tail 405 below is deliberately
+  // still at the tail. Hoisting a methodGuard to the top here would turn an
+  // unauthenticated wrong-method request from 401 into 405.
+  const ctx = resolveCallerOr401(req, res);
+  if (!ctx) return;
+  const resolved = ctx.resolved;
+  const actualPlayer = ctx.player;
   // REQ-0037 compat alias + REQ-0214 e2e identity, reproduced from
   // routes/profile.cjs:33-34 VERBATIM in intent: the literal segment "default"
   // aliases WHATEVER identity the dev_mode NO-token fallback resolved to (the dev
@@ -77,19 +84,10 @@ function trySkinsRoutes(req, res, url, p) {
   }
 
   if (req.method === 'PUT') {
-    readBody(req, (err, bodyStr) => {
-      if (err) {
-        if (err.code === 'TOO_LARGE') { sendJSON(res, 413, { ok: false, error: 'request body too large' }); }
-        else { sendJSON(res, 400, { ok: false, error: 'body read failed: ' + err.message }); }
-        return;
-      }
-      if (Buffer.byteLength(bodyStr || '') > MAX_SKINS_BODY_BYTES) {
-        sendJSON(res, 413, { ok: false, error: 'request body exceeds ' + MAX_SKINS_BODY_BYTES + ' bytes' });
-        return;
-      }
-      let patch;
-      try { patch = JSON.parse(bodyStr || '{}'); }
-      catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+    // maxBytes is the REQ-0266 cap, deliberately TIGHTER than the shared
+    // MAX_BODY_BYTES readBody enforces (see its definition above). The 413/400
+    // wordings are now the kit's.
+    withJsonBody(req, res, { maxBytes: MAX_SKINS_BODY_BYTES }, (patch) => {
       try { storage.validateSkinPrefsPatch(patch, skinDefsById()); }
       catch (e) { sendJSON(res, 400, { ok: false, error: e.message }); return; }
       try {
@@ -103,6 +101,6 @@ function trySkinsRoutes(req, res, url, p) {
     return;
   }
 
-  sendJSON(res, 405, { ok: false, error: 'method not allowed' });
+  methodGuard(req, res, ['GET', 'PUT']); // neither matched above, so this sends the 405
 }
 module.exports = { trySkinsRoutes, MAX_SKINS_BODY_BYTES };

@@ -5,13 +5,15 @@ import { setUnitDefs, setUnitSkins } from '../board/unitIcon';
 import { loadSkinDefs, setBpSkinDefs } from '../board/skin/skinRegistry'; // REQ-0266
 import { fetchSkinPrefs } from '../api/skins'; // REQ-0266
 import { setItemArtUrls } from '../board/itemArt'; // REQ-0133
+import { ribbonProbeFor } from '../board/usageRibbonProbe'; // REQ-0287
+import { paintCounts } from '../board/paintProbe'; // REQ-0345
+import { bpSkinProbe, resetBpSkinProbe } from '../board/skin/bpSkinProbe'; // REQ-0350
 import { fetchMe, getStoredToken, resolveGameData, setStoredToken } from '../api';
 import type { ApiMe } from '../api';
 import { INVITE_HASH_RE, snapshot, setSnapshot } from './core';
 import type { Locale } from './core';
-import type { GameData } from "../api/content"; // REQ-0051
 import { readGuide, writeGuide, defaultGuide } from '../guide/guideModel'; // REQ-0141
-import type { GameState, BP, PO, SquadSlot } from "../engine/engine.d.ts"; // REQ-0051
+import { buildStarterUnitsState } from '../../../shared/player_actions.mjs'; // REQ-0310 (was a local function here)
 import { createSupabaseClient } from '../auth/client'; // REQ-0118c
 import { initSupabaseAuth } from '../auth/session'; // REQ-0118c
 
@@ -77,52 +79,38 @@ async function fetchMeWithRetry(attempts = 3, delayMs = 500): Promise<ApiMe | nu
  * 'default' alias via resolveProfileId() above (which the server maps to
  * the dev player when dev_mode is true).
  */
-/**
- * REQ-0051: builds the fresh-profile starting GameState from the served
- * starter-unit definitions (gameData.starterUnits) -- four starter units -- 5x5 BPs (Unit forms no links), each a BP with an authored hpMax override pre-filled with 4 fixed
- * (immovable) POs. Returns null when the payload carries no starterUnits (an
- * older server), so boot() falls back to the baked demo scenario. The caller
- * runs the result through engine.migrateState(), which gives every BP+PO an
- * inventory home while preserving the canvas fixed references.
- */
-function buildStarterUnitsState(gameData: GameData, locale: Locale): GameState | null {
-  const su = gameData.starterUnits;
-  if (!su || !Array.isArray(su.units) || su.units.length === 0) return null;
-  const slotFor = (unit: (typeof su.units)[number]): SquadSlot => {
-    const bp: BP = {
-      id: "bp_" + unit.id,
-      name: unit.name,
-      color: unit.color,
-      shape: su.bpShape,
-      origin: su.origin,
-      unit: { id: su.unit.id, off: su.unit.off },
-      hpMax: su.hpMax,
-      locked: true, // REQ-0209: starter-unit interiors are fully immutable (rotation-only)
-    };
-    const pos: PO[] = unit.pos.map((pp, i) => ({
-      uid: "po_" + unit.id + "_" + i,
-      id: pp.id,
-      loc: "grid" as const,
-      cell: pp.cell,
-      rot: pp.rot,
-      fixed: true,
-    }));
-    return { linked: true, bps: [bp], pos, sis: [] };
-  };
-  const nameOf = (unit: (typeof su.units)[number]): string =>
-    (locale === "ja" && unit.i18n && unit.i18n.ja && unit.i18n.ja.name) ? unit.i18n.ja.name : unit.name;
-  const units = su.units;
-  const first = slotFor(units[0]);
-  const names: string[] = units.map(nameOf);
-  const store: Array<SquadSlot | null> = [null];
-  for (let i = 1; i < units.length; i++) store.push(slotFor(units[i]));
-  // Pad to the engine default squad count so a fresh guest keeps one empty
-  // spare squad tab (matches makeSquadsMeta shape).
-  while (names.length < 5) { names.push("Squad " + (names.length + 1)); store.push({ linked: true, bps: [], pos: [], sis: [] }); }
-  return { linked: first.linked, bps: first.bps, pos: first.pos, sis: first.sis, presets: { active: 0, names, store } };
+
+// REQ-0336: boot() is called as a FLOATING promise (main.tsx:25 -- `boot();`,
+// no .catch), and the only status:'error' it ever set was for a failed FETCH.
+// Anything that threw AFTER the data arrived -- engine.migrateState() on a
+// canvas the engine cannot hydrate is the reachable case -- rejected into
+// nothing: the snapshot stayed 'loading' forever and both boards sat on
+// "Loading board... / Loading inventory..." with no error, no boundary, no way
+// out. Reproduced while writing client/e2e/board-poisoned.spec.ts: a canvas
+// carrying one extra structurally-invalid BP wedges the app exactly there.
+//
+// That is a FOURTH shape of the freeze the owner keeps reporting, and the same
+// class as the others: an uncaught throw with nobody underneath it. Board.tsx
+// and InventoryBoard.tsx already render a "Board unavailable: {error}" branch
+// for status:'error' -- they were simply never reached. This wrapper reaches
+// them. A user with an unloadable save now sees what went wrong instead of an
+// eternal spinner.
+export async function boot(): Promise<void> {
+  try {
+    await bootInner();
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[backpack_ragnarok] boot failed after data load -- surfacing as status:error', e);
+    setSnapshot({
+      ...snapshot,
+      status: 'error',
+      source: 'error',
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
 }
 
-export async function boot(): Promise<void> {
+async function bootInner(): Promise<void> {
   // REQ-0041 fix -- boot-sequence auth race (found while adding
   // SlotsPanel.tsx's client-side isSquadDeployable gate, which was the
   // first thing in this app to actually notice its symptom): this
@@ -159,7 +147,29 @@ export async function boot(): Promise<void> {
   // so a signed-in player's very first request already carries the Bearer
   // JWT. A no-op when Supabase is not configured (createSupabaseClient()
   // returns null), leaving the REQ-0037 flow byte-identical.
-  await initSupabaseAuth(createSupabaseClient());
+  //
+  // REQ-0341: createSupabaseClient() is now ASYNC -- it awaits GET
+  // /api/config instead of reading Vite-inlined env. That inserts one
+  // network round-trip between page load and the client's construction,
+  // which matters because the client is configured with detectSessionInUrl
+  // + flowType:'pkce' and must exist before the OAuth callback parameters
+  // are consumed or destroyed. It is safe here, and the reason is specific:
+  //   - PKCE returns its callback in the QUERY STRING (?code=...), not the
+  //     fragment. auth-js only treats a URL as a PKCE callback when
+  //     params.code AND a stored code-verifier are both present
+  //     (GoTrueClient _isPKCECallback), and it is auth-js itself that
+  //     removes the param afterwards, via
+  //     url.searchParams.delete('code') + history.replaceState.
+  //   - Nothing in this app ever writes location.search. setRoute() writes
+  //     only location.hash (store/routing.ts), setRouteReplacingHash() and
+  //     contentadmin's deep-link rewrite both rebuild the URL as
+  //     location.pathname + location.search + hash, and initRouting() only
+  //     READS the hash on load. So ?code= survives an arbitrary delay.
+  //   - The await still runs BEFORE fetchMe(), so the first /api/me carries
+  //     the Bearer JWT exactly as before; initSupabaseAuth() awaits
+  //     getSession(), which awaits auth-js's initializePromise and therefore
+  //     the URL detection itself.
+  await initSupabaseAuth(await createSupabaseClient());
   const me: ApiMe | null = await fetchMeWithRetry();
   if (me) setSnapshot({ ...snapshot, me });
 
@@ -300,6 +310,22 @@ export async function boot(): Promise<void> {
     // REQ-0041 feedback 5: exposed for the same reason/parity as
     // isSquadIndependent just above (client/e2e/*.spec.ts assertions).
     isSquadDeployable: (n: number) => engine.isSquadDeployable(state, n),
+    // REQ-0287: per-board ownership-ribbon probe (canvas | inv:<page>).
+    usageRibbonProbe: (boardKey: string) => ribbonProbeFor(boardKey),
+    // REQ-0345: frames each board Application has submitted, keyed by
+    // boardIdKey. Asserts BOTH directions of the on-demand rule: the count
+    // must climb when something visibly changed, and must not move at all
+    // while the boards sit idle (the pre-REQ-0345 ticker moved it ~60/s per
+    // board, forever, on every route).
+    boardPaints: () => paintCounts(),
+    // REQ-0350: BP-skin composite / cache-hit counters. Asserts BOTH directions
+    // of the cache rule, for the same reason boardPaints does: repeated
+    // render(state) over an unmoved board must add ZERO composites while the hit
+    // count climbs. Pre-REQ-0350 every render recomposited every skinned BP --
+    // three distance transforms plus a full W*H pass each -- because the cache
+    // was consulted AFTER compositeSkin() and keyed on ABSOLUTE cells.
+    bpSkinProbe: () => bpSkinProbe(),
+    resetBpSkinProbe: () => resetBpSkinProbe(),
   };
 }
 

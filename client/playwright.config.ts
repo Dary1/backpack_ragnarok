@@ -12,6 +12,7 @@
 // + committed fixtures) and the proxy never routes to the live services, so
 // no live file, profile, or DB row is ever read or written by a run.
 import { defineConfig, devices } from '@playwright/test';
+import { GPU_ARGS, GPU_HEADLESS } from './e2e/gpu';
 
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:8803';
 // REQ-0080: when baseURL is local, a tiny reverse proxy (e2e/local-proxy.cjs)
@@ -19,15 +20,19 @@ const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:8803';
 // fetches resolve, removing ~40ms/request of public-tunnel latency. The local
 // proxy IS the default (REQ-0217); a non-local base URL skips it.
 const USE_LOCAL_PROXY = BASE_URL.includes('127.0.0.1') || BASE_URL.includes('localhost');
-// REQ-0080: E2E_GPU=1 renders PixiJS WebGL on the box's real GPU (ANGLE/Vulkan ->
+// REQ-0080 (default flipped by REQ-0342): renders PixiJS WebGL on the box's real GPU (ANGLE/Vulkan ->
 // NVIDIA) instead of CPU SwiftShader. Verified renderer string on llmlocal:
 // "ANGLE (NVIDIA, Vulkan 1.4.329 (NVIDIA GeForce RTX 2080), NVIDIA)". Needs the
 // full chromium in --headless=new mode (hence headless:false + the explicit flag).
-const USE_GPU = process.env.E2E_GPU === '1';
-const GPU_ARGS = USE_GPU
-  ? ['--headless=new', '--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist',
-     '--enable-features=Vulkan', '--ozone-platform=headless', '--no-sandbox']
-  : [];
+// REQ-0342: GPU is now the DEFAULT, not an opt-in. Opting IN was a mistake
+// shaped exactly like the bug it hid: a hand-typed run that forgot the flag
+// rendered on llvmpipe and merely looked slow. Any run that wants CPU must
+// now say so (E2E_GPU=0), and a run that gets CPU while asking for GPU is a
+// hard abort in global-setup, not a warning that scrolls past.
+// REQ-0344: the flags themselves moved to e2e/gpu.ts. They were duplicated here
+// and in global-setup.ts, and MISSING from the four standalone admin/registry
+// configs, which is how "GPU is the default" stayed false for [6.5/8]+[6.6/8]
+// for as long as REQ-0342 had been landed.
 
 // REQ-0083: E2E_PARALLEL=N runs the suite across N workers, each backed by its
 // OWN isolated backpack-api instance (tools/e2e_fleet.cjs, started in
@@ -69,20 +74,38 @@ export default defineConfig({
   fullyParallel: false, // REQ-0083: file-level parallelism (each file -> one worker/backend), respects within-file order
   workers: PARALLEL,
   retries: 0,
-  reporter: [['list']],
+  // REQ-0334: the list reporter is the one a human watches, and it stays the
+  // default. Setting PLAYWRIGHT_JSON_OUTPUT_NAME additionally emits the JSON
+  // report, which is the ONLY source of per-test durations for this suite --
+  // tools/test_timings.cjs merges it with the node suites' own JSONL so one
+  // ci.sh run answers "which tests cost what" across all 44 suites at once.
+  // Opt-in rather than always-on: the JSON report is written at the very end
+  // and is pure overhead for an ordinary run.
+  reporter: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME
+    ? [['list'], ['json']]
+    : [['list']],
   // REQ-0080: auto-start the local ingress proxy, but only for a localhost baseURL.
   webServer: USE_LOCAL_PROXY ? {
     command: 'node e2e/local-proxy.cjs',
     url: BASE_URL + '/app/',
     reuseExistingServer: false, // REQ-0217: NEVER adopt a foreign proxy (another session's stale/old-code instance) -- fail loudly instead
     timeout: 15_000,
+    // REQ-0347: the proxy's output used to be discarded (playwright's default
+    // for webServer is stdout/stderr 'ignore'), so its startup banner and --
+    // more to the point -- the socket-hang-up forensics it now writes were
+    // invisible in the very run report that would need them. Piped, both land
+    // in the run output next to the failing test. The proxy also mirrors every
+    // anomaly to a per-run file (see local-proxy.cjs's REQ-0347 block) for the
+    // case where the report itself is not what gets kept.
+    stdout: 'pipe',
+    stderr: 'pipe',
   } : undefined,
   globalSetup: './e2e/global-setup.ts',
   globalTeardown: './e2e/global-teardown.ts',
   use: {
     baseURL: BASE_URL,
     extraHTTPHeaders: { ...E2E_PROFILE_HEADERS, ...WORKER_HEADERS },
-    headless: !USE_GPU, // REQ-0080: GPU path drives --headless=new via GPU_ARGS
+    headless: GPU_HEADLESS, // REQ-0080: GPU path drives --headless=new via GPU_ARGS
     launchOptions: { args: GPU_ARGS },
     // REQ-0031 Phase B: the 8x8 grid widened each board from ~556px to
     // 716px (PAD*2 + COLS*CELL = 38*2 + 8*80); at the old 1400x1000

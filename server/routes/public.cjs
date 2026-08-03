@@ -1,18 +1,79 @@
 'use strict';
 // server/routes/public.cjs -- REQ-0047 (c): the no-auth reads
-// (/api/health, /api/content, /api/schedule/dungeons; REQ-0057 adds
-// /api/schedule/forecast). Bodies moved VERBATIM from server/api.cjs
+// (/api/health, /api/content, /api/schedule/dungeons). Bodies moved
+// VERBATIM from server/api.cjs
 // handle(). Contract: returns false when no route here matched (router
 // falls through), anything else = handled.
 const { sendJSON } = require('../lib/http_util.cjs');
 const { getContent } = require('../lib/content.cjs');
-const { getForecast } = require('../lib/forecast.cjs'); // REQ-0057
 const { VERSION } = require('../lib/meta.cjs');
 const schedule = require('../schedule.cjs');
+
+// REQ-0341: the PUBLIC client config the browser needs before it can build
+// its Supabase client. Read from THIS process's environment on every request
+// (server/.env via the systemd unit's EnvironmentFile), never from a file
+// this repo tracks, and never logged.
+//
+// Absent or blank => null, with a 200. A 500 here would be wrong: the client
+// must degrade to the REQ-0118c "not configured" sign-in note exactly as it
+// did when the values were missing from the build, not crash boot.
+function envOrNull(name) {
+  const v = process.env[name];
+  if (typeof v !== 'string') return null;
+  const trimmed = v.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+// REQ-0344: an e2e-only speed knob for the artwork admin console, and the ONE
+// place its production value cannot be reached from.
+//
+// ArtAdminPage polls the queue and the selected artwork's detail every 2000 ms
+// and the registry list every 10000 ms. tools/artadmin_e2e.sh holds each mock
+// job ART_MOCK_DELAY_MS in flight so the queue states stay observable, and its
+// 1500 ms was chosen AGAINST that 2000 ms poll -- the two are one setting wearing
+// two names. Shortening the poll lets the delay shrink with it, so both live in
+// that harness's single env block and can never drift apart.
+//
+// Served, not built in. web/app is a TRACKED build artifact; REQ-0341 exists
+// because making its bytes depend on env is how sign-in shipped broken TWICE.
+// A Vite-inlined `import.meta.env.VITE_ART_POLL_MS` would re-arm exactly that,
+// and would additionally make the tracked bundle differ between a run that set
+// the knob and one that did not.
+//
+// The key is OMITTED (not null) when the env is absent, so an ordinary server's
+// /api/config body is byte-for-byte the one REQ-0341 shipped -- which the three
+// deepStrictEqual cases in server/tests/api/public.cjs already assert, and which
+// therefore now double as the regression guard for THIS field.
+function positiveIntOrNull(name) {
+  const v = process.env[name];
+  if (typeof v !== 'string') return null;
+  const n = Number(v.trim());
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+}
+
+function publicClientConfig() {
+  const cfg = {
+    supabaseUrl: envOrNull('SUPABASE_URL'),
+    supabaseAnonKey: envOrNull('SUPABASE_ANON_KEY'),
+  };
+  const pollMs = positiveIntOrNull('ART_ADMIN_POLL_MS');
+  if (pollMs !== null) cfg.artAdminPollMs = pollMs;
+  return cfg;
+}
 
 function tryPublicRoutes(req, res, url, p) {
   if (p === '/api/health' && req.method === 'GET') {
     sendJSON(res, 200, { ok: true, version: VERSION });
+    return;
+  }
+
+  // REQ-0341: GET /api/config -- no auth, same posture as /api/health and
+  // /api/content above. Both values are PUBLIC client credentials (the anon
+  // key is designed to live in a browser); this endpoint exposes nothing a
+  // downloaded bundle did not already expose. no-store because the point of
+  // serving them at runtime is that a rotation needs no client rebuild.
+  if (p === '/api/config' && req.method === 'GET') {
+    sendJSON(res, 200, publicClientConfig(), { 'Cache-Control': 'no-store' });
     return;
   }
 
@@ -52,47 +113,6 @@ function tryPublicRoutes(req, res, url, p) {
     return;
   }
 
-  // REQ-0057: GET /api/schedule/forecast?dungeonType=&level= -- the Ray
-  // Forecast Overlay's content feed: every (enemy, skill) attack profile a
-  // level-L <type> dungeon can throw at the player field, with the entry
-  // centroid and the presence weight the client needs to walk the rays
-  // itself (server/lib/forecast.cjs explains the fold).
-  //
-  // Public + no-auth for the same reason /api/content and
-  // /api/schedule/dungeons are: this is CONTENT (enemy DEFs), not run
-  // state. It is derived from no room, no profile and no live seed, so
-  // there is no caller identity for it to be scoped to -- and, per
-  // REQ-0057's "forecast != spoiler" rule, nothing here can reveal a
-  // specific run's hidden placements because it never reads one.
-  // Deliberately a SEPARATE route rather than more fields on
-  // /api/schedule/dungeons: that payload is (dungeonType, level)-free and
-  // is fetched on every schedule page load, and bloating it with a
-  // per-level fold nobody asked for would make the common path pay for the
-  // rare one.
-  if (p === '/api/schedule/forecast' && req.method === 'GET') {
-    try {
-      // REQ-0185: the forecast is keyed by a dungeon DEF id now; accept `dungeonId`
-      // (new) and fall back to the legacy `dungeonType` param (server resolves either
-      // to a def, defaulting to the first live def -- see lib/forecast.cjs).
-      const dungeonRef = url.searchParams.get('dungeonId') || url.searchParams.get('dungeonType') || '';
-      const levelRaw = url.searchParams.get('level');
-      const level = levelRaw == null ? 1 : Number(levelRaw);
-      if (levelRaw != null && !Number.isFinite(level)) {
-        sendJSON(res, 400, { ok: false, error: 'level must be a number' });
-        return;
-      }
-      const payload = getForecast(dungeonRef, level);
-      sendJSON(res, 200, Object.assign({ ok: true }, payload));
-    } catch (e) {
-      if (e.code === 'BAD_REQUEST') {
-        sendJSON(res, 400, { ok: false, error: e.message });
-        return;
-      }
-      sendJSON(res, 500, { ok: false, error: 'forecast build failed: ' + e.message });
-    }
-    return;
-  }
-
   return false;
 }
-module.exports = { tryPublicRoutes };
+module.exports = { tryPublicRoutes, publicClientConfig };

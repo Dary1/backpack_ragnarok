@@ -24,6 +24,110 @@ T('api: GET /api/health returns {ok,version}', () => {
   assert.strictEqual(typeof parsed.version, 'string');
 });
 
+// REQ-0341: GET /api/config. The route reads process.env on EVERY request
+// (server/routes/public.cjs), so these three drive it by mutating the
+// process env around the call and restoring afterwards -- no module eviction
+// needed. The values used here are obviously synthetic; the real ones are
+// never printed, committed or asserted anywhere.
+function withEnv(vars, fn) {
+  const saved = {};
+  for (const k of Object.keys(vars)) saved[k] = process.env[k];
+  try {
+    for (const k of Object.keys(vars)) {
+      if (vars[k] === undefined) delete process.env[k];
+      else process.env[k] = vars[k];
+    }
+    fn();
+  } finally {
+    for (const k of Object.keys(saved)) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  }
+}
+
+T('api: GET /api/config serves the PUBLIC supabase config from the server env, uncached (REQ-0341)', () => {
+  withEnv({ SUPABASE_URL: 'https://auth.test.invalid', SUPABASE_ANON_KEY: 'test-anon-key' }, () => {
+    const req = mockReq('GET', '/api/config');
+    const res = mockRes();
+    api.handle(req, res);
+    assert.strictEqual(res.statusCode, 200);
+    assert.deepStrictEqual(JSON.parse(res.body), {
+      supabaseUrl: 'https://auth.test.invalid',
+      supabaseAnonKey: 'test-anon-key',
+    });
+    // Rotating the anon key must not need a client rebuild; a cached
+    // response would quietly defeat that.
+    assert.strictEqual(res.headers['Cache-Control'], 'no-store');
+    assert.strictEqual(res.headers['Access-Control-Allow-Origin'], '*', 'still the standard sendJSON header set');
+  });
+});
+
+T('api: GET /api/config returns nulls with 200 when the server env carries no supabase config (REQ-0341)', () => {
+  withEnv({ SUPABASE_URL: undefined, SUPABASE_ANON_KEY: undefined }, () => {
+    const req = mockReq('GET', '/api/config');
+    const res = mockRes();
+    api.handle(req, res);
+    // NOT a 500: the client must degrade to the REQ-0118c "not configured"
+    // sign-in note, exactly as it did when the build had no env, rather than
+    // fail boot. This is the unconfigured-server contract.
+    assert.strictEqual(res.statusCode, 200);
+    assert.deepStrictEqual(JSON.parse(res.body), { supabaseUrl: null, supabaseAnonKey: null });
+  });
+});
+
+T('api: GET /api/config treats a blank env value as absent (REQ-0341)', () => {
+  withEnv({ SUPABASE_URL: '   ', SUPABASE_ANON_KEY: '' }, () => {
+    const req = mockReq('GET', '/api/config');
+    const res = mockRes();
+    api.handle(req, res);
+    assert.strictEqual(res.statusCode, 200);
+    // An EnvironmentFile line left as `SUPABASE_ANON_KEY=` is the realistic
+    // half-provisioned shape; it must read as "absent", not as a truthy
+    // empty string the client would hand to createClient().
+    assert.deepStrictEqual(JSON.parse(res.body), { supabaseUrl: null, supabaseAnonKey: null });
+  });
+});
+
+// REQ-0344: the artadmin poll override. The THREE cases above deepStrictEqual
+// the WHOLE body with no such key, so they are already the guard that an
+// ordinary server's /api/config is byte-for-byte what REQ-0341 shipped. These
+// two cover the other half -- that the harness's api does carry it, and that a
+// malformed value degrades to absent rather than to a pathological poll rate.
+T('api: GET /api/config carries artAdminPollMs ONLY when the api env sets it (REQ-0344)', () => {
+  withEnv({ SUPABASE_URL: undefined, SUPABASE_ANON_KEY: undefined, ART_ADMIN_POLL_MS: '250' }, () => {
+    const req = mockReq('GET', '/api/config');
+    const res = mockRes();
+    api.handle(req, res);
+    assert.strictEqual(res.statusCode, 200);
+    assert.deepStrictEqual(JSON.parse(res.body), {
+      supabaseUrl: null, supabaseAnonKey: null, artAdminPollMs: 250,
+    });
+  });
+});
+
+T('api: GET /api/config OMITS artAdminPollMs for a junk or non-positive value (REQ-0344)', () => {
+  for (const bad of ['0', '-250', 'fast', '', '   ']) {
+    withEnv({ SUPABASE_URL: undefined, SUPABASE_ANON_KEY: undefined, ART_ADMIN_POLL_MS: bad }, () => {
+      const req = mockReq('GET', '/api/config');
+      const res = mockRes();
+      api.handle(req, res);
+      assert.strictEqual(res.statusCode, 200);
+      // Absent, not null: an unparseable knob must leave the console on its
+      // own production default, and must not change the body's shape either.
+      assert.deepStrictEqual(JSON.parse(res.body), { supabaseUrl: null, supabaseAnonKey: null },
+        'ART_ADMIN_POLL_MS=' + JSON.stringify(bad) + ' must read as absent');
+    });
+  }
+});
+
+T('api: GET /api/config rejects a non-GET method by falling through (REQ-0341)', () => {
+  const req = mockReq('POST', '/api/config', '{}');
+  const res = mockRes();
+  api.handle(req, res);
+  assert.notStrictEqual(res.statusCode, 200, 'POST must not be served by the config route');
+});
+
 T('api: GET /api/content shape has items/sis/trees/scenario, item count matches live fixture', () => {
   const req = mockReq('GET', '/api/content');
   const res = mockRes();
@@ -125,6 +229,14 @@ T('api: /api/content art_urls -- unit_skin ids join the batch, unit ids do NOT (
   api.handle(req, res);
   const parsed = JSON.parse(res.body);
   const urls = parsed.art_urls || {};
+  // REQ-0292: a skill_icon's system_name IS a skill id (skills.json / monster_skills /
+  // gimic_skills). Skill ids are NEVER offered to the art resolver -- per-skill art
+  // direct-serves at /api/art/<skill_id>.png (the vfx precedent; artUrlNameBatch lists
+  // items/sis/tms/monsters/gimics/dungeons/unit_skins, NOT skills). So an adopted
+  // skill_icon can never leak into art_urls, and a skill id can never collide the batch.
+  const skillIds = Object.keys(parsed.monster_skills || {}).concat(Object.keys(parsed.gimic_skills || {}));
+  assert.ok(skillIds.length > 0, 'the served content exposes monster/gimic skill ids (the skill_icon keyspace)');
+  for (const sid of skillIds) assert.ok(!batch.includes(sid), 'skill id "' + sid + '" is NOT in the art_urls batch (skill_icon direct-serves, never joins)');
   assert.strictEqual(urls.uskin_test_queen, undefined, 'no adopted artwork -> the skin id is OMITTED from art_urls');
   assert.strictEqual(urls.uskin_bp_test_queen, undefined, 'same for the BP skin');
 });

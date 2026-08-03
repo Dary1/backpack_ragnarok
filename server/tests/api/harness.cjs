@@ -30,12 +30,12 @@ for (const k of ['fail', 'ok', 'equal', 'notEqual', 'deepEqual', 'notDeepEqual',
 }
 
 let pass = 0, fail = 0;
-function T(name, fn) {
-  try { fn(); console.log('PASS  ' + name); pass++; }
+function T(name, fn) { const __t0 = Date.now();
+  try { fn(); console.log('PASS  ' + name + clk(name, __t0)); pass++; }
   catch (e) { console.log('FAIL  ' + name + ' — ' + e.message); fail++; }
 }
-async function AT(name, fn) {
-  try { await fn(); console.log('PASS  ' + name); pass++; }
+async function AT(name, fn) { const __t0 = Date.now();
+  try { await fn(); console.log('PASS  ' + name + clk(name, __t0)); pass++; }
   catch (e) { console.log('FAIL  ' + name + ' — ' + e.message); fail++; }
 }
 
@@ -266,7 +266,7 @@ fs.writeFileSync(path.join(batchDir, 'gimics.json'), JSON.stringify({
 // exactly what tools/promote_dungeon_batch.cjs does to the real repo.
 // REQ-0185: dungeons.json -- the AUTHORED dungeon/1 defs (identity + probability-
 // weighted references to monster_pack + gimic). The serving path (listDungeonsAnd
-// formations / startRun / forecast) rolls a dive from these. The def id matches the
+// formations / startRun) rolls a dive from these. The def id matches the
 // legacy concrete dungeon.json id ('test_dungeon') so every existing assertion on
 // dungeons[0].id === 'test_dungeon' keeps holding. References the fixture's own two
 // packs + trap/chest/door gimics.
@@ -277,6 +277,19 @@ fs.writeFileSync(path.join(batchDir, 'dungeons.json'), JSON.stringify({
       id: 'test_dungeon', name: 'Test Dungeon',
       i18n: { en: { name: 'Test Dungeon' }, ja: { name: 'テストダンジョン' } },
       theme: 'test', levelMin: 1, levelMax: 5,
+      dive: { packEncounters: { base: 1, perLevels: 3, max: 3 }, gimicSlots: { base: 1, perLevels: 3, max: 2 } },
+      packPool: [{ packId: 'pack_test_slime', weight: 1 }],
+      bossPool: [{ packId: 'pack_test_boss', weight: 1 }],
+      gimicPool: [{ gimic: 'trap_frost_deadfall', weight: 2 }, { gimic: 'chest_frostbound_cache', weight: 1 }, { gimic: 'door_rimefast_stage1', weight: 1 }],
+      rewards: { pack: 'blade', chest: 'blade', boss: 'fx_dagger' },
+    },
+    {
+      // REQ-0304: a SECOND dungeon at a HIGHER levelMin so the levelMin-gated draw
+      // (and the "no eligible dungeon" branch) are exercised -- below levelMin 5 only
+      // test_dungeon qualifies; at attackLv >= 5 both do and the drawSeed picks.
+      id: 'test_dungeon_deep', name: 'Test Dungeon Deep',
+      i18n: { en: { name: 'Test Dungeon Deep' }, ja: { name: 'テスト深層' } },
+      theme: 'deep', levelMin: 5, levelMax: 12,
       dive: { packEncounters: { base: 1, perLevels: 3, max: 3 }, gimicSlots: { base: 1, perLevels: 3, max: 2 } },
       packPool: [{ packId: 'pack_test_slime', weight: 1 }],
       bossPool: [{ packId: 'pack_test_boss', weight: 1 }],
@@ -386,3 +399,15 @@ const h = {
   players, storage, tmpHome, realHomedir, evictStorageAndPlayers,
 };
 module.exports = h;
+
+
+// ---- REQ-0334: per-test timing ----------------------------------------
+// Hoisted on purpose: these suites call their T()/AT() at module scope, so a
+// `const` binding declared down here would be in the temporal dead zone when
+// the first tests run. `var` + `function` hoist to the top of the module, and
+// the require is deferred to the first call so it never runs ahead of a
+// harness's own os.homedir()/env setup. See tools/lib/test_clock.cjs.
+var __clock;
+function clk(name, t0) {
+  return (__clock || (__clock = require('../../../tools/lib/test_clock.cjs')(__filename))).clk(name, t0);
+}

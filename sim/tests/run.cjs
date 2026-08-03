@@ -7,8 +7,8 @@ const combat = require(path.join(__dirname, '..', 'combat.cjs'));
 const dungen = require(path.join(__dirname, '..', 'dungen.cjs'));
 
 let pass = 0, fail = 0;
-function T(name, fn) {
-  try { fn(); console.log('PASS  ' + name); pass++; }
+function T(name, fn) { const __t0 = Date.now();
+  try { fn(); console.log('PASS  ' + name + clk(name, __t0)); pass++; }
   catch (e) { console.log('FAIL  ' + name + ' -- ' + e.message); fail++; }
 }
 function eq(a, b, msg) {
@@ -1051,6 +1051,25 @@ T('rewards: uniform distribution statistical smoke test (fixed seed, documented 
   ok(assignments.every(a => a.destination === 'warehouse'), 'every reward should be modeled as landing in the warehouse');
 });
 
+// REQ-0325: DETERMINISTIC reward fan-out golden. Unlike the statistical smoke
+// test above, this pins the EXACT per-item owner sequence a fixed seed produces
+// over four distinct participants -- the seeded-rng contract the co-op Troop
+// reward fan-out (services/runs.cjs -> distributeRewardsUniform) rests on. A
+// change to this frozen array means the 'rewards/distribute' RNG stream moved:
+// a determinism break to investigate, exactly like the replay-hash goldens.
+T('REQ-0325 reward fan-out: distributeRewardsUniform is a deterministic uniform draw over 4 participants (seeded-rng golden)', () => {
+  const participants = ['owA', 'owB', 'owC', 'owD'];
+  const items = ['i0', 'i1', 'i2', 'i3', 'i4', 'i5', 'i6', 'i7'];
+  const assignments = combat.distributeRewardsUniform(items, participants, combat.makeRng('req0325-fanout-golden'));
+  eq(assignments.map(a => a.owner), ['owB', 'owB', 'owC', 'owC', 'owA', 'owA', 'owB', 'owB'], 'exact per-item owner assignment under the fixed seed (frozen golden)');
+  eq(assignments.map(a => a.item), items, 'each assignment preserves its own item, in input order');
+  ok(assignments.every(a => participants.includes(a.owner)), 'every fanned owner is one of the four participants (never leaks outside the troop)');
+  // The draw is genuinely RANDOM, not round-robin: this seed happens to skip
+  // owD entirely and repeat owB -- proof the fan-out is uniform-random, not a
+  // fair rotation (golden p: "distribution fully RANDOM").
+  ok(!assignments.some(a => a.owner === 'owD'), 'this seed demonstrably does not fair-rotate (owD gets nothing) -- the draw is random, not round-robin');
+});
+
 // =====================================================================
 // 9. Attrition: BP hp carries across encounters within a run
 // =====================================================================
@@ -1102,7 +1121,7 @@ T('full-run smoke: batch-002 Niflheim Depths dungeon runs end-to-end with a fixe
     masterSeed: 'full-dungeon-smoke-seed-1',
     dungeonDef: dungeonRaw, monsterPackDefsById,
     squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
-    itemDefsById: itemDefsWithPilots, enemyDefsById, skillDefsById,
+    itemDefsById: itemDefsWithPilots, enemyDefsById: liveEnemyDefsById, skillDefsById: liveSkillDefsById, // REQ-0303: live roster (frost packs ref cross-batch bodies)
     formationId: 'formation2', level: 3, participants: ['alice', 'bob', 'carol', 'dave'],
   });
   ok(['victory', 'wipe', 'incomplete'].includes(result.result), 'full dungeon run must end in a legal terminal state, got ' + result.result);
@@ -1126,7 +1145,7 @@ T('REQ-0042 LRDST reward: a victorious run accrues a positive lrdstReward within
     masterSeed: 'lrdst-reward-victory-seed-1',
     dungeonDef: dungeonRaw, monsterPackDefsById,
     squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
-    itemDefsById, enemyDefsById, skillDefsById,
+    itemDefsById, enemyDefsById: liveEnemyDefsById, skillDefsById: liveSkillDefsById, // REQ-0303: live roster
     formationId: 'formation2', level: 3, participants: ['alice'],
   });
   if (result.result === 'victory') {
@@ -1255,7 +1274,7 @@ T('REQ-0042 LRDST reward: a single cleared non-boss encounter rolls within [1,3]
       masterSeed: 'lrdst-iso-nonboss-seed-' + i,
       dungeonDef: singleNonBoss,
       squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
-      itemDefsById, enemyDefsById, skillDefsById, monsterPackDefsById, // REQ-0184: realNonBoss names its pack by id
+      itemDefsById, enemyDefsById: liveEnemyDefsById, skillDefsById: liveSkillDefsById, monsterPackDefsById, // REQ-0184 realNonBoss (REQ-0303: live roster)
       formationId: 'formation2', level: 3, participants: ['alice'],
     });
     if (r.result !== 'wipe') {
@@ -1268,7 +1287,7 @@ T('REQ-0042 LRDST reward: a single cleared non-boss encounter rolls within [1,3]
       masterSeed: 'lrdst-iso-boss-seed-' + i,
       dungeonDef: singleBoss,
       squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
-      itemDefsById, enemyDefsById, skillDefsById, monsterPackDefsById, // REQ-0184: realBoss names its pack by id
+      itemDefsById, enemyDefsById: liveEnemyDefsById, skillDefsById: liveSkillDefsById, monsterPackDefsById, // REQ-0184 realBoss (REQ-0303: live roster)
       formationId: 'formation2', level: 3, participants: ['alice'],
     });
     if (r.result === 'victory') {
@@ -1639,7 +1658,7 @@ T('dungen: a generated def only ever references enemy ids that exist in the LIVE
 // engine.js traceBeams on a shared fixture (sim runtime stays engine-free;
 // only this TEST loads the engine, per REQ-0047 contract #6 + REQ-0048).
 (function () {
-  const Engine = require(path.join(REPO_ROOT, 'mock-src', 'engine.js'));
+  const Engine = require(path.join(REPO_ROOT, 'shared', 'engine.js'));
   const Data = require(path.join(REPO_ROOT, 'mock-src', 'data.js'));
   const norm = (edges) => edges.map(e => e.from + '>' + e.to + '@' + e.dir).sort();
   T('REQ-0048 parity: sim linkEdges == engine.js traceBeams (established links, live fixture)', () => {
@@ -1817,8 +1836,7 @@ T('dungen: a generated def only ever references enemy ids that exist in the LIVE
 // (the sim's own), shared/content_validate.cjs (the validator's, which may not
 // require() out of shared/), and client/src/contentadmin/contentShared.ts (the
 // preview's mirror, which cannot require a .cjs at all). Duplication is forced
-// by those module boundaries; SILENT duplication is not. These pin them equal,
-// the same way sim/tests/forecast_parity.cjs pins the forecast's copies.
+// by those module boundaries; SILENT duplication is not. These pin them equal.
 // =====================================================================
 T('REQ-0184 parity: shared/content_validate.cjs field dims == sim/lib/field.cjs', () => {
   const v = require('../../shared/content_validate.cjs');
@@ -1981,6 +1999,187 @@ T('REQ-0256 s15.5/s15.13 (AC5/AC13): the chain fires player-then-enemy then ray 
   ok(fs.existsSync(path.join(__dirname, '..', 'lib', 'heap.cjs')) === false, 'heap.cjs does not exist (AC1)');
 });
 
+// REQ-0292 (cooldown ramp wire): the CADENCE ray_fire fields the instance HUD's
+// item-cooldown overlay + monster skill-badge sweep are derived from. A batch-002
+// golden run (the same fixture the determinism goldens hash) exercises player item
+// fires (field:'enemy'), a live enemy monster (hrimgrimnir) + a door cadence skill
+// (field:'player'), and a ONE-SHOT trap volley -- so all three arms are covered.
+T('REQ-0292: cadence ray_fire carries slot/cooldownTicks (player) + srcInst/cooldownTicks (enemy); one-shot volleys carry neither', () => {
+  const r = combat.runDungeon({ masterSeed: 'golden-A', dungeonDef: dungeonRaw, level: 3, squadSnapshots: fourSquadSnapshots(), itemDefsById, enemyDefsById: liveEnemyDefsById, skillDefsById: liveSkillDefsById, monsterPackDefsById, formationId: 'formation1', participants: ['pA', 'pB'] }); // REQ-0303: live roster
+  const rf = r.events.filter(e => e.ev === 'ray_fire');
+  const isInt = (n) => typeof n === 'number' && Number.isInteger(n);
+  // Player item fires (field:'enemy') -- every one re-arms, so every one carries a
+  // squad slot (0..3, the board location) + a back-patched cooldownTicks (> 0).
+  const playerFires = rf.filter(e => e.field === 'enemy');
+  ok(playerFires.length > 0, 'player item fires present');
+  for (const e of playerFires) {
+    ok(isInt(e.slot) && e.slot >= 0 && e.slot <= 3, 'player fire slot is a 0..3 squad index (got ' + e.slot + ')');
+    ok(isInt(e.cooldownTicks) && e.cooldownTicks > 0, 'player fire carries a positive integer cooldownTicks (got ' + e.cooldownTicks + ')');
+  }
+  // Enemy/gimic CADENCE fires (field:'player' + srcInst) -- keyed by instanceId+skill.
+  const enemyCad = rf.filter(e => e.field === 'player' && e.srcInst != null);
+  ok(enemyCad.length > 0, 'enemy/gimic cadence fires present (hrimgrimnir / door skills)');
+  for (const e of enemyCad) {
+    ok(typeof e.srcInst === 'string' && e.srcInst.length > 0, 'enemy cadence fire carries the firing instance id');
+    ok(isInt(e.cooldownTicks) && e.cooldownTicks > 0, 'enemy cadence fire carries positive cooldownTicks');
+    ok(typeof e.skill === 'string' && e.skill.length > 0, 'enemy cadence fire carries its skills.json id (REQ-0280)');
+  }
+  // One-shot trap volleys (field:'player', a skill, but NO cadence slot) never re-arm.
+  const oneShot = rf.filter(e => e.field === 'player' && e.srcInst == null);
+  for (const e of oneShot) {
+    ok(e.cooldownTicks == null, 'a one-shot volley carries NO cooldownTicks (never re-arms): ' + e.src);
+    ok(e.slot == null, 'a one-shot volley carries no player slot');
+  }
+});
+
+
+// =====================================================================
+// REQ-0293: enemy level scaling (sim/lib/level_scale.cjs)
+// =====================================================================
+const levelScale = require(path.join(__dirname, "..", "lib", "level_scale.cjs"));
+// A synthetic ALL-IDENTITY profile (every rule flat) -- proves the neutral path
+// independently of the SHIPPED profile, which REQ-0294 activated to g=1.1.
+const scalingIdentity = levelScale.loadProfile({
+  schema: "scaling/1",
+  enemy: { hp: { kind: "flat" }, footprint: { kind: "flat" } },
+  skill: {
+    trigger: { every_secs: { s: { kind: "flat" } } },
+    verb: { _default: { n: { kind: "flat" }, hits: { kind: "flat" }, mult: { kind: "flat" }, frac: { kind: "flat" } } },
+    attack_profile: { penetration: { kind: "flat" }, aoe: { kind: "flat" } },
+  },
+});
+// The SHIPPED profile (REQ-0294 activation: g=1.1 on hp + damage magnitudes + heal).
+const scalingShipped = levelScale.loadProfile(JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "content", "scaling_profile.json"), "utf8")));
+// A synthetic NON-identity profile: hp geometric g=2, strike.n geometric g=3,
+// everything else flat. Proves the math without shipping non-neutral data.
+const scalingSynth = levelScale.loadProfile({
+  schema: "scaling/1",
+  enemy: { hp: { kind: "geometric", g: 2 }, footprint: { kind: "flat" } },
+  skill: {
+    trigger: { every_secs: { s: { kind: "flat" } } },
+    verb: {
+      _default: { n: { kind: "flat" }, hits: { kind: "flat" }, mult: { kind: "flat" }, frac: { kind: "flat" } },
+      strike: { n: { kind: "geometric", g: 3 } },
+    },
+    attack_profile: { penetration: { kind: "flat" }, aoe: { kind: "flat" } },
+  },
+});
+
+T("REQ-0293 factorFor: baseline identity at effLevel 0 for geometric and flat", () => {
+  eq(levelScale.factorFor({ kind: "geometric", g: 2 }, 0), 1, "geometric at effLevel 0 is exactly 1");
+  eq(levelScale.factorFor({ kind: "flat" }, 0), 1, "flat at effLevel 0 is 1");
+  eq(levelScale.factorFor({ kind: "flat" }, 5), 1, "flat is always 1");
+  eq(levelScale.factorFor({ kind: "geometric", g: 1 }, 5), 1, "geometric g=1 is always 1");
+  eq(levelScale.factorFor(undefined, 5), 1, "a missing rule is identity");
+});
+
+T("REQ-0293 factorFor: geometric is g^effLevel, deterministic (no RNG)", () => {
+  eq(levelScale.factorFor({ kind: "geometric", g: 1.2 }, 3), Math.pow(1.2, 3), "g^effLevel");
+  eq(levelScale.factorFor({ kind: "geometric", g: 1.2 }, 3), levelScale.factorFor({ kind: "geometric", g: 1.2 }, 3), "same inputs -> same output");
+});
+
+T("REQ-0293 factorFor: monotone non-decreasing over effLevel 0..10 for g>=1", () => {
+  const rule = { kind: "geometric", g: 1.15 };
+  let prev = -Infinity;
+  for (let x = 0; x <= 10; x++) {
+    const f = levelScale.factorFor(rule, x);
+    ok(f >= prev, "factor must not decrease at effLevel " + x + " (" + f + " < " + prev + ")");
+    prev = f;
+  }
+});
+
+T("REQ-0293 scaleEnemyHpRange: identity profile returns the range unchanged (same ref)", () => {
+  const hp = [10, 20];
+  ok(levelScale.scaleEnemyHpRange(hp, scalingIdentity, 5) === hp, "neutral profile returns the SAME array reference");
+});
+
+T("REQ-0293 scaleEnemyHpRange: synthetic geometric g=2 at effLevel 1 doubles both ends, spread ratio preserved", () => {
+  const hp = [10, 30];
+  const out = levelScale.scaleEnemyHpRange(hp, scalingSynth, 1);
+  eq(out, [20, 60], "both ends scaled by 2^1");
+  ok(out[1] / out[0] === hp[1] / hp[0], "spread ratio preserved");
+  eq(hp, [10, 30], "input range not mutated");
+});
+
+T("REQ-0293 scaleSkillsForLevel: neutral returns the SAME array reference (REQ-0121 shared-ref invariant)", () => {
+  const skills = [{ trigger: { t: "every_secs", s: [2, 2] }, verb: { t: "strike", n: [5, 7] }, attack_profile: { penetration: 0, aoe: 0 } }];
+  ok(levelScale.scaleSkillsForLevel(skills, ["s"], scalingIdentity, 5) === skills, "identity profile -> same ref");
+  ok(levelScale.scaleSkillsForLevel(skills, ["s"], scalingSynth, 0) === skills, "effLevel 0 -> same ref");
+  ok(levelScale.scaleSkillsForLevel(skills, ["s"], null, 5) === skills, "no profile -> same ref");
+});
+
+T("REQ-0293 scaleSkillsForLevel: synthetic non-identity at effLevel 1 deep-copies, scales verb.n, leaves flats untouched, never mutates input", () => {
+  const skills = [{ trigger: { t: "every_secs", s: [2, 4] }, verb: { t: "strike", n: [5, 7] }, attack_profile: { penetration: 3, aoe: 0 } }];
+  const out = levelScale.scaleSkillsForLevel(skills, ["s"], scalingSynth, 1);
+  ok(out !== skills, "non-identity -> a fresh array");
+  ok(out[0] !== skills[0], "elements are deep-copied, not shared");
+  eq(out[0].verb.n, [15, 21], "strike.n scaled by 3^1");
+  eq(out[0].trigger.s, [2, 4], "trigger.s is flat -> untouched");
+  eq(out[0].attack_profile.penetration, 3, "penetration is flat -> untouched");
+  eq(skills[0].verb.n, [5, 7], "input skills NOT mutated");
+});
+
+T("REQ-0293 compileEnemyPack: no-opts vs identity-profile opts give identical hp AND identical shared skill refs (neutral wiring)", () => {
+  const box = { rowMin: 1, colMin: 1, rowMax: 18, colMax: 26 };
+  const a = combat.compileEnemyPack({ enemyIds: ["tiny_goblin"] }, tinyEnemyDefs, tinySkillDefs, combat.makeRng("req0293-neutral"), box);
+  const b = combat.compileEnemyPack({ enemyIds: ["tiny_goblin"] }, tinyEnemyDefs, tinySkillDefs, combat.makeRng("req0293-neutral"), box, { scaling: scalingIdentity, effLevel: 7 });
+  eq(a[0].hp, b[0].hp, "identity profile draws the identical HP roll");
+  ok(b[0].skills[0] === tinySkillDefs.tiny_bite, "identity profile keeps the SHARED skill def ref");
+  ok(a[0].skills[0] === b[0].skills[0], "same shared ref with and without the neutral opts");
+});
+
+T("REQ-0294 activation: shipped profile scales hp + damage magnitude by 1.1^effLevel (unbounded), status/cadence flat", () => {
+  const near = (a, b, msg) => ok(Math.abs(a - b) < 1e-6, msg + " (" + a + " vs " + b + ")");
+  // hp: 1.1 per Lv, unbounded
+  near(levelScale.scaleEnemyHpRange([100, 100], scalingShipped, 1)[0], 110, "hp *1.1 at effLevel 1");
+  near(levelScale.scaleEnemyHpRange([100, 100], scalingShipped, 10)[0], 100 * Math.pow(1.1, 10), "hp 1.1^10 unbounded at effLevel 10");
+  // damage magnitude scales; cadence + status stay flat
+  const skills = [
+    { trigger: { t: "every_secs", s: [2, 2] }, verb: { t: "strike", n: [10, 10] }, attack_profile: { penetration: 0, aoe: 0 } },
+    { trigger: { t: "every_secs", s: [3, 3] }, verb: { t: "apply_status", status: "Chill", n: [4, 4] } },
+  ];
+  const out = levelScale.scaleSkillsForLevel(skills, ["a", "b"], scalingShipped, 2);
+  ok(out !== skills, "non-identity shipped profile deep-copies at effLevel 2");
+  near(out[0].verb.n[0], 10 * Math.pow(1.1, 2), "strike.n *1.1^2");
+  eq(out[0].trigger.s, [2, 2], "cadence (trigger.s) stays flat");
+  eq(out[1].verb.n, [4, 4], "apply_status.n stays flat");
+  eq(skills[0].verb.n, [10, 10], "input not mutated");
+});
+
+// REQ-0297 Phase 1: faction-neutral verb-firing matrix (monster as attacker &
+// defender). A sibling module so it also runs standalone; register() defines its
+// T() cases against THIS harness so they roll into run.cjs's pass/fail totals.
+require('./req0297_verb_firing_test.cjs').register({ T, eq, ok, approx });
+
+// REQ-0297 Phase 2: per-pack powerLevel runtime + scaling round-to-0 care + the
+// +/-25 guard. Sibling module (also runs standalone); register() rolls its T()
+// cases into run.cjs's pass/fail totals.
+require('./req0297_phase2_test.cjs').register({ T, eq, ok, approx });
+
+// REQ-0297 Phase 3: the all-pairs round-robin powerLevel autobalancer --
+// determinism + convergence + NO-anchor self-centring + the update SIGN, on a
+// tiny synthetic pack field (the full 14-live-pack round-robin is ~7s, too slow
+// for the unit suite). Sibling module; register() rolls into run.cjs totals.
+require('./req0297_phase3_test.cjs').register({ T, eq, ok, approx });
+
+// REQ-0298: monster-pack formation-fill inspector -- packFill footprint-area
+// math, the 30% PASS/FAIL boundary, placeableCells derivation from the field
+// constants, and the --json summary shape (failing count/ids). Pure +
+// deterministic sibling; register() rolls its T() cases into run.cjs totals.
+require('./req0298_pack_formation_test.cjs').register({ T, eq, ok, approx });
+
 console.log('----------------------------------');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// ---- REQ-0334: per-test timing ----------------------------------------
+// Hoisted on purpose: these suites call their T()/AT() at module scope, so a
+// `const` binding declared down here would be in the temporal dead zone when
+// the first tests run. `var` + `function` hoist to the top of the module, and
+// the require is deferred to the first call so it never runs ahead of a
+// harness's own os.homedir()/env setup. See tools/lib/test_clock.cjs.
+var __clock;
+function clk(name, t0) {
+  return (__clock || (__clock = require('../../tools/lib/test_clock.cjs')(__filename))).clk(name, t0);
+}

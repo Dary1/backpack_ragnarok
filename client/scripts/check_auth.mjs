@@ -9,6 +9,7 @@
 // discord / link / sign-out handlers dispatch to the right supabase call.
 import { createServer } from 'vite';
 import path from 'node:path';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -98,7 +99,98 @@ await session.signOutSupabase();
 check('signOutSupabase -> signOut called + token cleared',
   calls.some((c) => c[0] === 'signout') && session.getAccessToken() === null && session.getAuthState().status === 'signed_out');
 
+// ---------------------------------------------------------------------
+// REQ-0341: the public Supabase config now arrives at RUNTIME from GET
+// /api/config instead of being inlined by Vite. These cases run the REAL
+// client/src/auth/client.ts against a stubbed fetch, so the claim the whole
+// REQ exists for -- "a bundle with no build-time env still reaches a
+// CONFIGURED client, given a configured server" -- is executed here rather
+// than asserted about.
+// ---------------------------------------------------------------------
+console.log('REQ-0341 runtime public config');
+const authClient = await server.ssrLoadModule('/src/auth/client.ts');
+const realFetch = globalThis.fetch;
+const okConfig = { supabaseUrl: 'https://auth.test.invalid', supabaseAnonKey: 'test-anon-key' };
+
+authClient.resetPublicConfigForTests();
+let requestedPath = null;
+globalThis.fetch = async (url) => { requestedPath = String(url); return { ok: true, json: async () => okConfig }; };
+const supa = await authClient.createSupabaseClient();
+check('createSupabaseClient() fetches /api/config', requestedPath === '/api/config', String(requestedPath));
+check('...and builds a real client from the SERVER-provided values (no build-time env in play)',
+  !!supa && !!supa.auth && typeof supa.auth.getSession === 'function' && typeof supa.auth.signInWithOAuth === 'function');
+
+authClient.resetPublicConfigForTests();
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ supabaseUrl: null, supabaseAnonKey: null }) });
+check('an UNCONFIGURED server yields null (degrade to "not configured", no throw)',
+  (await authClient.createSupabaseClient()) === null);
+
+authClient.resetPublicConfigForTests();
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ supabaseUrl: 'https://auth.test.invalid', supabaseAnonKey: '' }) });
+check('a HALF-configured server (blank key) yields null rather than a broken client',
+  (await authClient.createSupabaseClient()) === null);
+
+authClient.resetPublicConfigForTests();
+globalThis.fetch = async () => ({ ok: false, status: 404, json: async () => ({}) });
+check('a 404 from /api/config (older server) yields null, no throw',
+  (await authClient.createSupabaseClient()) === null);
+
+authClient.resetPublicConfigForTests();
+globalThis.fetch = async () => { throw new Error('network down'); };
+check('a rejected fetch yields null, no throw -- boot() must never be wedged by this',
+  (await authClient.createSupabaseClient()) === null);
+
+// REQ-0344: the artadmin poll override rides the SAME runtime channel. Proved
+// here through the real parser rather than asserted about, because the whole
+// point of the seam is that a production build cannot reach it: absent key ->
+// null -> the console keeps its own 2000 ms.
+authClient.resetPublicConfigForTests();
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ ...okConfig, artAdminPollMs: 250 }) });
+check('REQ-0344: a server that carries artAdminPollMs surfaces it',
+  (await authClient.loadPublicConfig()).artAdminPollMs === 250);
+
+authClient.resetPublicConfigForTests();
+globalThis.fetch = async () => ({ ok: true, json: async () => okConfig });
+check('REQ-0344: a server WITHOUT it yields null, so the console keeps its production poll',
+  (await authClient.loadPublicConfig()).artAdminPollMs === null);
+
+authClient.resetPublicConfigForTests();
+globalThis.fetch = async () => ({ ok: true, json: async () => ({ ...okConfig, artAdminPollMs: -5 }) });
+check('REQ-0344: a non-positive artAdminPollMs is rejected, not honoured',
+  (await authClient.loadPublicConfig()).artAdminPollMs === null);
+
+authClient.resetPublicConfigForTests();
+let fetchCalls = 0;
+globalThis.fetch = async () => { fetchCalls++; return { ok: true, json: async () => okConfig }; };
+await Promise.all([authClient.loadPublicConfig(), authClient.loadPublicConfig(), authClient.createSupabaseClient()]);
+check('the config request is memoised -- one fetch for N callers', fetchCalls === 1, 'calls=' + fetchCalls);
+globalThis.fetch = realFetch;
+
+// The tripwire that REPLACES tools/check_bundle_env.sh (REQ-0278/0340).
+// Its subject is now the SOURCE, not the output: while no client source file
+// reads a VITE_SUPABASE_* value, web/app cannot vary with client/.env.local,
+// and neither provisioning nor a bundle-inspection gate is needed. Note this
+// exact grep was USELESS as a gate before REQ-0341 -- client.ts called
+// readEnv('VITE_SUPABASE_URL'), so the literal was present either way (see
+// REQ-0340 section 3). Deleting that read is what makes it meaningful.
+function tsFilesUnder(dir, out = []) {
+  for (const entry of readdirSync(dir)) {
+    const p = path.join(dir, entry);
+    if (statSync(p).isDirectory()) tsFilesUnder(p, out);
+    else if (/\.tsx?$/.test(entry)) out.push(p);
+  }
+  return out;
+}
+const bakedEnvReaders = tsFilesUnder(path.join(CLIENT_ROOT, 'src'))
+  .filter((p) => readFileSync(p, 'utf8').includes('VITE_SUPABASE'))
+  .map((p) => path.relative(CLIENT_ROOT, p));
+check('no client/src file reads a VITE_SUPABASE_* build-time value (REQ-0341: web/app must not depend on client/.env.local)',
+  bakedEnvReaders.length === 0, bakedEnvReaders.join(', '));
+
 await server.close();
 console.log('');
 if (failures) { console.log(`check_auth: ${failures} FAILURE(S)`); process.exit(1); }
 console.log('check_auth: all assertions pass');
+// supabase-js starts an auto-refresh interval on construction, which keeps
+// the event loop alive after every assertion has run. Exit explicitly.
+process.exit(0);

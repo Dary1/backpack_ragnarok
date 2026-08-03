@@ -53,12 +53,27 @@ function loadDefs() {
   const dungeonRaw = loadJSON(path.join(BATCH, 'dungeon.json'));
   const enemyDefsById = {};
   for (const e of enemiesRaw.entries) enemyDefsById[e.id] = e;
+  // REQ-0307: batch-002 packs.json (REQ-0303 "frost packs -> frost_giant boss+entourage;
+  // live roster for batch-002 dungeon tests") and dungen's 'default' generator both
+  // reference the LIVE dungeon roster (frost_giant, troll, ...) that this pilot's own
+  // enemies.json alone lacks, so compileEnemyPack threw "missing enemy def". Resolve
+  // those ids against content/live/dungeon, overlay-if-absent, exactly as sim/tests/run.cjs
+  // (REQ-0207) and tools/balance_sim.cjs already do. The 7 batch-002 niflheim defs are
+  // byte-identical in live, so shared ids are unchanged; only otherwise-missing ids come
+  // from live. Test-only fixture wiring; no engine/threshold/product change.
+  const liveEnemiesRaw = loadJSON(path.join(REPO, 'content', 'live', 'dungeon', 'enemies.json'));
+  for (const e of liveEnemiesRaw.entries) if (!enemyDefsById[e.id]) enemyDefsById[e.id] = e;
   // REQ-0184: monster_pack/1 -- dungeon.json names its packs from packs.json.
   const packsRaw = loadJSON(path.join(BATCH, 'packs.json'));
   const monsterPackDefsById = {};
   for (const e of packsRaw.entries) monsterPackDefsById[e.id] = e;
   const skillDefsById = {};
   for (const s of skillsRaw.entries) skillDefsById[s.id] = { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
+  // REQ-0307: same live-roster overlay for the enemy skills the batch-002 packs/dungen
+  // reference (e.g. frost_giant's glacial_axe/winters_call/giant_ice_born) that batch-002
+  // skills.json lacks. Overlay-if-absent keeps every batch-002 skill def unchanged.
+  const liveSkillsRaw = loadJSON(path.join(REPO, 'content', 'live', 'dungeon', 'skills.json'));
+  for (const s of liveSkillsRaw.entries) if (!skillDefsById[s.id]) skillDefsById[s.id] = { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
   let siDefsById;
   try {
     const sisRaw = loadJSON(path.join(REPO, 'content', 'live', 'live_sis.json'));

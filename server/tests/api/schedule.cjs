@@ -574,6 +574,639 @@ module.exports.run = async function run(h) {
   });
 
 
+  // ===================================================================
+  // REQ-0324: co-operative Troop -- recruitment + human-equivalent join/leave.
+  // A player OPENS a public recruiting Troop that other players (human or bot,
+  // indistinguishably) BROWSE and JOIN with one of their own squads, and may
+  // LEAVE before departure. Dedicated players (each with its own canvas) so
+  // these never perturb the scheduleP1/P2 room state later suites assert on.
+  // ===================================================================
+  const troopHost = playersFixture.createPlayer('TroopHost', []);
+  const troopJ2 = playersFixture.createPlayer('TroopJoiner2', []);
+  const troopJ3 = playersFixture.createPlayer('TroopJoiner3', []);
+  // A BOT account is just a plain player -- REQ-0324 forbids special-casing; it
+  // browses/joins through the exact same X-Auth-Token surface as a human.
+  const troopBot = playersFixture.createPlayer('TroopBot4', []);
+  for (const pl of [troopHost, troopJ2, troopJ3, troopBot]) scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+
+  function browseTroops(token, query) {
+    return scheduleReq('GET', '/api/schedule/troops' + (query || '?state=recruiting'), token);
+  }
+
+  let openTroopId = null;
+
+  await AT('troop: POST /api/schedule/troops opens a PUBLIC recruiting troop with the host seated in slot 0', async () => {
+    const res = await scheduleReq('POST', '/api/schedule/troops', troopHost.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1', squadIndex: 0 });
+    assert.strictEqual(res.status, 200, 'host open must 200: ' + JSON.stringify(res.body));
+    const t = res.body.troop;
+    openTroopId = t.id;
+    assert.strictEqual(t.visibility, 'public', 'a troop is a public room');
+    assert.strictEqual(t.state, 'recruiting');
+    assert.strictEqual(t.hostId, troopHost.playerId, 'hostId == opener');
+    assert.strictEqual(t.ownerId, troopHost.playerId, 'ownerId is kept as an alias of hostId');
+    assert.strictEqual(t.slots.length, 4);
+    assert.ok(t.slots[0] && t.slots[0].ownerId === troopHost.playerId && t.slots[0].squadIndex === 0, 'host seated in slot 0: ' + JSON.stringify(t.slots[0]));
+    assert.ok(typeof t.slots[0].joinedAt === 'string' && t.slots[0].joinedAt.length > 0, 'seat carries a joinedAt');
+    assert.strictEqual(t.slots[1], null, 'slots 1..3 start empty (null)');
+    assert.strictEqual(t.slots[2], null);
+    assert.strictEqual(t.slots[3], null);
+  });
+
+  await AT('troop: browse (GET /troops?state=recruiting) shows the open troop as 1/4; &attackLv filters on the host-set level', async () => {
+    const res = await browseTroops(troopJ2.token);
+    assert.strictEqual(res.status, 200);
+    assert.ok(Array.isArray(res.body.troops));
+    const mine = res.body.troops.find((x) => x.roomId === openTroopId);
+    assert.ok(mine, 'the open troop must appear in the public browse for ANOTHER player');
+    assert.strictEqual(mine.seats, '1/4', 'one seat filled (the host)');
+    assert.strictEqual(mine.attackLv, 1);
+    assert.strictEqual(mine.hostId, troopHost.playerId);
+    assert.ok(Number.isInteger(mine.ageSec) && mine.ageSec >= 0, 'ageSec is a non-negative integer');
+    const match = await browseTroops(troopJ2.token, '?state=recruiting&attackLv=1');
+    assert.ok(match.body.troops.some((x) => x.roomId === openTroopId), 'attackLv=1 must include a level-1 troop');
+    const nomatch = await browseTroops(troopJ2.token, '?state=recruiting&attackLv=99');
+    assert.ok(!nomatch.body.troops.some((x) => x.roomId === openTroopId), 'attackLv=99 must exclude a level-1 troop');
+  });
+
+  await AT('troop: a 2nd player JOINS the lowest free seat -> 2/4', async () => {
+    const res = await scheduleReq('POST', '/api/schedule/troops/' + openTroopId + '/join', troopJ2.token, { squadIndex: 0 });
+    assert.strictEqual(res.status, 200, 'join must 200: ' + JSON.stringify(res.body));
+    const t = res.body.troop;
+    assert.strictEqual(t.slots[1].ownerId, troopJ2.playerId, 'joiner takes seat 1 (lowest free)');
+    assert.strictEqual(t.slots[1].squadIndex, 0);
+    assert.strictEqual(t.slots[2], null);
+    const browse = await browseTroops(troopJ3.token);
+    assert.strictEqual(browse.body.troops.find((x) => x.roomId === openTroopId).seats, '2/4');
+  });
+
+  await AT('troop: a 3rd player joins -> 3/4; still recruiting and still offered in browse (REQ-0325: a troop departs only when its 4th seat fills)', async () => {
+    const r3 = await scheduleReq('POST', '/api/schedule/troops/' + openTroopId + '/join', troopJ3.token, { squadIndex: 0 });
+    assert.strictEqual(r3.status, 200, 'J3 join: ' + JSON.stringify(r3.body));
+    const t = r3.body.troop;
+    assert.strictEqual(t.slots[2].ownerId, troopJ3.playerId, 'J3 takes seat 2 (lowest free)');
+    assert.strictEqual(t.state, 'recruiting', 'a 3/4 troop is still recruiting (not yet full)');
+    assert.ok(!t.lastRunId, 'no run has started at 3/4');
+    const browse = await browseTroops(troopHost.token);
+    assert.strictEqual(browse.body.troops.find((x) => x.roomId === openTroopId).seats, '3/4', 'a 3/4 troop still appears in browse');
+  });
+
+  await AT('troop: LEAVE frees a seat before departure and it REAPPEARS in browse; a non-member cannot leave', async () => {
+    const res = await scheduleReq('POST', '/api/schedule/troops/' + openTroopId + '/leave', troopJ3.token);
+    assert.strictEqual(res.status, 200, 'leave must 200: ' + JSON.stringify(res.body));
+    assert.strictEqual(res.body.troop.slots[2], null, 'the leaver seat is freed');
+    const browse = await browseTroops(troopJ2.token);
+    const mine = browse.body.troops.find((x) => x.roomId === openTroopId);
+    assert.ok(mine, 'the troop reappears once a seat is free');
+    assert.strictEqual(mine.seats, '2/4');
+    const nonMember = playersFixture.createPlayer('TroopNonMember', []);
+    scheduleStorage.writeProfile(nonMember.playerId, makeTestCanvas());
+    const bad = await scheduleReq('POST', '/api/schedule/troops/' + openTroopId + '/leave', nonMember.token);
+    assert.strictEqual(bad.status, 409, 'a non-member leave must 409: ' + JSON.stringify(bad.body));
+  });
+
+  await AT('troop: cross-player deploy gate -- a joiner double-deploying a uid already seated elsewhere is refused 409 deployed_overlap', async () => {
+    const gateJoiner = playersFixture.createPlayer('TroopGateJoiner', []);
+    scheduleStorage.writeProfile(gateJoiner.playerId, makeTestCanvas());
+    // gateJoiner hosts their OWN troop with squad 0 -> squad 0's uids are now
+    // committed to a recruiting troop they hold a seat in.
+    const own = await scheduleReq('POST', '/api/schedule/troops', gateJoiner.token, { dungeonId: 'test_dungeon', level: 1, squadIndex: 0 });
+    assert.strictEqual(own.status, 200, 'gateJoiner opens their own troop: ' + JSON.stringify(own.body));
+    // openTroopId still has a free seat. gateJoiner tries to ALSO seat squad 0
+    // there -> same player, same uids, already committed elsewhere.
+    const clash = await scheduleReq('POST', '/api/schedule/troops/' + openTroopId + '/join', gateJoiner.token, { squadIndex: 0 });
+    assert.strictEqual(clash.status, 409, 'double-deploying squad 0 must 409: ' + JSON.stringify(clash.body));
+    assert.strictEqual(clash.body.reason, 'deployed_overlap', 'the 409 carries reason=deployed_overlap');
+    // A DIFFERENT, independent squad (index 1) is fine -- the gate blocks uid
+    // OVERLAP, not the player.
+    const ok = await scheduleReq('POST', '/api/schedule/troops/' + openTroopId + '/join', gateJoiner.token, { squadIndex: 1 });
+    assert.strictEqual(ok.status, 200, 'a non-overlapping squad still joins: ' + JSON.stringify(ok.body));
+    scheduleStorage.deleteRoom(own.body.troop.id);
+  });
+
+  await AT('troop: the HOST may seat a SECOND squad of their own in their OWN troop (REQ-0337) -- only uid OVERLAP is refused, not the player', async () => {
+    // REQ-0337 rests entirely on this: the client opens a public Troop with the
+    // player's first squad and then POSTs .../join once per REMAINING squad they
+    // mustered, so that leaving 1-3 seats open IS the recruitment. Every existing
+    // troop test joins as a DIFFERENT player, so nothing pinned the same-player
+    // case -- and deployedUidSetsByOrigin's sameRoom bucket is exactly where it
+    // could silently start refusing.
+    const multiHost = playersFixture.createPlayer('TroopMultiSquadHost', []);
+    scheduleStorage.writeProfile(multiHost.playerId, makeTestCanvas());
+    const opened = await scheduleReq('POST', '/api/schedule/troops', multiHost.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1', squadIndex: 0 });
+    assert.strictEqual(opened.status, 200, 'host opens with squad 0: ' + JSON.stringify(opened.body));
+    const roomId = opened.body.troop.id;
+    // A DIFFERENT squad of the SAME player takes the next free seat.
+    const second = await scheduleReq('POST', '/api/schedule/troops/' + roomId + '/join', multiHost.token, { squadIndex: 1 });
+    assert.strictEqual(second.status, 200, 'the host must be able to seat a second squad of their own: ' + JSON.stringify(second.body));
+    const t = second.body.troop;
+    assert.strictEqual(t.slots[0].ownerId, multiHost.playerId);
+    assert.strictEqual(t.slots[1].ownerId, multiHost.playerId, 'both seats belong to the host');
+    assert.strictEqual(t.slots[1].squadIndex, 1);
+    assert.strictEqual(t.state, 'recruiting', 'a 2/4 troop is still recruiting -- it must NOT depart');
+    assert.strictEqual(t.slots[2], null, 'the remaining seats stay OPEN -- this is the recruitment');
+    assert.strictEqual(t.slots[3], null);
+    // ...and it is offered to everyone else as 2/4, which is what the fleet sees.
+    const browse = await browseTroops(troopHost.token);
+    const row = browse.body.troops.find((x) => x.roomId === roomId);
+    assert.ok(row, 'a part-mustered troop is still publicly recruiting');
+    assert.strictEqual(row.seats, '2/4');
+    // The SAME squad twice is still refused -- the gate blocks uid overlap.
+    const dup = await scheduleReq('POST', '/api/schedule/troops/' + roomId + '/join', multiHost.token, { squadIndex: 1 });
+    assert.strictEqual(dup.status, 409, 'the same squad twice must still 409: ' + JSON.stringify(dup.body));
+    assert.strictEqual(dup.body.reason, 'same_room_duplicate');
+    scheduleStorage.deleteRoom(roomId);
+  });
+
+  await AT('troop: legacy-slot migration on read -- an ownerless { squadIndex } seat surfaces with ownerId = room.ownerId', async () => {
+    const legacyHost = playersFixture.createPlayer('TroopLegacyHost', []);
+    scheduleStorage.writeProfile(legacyHost.playerId, makeTestCanvas());
+    const opened = await scheduleReq('POST', '/api/schedule/troops', legacyHost.token, { dungeonId: 'test_dungeon', level: 1, squadIndex: 2 });
+    assert.strictEqual(opened.status, 200);
+    const roomId = opened.body.troop.id;
+    // Simulate a LEGACY solo-shaped seat (pre-REQ-0324): { squadIndex } with NO
+    // owner field. Migration-on-read must attribute it to room.ownerId.
+    const raw = scheduleStorage.readRoom(roomId);
+    raw.slots[0] = { squadIndex: 2 };
+    scheduleStorage.writeRoom(roomId, raw);
+    const view = await scheduleReq('GET', '/api/schedule/troops/' + roomId, legacyHost.token);
+    assert.strictEqual(view.status, 200);
+    assert.strictEqual(view.body.troop.slots[0].ownerId, legacyHost.playerId, 'a legacy ownerless seat reads as owned by the room owner');
+    assert.strictEqual(view.body.troop.slots[0].squadIndex, 2, 'the squad index is preserved');
+    assert.strictEqual(view.body.troop.slots[0].joinedAt, null, 'a legacy seat has no joinedAt');
+    scheduleStorage.deleteRoom(roomId);
+  });
+
+  // ===================================================================
+  // REQ-0325: a full Troop AUTO-DEPARTS, runs with ALL FOUR participants, and
+  // fans rewards RANDOMLY to each owner's warehouse. Fresh, dedicated players
+  // and troops (each seat takes a DISTINCT squad 0..3, so every deployed uid
+  // across the run is globally unique) so the multi-participant run + settlement
+  // never perturbs the recruiting-phase fixtures above or later suites' state.
+  // ===================================================================
+  const r5Owners = ['R5Host', 'R5B', 'R5C', 'R5D'].map((n) => playersFixture.createPlayer(n, []));
+  const r5Outsider = playersFixture.createPlayer('R5Outsider', []);
+  for (const pl of [...r5Owners, r5Outsider]) scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+  const r5Ids = r5Owners.map((pl) => pl.playerId);
+
+  // Open a fresh troop (host seats squad 0) and seat 3 more owners, each with a
+  // DISTINCT squad (1,2,3). Returns { id, departed } -- the last join's view.
+  async function openAndFillTroop(owners, level) {
+    const open = await scheduleReq('POST', '/api/schedule/troops', owners[0].token, { dungeonId: 'test_dungeon', level, formationId: 'formation1', squadIndex: 0 });
+    assert.strictEqual(open.status, 200, 'open troop: ' + JSON.stringify(open.body));
+    const id = open.body.troop.id;
+    let last = open;
+    for (let i = 1; i < 4; i++) {
+      last = await scheduleReq('POST', '/api/schedule/troops/' + id + '/join', owners[i].token, { squadIndex: i });
+      assert.strictEqual(last.status, 200, 'join seat ' + i + ': ' + JSON.stringify(last.body));
+    }
+    return { id, departed: last.body.troop };
+  }
+
+  let r5TroopId = null;
+  await AT('REQ-0325: filling the 4th seat AUTO-DEPARTS the troop and starts the first run atomically (no client action)', async () => {
+    const open = await scheduleReq('POST', '/api/schedule/troops', r5Owners[0].token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1', squadIndex: 0 });
+    r5TroopId = open.body.troop.id;
+    for (let i = 1; i < 3; i++) {
+      const j = await scheduleReq('POST', '/api/schedule/troops/' + r5TroopId + '/join', r5Owners[i].token, { squadIndex: i });
+      assert.strictEqual(j.status, 200, 'seat ' + i + ' join: ' + JSON.stringify(j.body));
+      assert.strictEqual(j.body.troop.state, 'recruiting', 'still recruiting below 4/4');
+      assert.ok(!j.body.troop.lastRunId, 'no run before the last seat fills');
+    }
+    const last = await scheduleReq('POST', '/api/schedule/troops/' + r5TroopId + '/join', r5Owners[3].token, { squadIndex: 3 });
+    assert.strictEqual(last.status, 200, 'the 4th join: ' + JSON.stringify(last.body));
+    const t = last.body.troop;
+    assert.strictEqual(t.state, 'active', 'filling the last seat transitions recruiting -> active (departed)');
+    assert.ok(t.lastRunId, 'the first run started atomically with the 4th join');
+    // A departed troop is no longer recruiting -> gone from browse, and no new
+    // seat can be joined.
+    const browse = await browseTroops(r5Owners[0].token);
+    assert.ok(!browse.body.troops.some((x) => x.roomId === r5TroopId), 'a departed troop is absent from the recruiting browse');
+    const lateJoin = await scheduleReq('POST', '/api/schedule/troops/' + r5TroopId + '/join', r5Outsider.token, { squadIndex: 0 });
+    assert.strictEqual(lateJoin.status, 409, 'joining a departed troop must 409: ' + JSON.stringify(lateJoin.body));
+    // The run records ALL FOUR seat owners as its participants.
+    const run = scheduleStorage.readRun(t.lastRunId);
+    assert.ok(run, 'the first run doc exists');
+    assert.deepStrictEqual([...run.participants].sort(), [...r5Ids].sort(), 'all four seat owners are the run participants');
+  });
+
+  await AT('REQ-0325: a departed troop settles -> item rewards fan out RANDOMLY to owners\' warehouses; every reward owner is one of the four; the LRDST drop follows the uniform rule; nothing leaks to a non-participant', async () => {
+    const run0 = scheduleStorage.readRun(scheduleStorage.readRoom(r5TroopId).lastRunId);
+    assert.strictEqual(run0.result, 'victory', 'the attacking fixture troop should clear the 1hp-slime dungeon: got ' + run0.result);
+    assert.ok(run0.rewards.length >= 1, 'a victory banks at least one item reward to fan out');
+    forceRunElapsed(run0.id);
+    const settled = await scheduleReq('GET', '/api/schedule/troops/' + r5TroopId, r5Owners[0].token); // poll -> lazy settle
+    assert.strictEqual(settled.status, 200, 'settle poll: ' + JSON.stringify(settled.body));
+    const run = scheduleStorage.readRun(run0.id);
+    assert.strictEqual(run.settled, true, 'the run settled on the poll');
+    // golden p: each item reward's owner is drawn uniformly at random from the four.
+    for (const a of run.rewards) assert.ok(r5Ids.includes(a.owner), 'reward owner ' + a.owner + ' must be one of the four participants');
+    const expectByOwner = {};
+    for (const id of r5Ids) expectByOwner[id] = 0;
+    for (const a of run.rewards) expectByOwner[a.owner]++;
+    // Each owner's warehouse holds EXACTLY its uniform-random item-reward share.
+    for (const pl of r5Owners) {
+      const wh = await scheduleReq('GET', '/api/warehouse', pl.token);
+      const mine = wh.body.items.filter((it) => it.sourceRunId === run.id && it.itemId !== 'lrdst');
+      assert.strictEqual(mine.length, expectByOwner[pl.playerId], 'owner ' + pl.playerId + ' warehouse item-reward count matches its assignment');
+    }
+    // The aggregate LRDST drop ALSO follows the uniform rule: exactly ONE
+    // participant receives it (uniform single-winner); it lands nowhere else.
+    if (run.lrdstReward > 0) {
+      let recipients = 0;
+      for (const pl of r5Owners) {
+        const wh = await scheduleReq('GET', '/api/warehouse', pl.token);
+        const lr = wh.body.items.filter((it) => it.sourceRunId === run.id && it.itemId === 'lrdst');
+        if (lr.length) { recipients++; assert.strictEqual(lr[0].qty, run.lrdstReward, 'the LRDST recipient gets the full aggregate qty'); }
+      }
+      assert.strictEqual(recipients, 1, 'the LRDST drop lands in exactly one participant warehouse (uniform single-winner)');
+    }
+    // No leak: a non-participant receives NOTHING from this run.
+    const outWh = await scheduleReq('GET', '/api/warehouse', r5Outsider.token);
+    assert.strictEqual(outWh.body.items.filter((it) => it.sourceRunId === run.id).length, 0, 'no reward leaks to a non-participant');
+  });
+
+  await AT('REQ-0325: a WIPED troop run grants NO rewards to any participant and drops the troop level exactly ONCE', async () => {
+    const wOwners = ['R5W1', 'R5W2', 'R5W3', 'R5W4'].map((n) => playersFixture.createPlayer(n, []));
+    for (const pl of wOwners) scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const level = 3;
+    const { id } = await openAndFillTroop(wOwners, level);
+    const run = scheduleStorage.readRun(scheduleStorage.readRoom(id).lastRunId);
+    // Drive this run to a WIPE outcome deterministically. The fixture's 1hp slime
+    // cannot actually kill a full attacking troop, so we exercise settleRun's WIPE
+    // BRANCH by rewriting the run's summary before settlement -- the same control
+    // seam forceRunElapsed uses for a run's clock. The sim's own wipe production is
+    // proven in sim/tests/run.cjs; here we assert the TROOP settlement of a wipe.
+    run.result = 'wipe';
+    run.rewards = [];
+    run.lrdstReward = 0;
+    run.levelAfter = level - schedule.DEFAULT_FAILURE_STEP;
+    run.settled = false;
+    scheduleStorage.writeRun(run.id, run);
+    forceRunElapsed(run.id);
+    const settled = await scheduleReq('GET', '/api/schedule/troops/' + id, wOwners[0].token);
+    assert.strictEqual(settled.status, 200);
+    assert.strictEqual(settled.body.troop.level, level - schedule.DEFAULT_FAILURE_STEP, 'a wipe drops the troop level exactly once');
+    for (const pl of wOwners) {
+      const wh = await scheduleReq('GET', '/api/warehouse', pl.token);
+      assert.strictEqual(wh.body.items.filter((it) => it.sourceRunId === run.id).length, 0, 'a wipe banks nothing for participant ' + pl.playerId);
+    }
+    scheduleStorage.deleteRoom(id);
+  });
+
+  await AT('REQ-0325: auto-restart re-snapshots all four owners\' CURRENT canvases at each new departure; run #2 keeps all four participants and leaks nothing', async () => {
+    const roomBefore = scheduleStorage.readRoom(r5TroopId);
+    assert.strictEqual(roomBefore.state, 'active', 'the troop is still departed (cycling between runs)');
+    const firstRunId = roomBefore.lastRunId;
+    // Mutate ONE owner's LIVE canvas between runs: give the host squad a BP with a
+    // UNIQUE hpMax the first run never saw. The next departure must re-snapshot
+    // this CURRENT canvas (the frozen-canvas rule re-applied per run).
+    const hostCanvas = makeTestCanvas();
+    hostCanvas.bps[0].hpMax = 7; // squad 0 (active preset) unique marker
+    scheduleStorage.writeProfile(r5Owners[0].playerId, hostCanvas);
+    // Clear the cooldown so the next poll auto-starts run #2.
+    const cooled = scheduleStorage.readRoom(r5TroopId);
+    cooled.cooldownUntil = new Date(Date.now() - 1000).toISOString();
+    scheduleStorage.writeRoom(r5TroopId, cooled);
+    const poll = await scheduleReq('GET', '/api/schedule/troops/' + r5TroopId, r5Owners[0].token);
+    assert.strictEqual(poll.status, 200);
+    const room2 = scheduleStorage.readRoom(r5TroopId);
+    assert.ok(room2.lastRunId && room2.lastRunId !== firstRunId, 'a NEW run auto-started after cooldown cleared');
+    const run2 = scheduleStorage.readRun(room2.lastRunId);
+    assert.deepStrictEqual([...run2.participants].sort(), [...r5Ids].sort(), 'run #2 still fans across all four participants');
+    assert.ok((run2.bioRoster || []).some((b) => b.hpMax === 7), 'run #2 re-snapshotted the host\'s CURRENT canvas (unique hpMax=7 marker present)');
+    // Settle run #2 and re-confirm no leak to the outsider.
+    forceRunElapsed(run2.id);
+    await scheduleReq('GET', '/api/schedule/troops/' + r5TroopId, r5Owners[0].token);
+    const outWh = await scheduleReq('GET', '/api/warehouse', r5Outsider.token);
+    assert.strictEqual(outWh.body.items.filter((it) => it.sourceRunId === run2.id).length, 0, 'run #2 leaks nothing to a non-participant');
+  });
+
+  await AT('REQ-0325: a seated uid in a DEPARTED troop is frozen from the market (Law of Possession), for a JOINER as well as the host', async () => {
+    const squadsSvc = require('../../services/squads.cjs');
+    const room = scheduleStorage.readRoom(r5TroopId);
+    assert.strictEqual(room.state, 'active', 'the troop is departed, so its seats are committed to the dive');
+    // r5B (a JOINER who does NOT own the troop room) holds seat 1 with squad 1.
+    const bCanvas = scheduleStorage.readProfile(r5Owners[1].playerId).canvas;
+    const frozen = squadsSvc.deployedUidSet(r5Owners[1].playerId, bCanvas);
+    const seatUids = squadsSvc.squadUidSet(squadsSvc.squadCanvasOf(bCanvas, 1));
+    assert.ok(seatUids.size > 0, 'the joiner seat references at least one uid');
+    for (const uid of seatUids) assert.ok(frozen.has(uid), 'joiner seat uid ' + uid + ' must be frozen while the troop is departed');
+  });
+
+  // ===================================================================
+  // REQ-0326: a seated member CANCELS -> the whole co-op Troop disbands (all-or-
+  // nothing), every seat is RETURNED (uids released from the deploy/market
+  // freeze), and a discrete disbandEvent carrying the released-owner roster is
+  // emitted (the seam REQ-0327 consumes). No run in flight -> disband NOW; a run
+  // active -> the current dive settles normally, then disbands ON RETURN.
+  // ===================================================================
+
+  await AT('REQ-0326: a seated member cancels a still-RECRUITING troop -> immediate disband, every seat returned, disbandEvent lists the seated owners; a released owner can redeploy the same squad elsewhere', async () => {
+    const owners = ['R6RecHost', 'R6RecB', 'R6RecC'].map((n) => playersFixture.createPlayer(n, []));
+    for (const pl of owners) scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const open = await scheduleReq('POST', '/api/schedule/troops', owners[0].token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1', squadIndex: 0 });
+    const id = open.body.troop.id;
+    await scheduleReq('POST', '/api/schedule/troops/' + id + '/join', owners[1].token, { squadIndex: 1 });
+    const j = await scheduleReq('POST', '/api/schedule/troops/' + id + '/join', owners[2].token, { squadIndex: 2 });
+    assert.strictEqual(j.body.troop.state, 'recruiting', 'precondition: 3/4, still recruiting (no run in flight)');
+    // A NON-member cannot cancel a live troop.
+    const outsider = playersFixture.createPlayer('R6RecOutsider', []);
+    scheduleStorage.writeProfile(outsider.playerId, makeTestCanvas());
+    const bad = await scheduleReq('POST', '/api/schedule/troops/' + id + '/cancel', outsider.token);
+    assert.strictEqual(bad.status, 409, 'a non-seated player cannot cancel: ' + JSON.stringify(bad.body));
+    // A seated JOINER (not the host) cancels -> the WHOLE troop disbands NOW.
+    const res = await scheduleReq('POST', '/api/schedule/troops/' + id + '/cancel', owners[1].token);
+    assert.strictEqual(res.status, 200, 'seated-member cancel: ' + JSON.stringify(res.body));
+    const t = res.body.troop;
+    assert.strictEqual(t.state, 'canceled', 'a recruiting troop disbands immediately on cancel');
+    assert.ok(t.slots.every((sl) => sl === null), 'every seat is returned (cleared) on disband');
+    assert.ok(t.disbandEvent, 'a discrete disbandEvent is emitted');
+    assert.strictEqual(t.disbandEvent.roomId, id, 'disbandEvent carries the troop id');
+    assert.deepStrictEqual([...t.disbandEvent.releasedOwners].sort(), owners.map((o) => o.playerId).sort(), 'disbandEvent lists exactly the seated owners at cancel time (<=4)');
+    assert.ok(t.disbandEvent.releasedOwners.length <= 4, 'at most four owners');
+    // The persisted room carries the same disbandEvent (the REQ-0327 read seam).
+    const stored = scheduleStorage.readRoom(id);
+    assert.deepStrictEqual([...stored.disbandEvent.releasedOwners].sort(), owners.map((o) => o.playerId).sort(), 'the disbandEvent is persisted on the room doc');
+    // A disbanded troop is gone from browse.
+    const browse = await browseTroops(owners[0].token);
+    assert.ok(!browse.body.troops.some((x) => x.roomId === id), 'a disbanded troop no longer appears in browse');
+    // Released owner can immediately deploy the SAME squad elsewhere -- the seat
+    // no longer freezes its uids (would 409 deployed_overlap if still committed).
+    const rehost = await scheduleReq('POST', '/api/schedule/troops', owners[0].token, { dungeonId: 'test_dungeon', level: 1, squadIndex: 0 });
+    assert.strictEqual(rehost.status, 200, 'a released owner redeploys squad 0 after disband: ' + JSON.stringify(rehost.body));
+    scheduleStorage.deleteRoom(rehost.body.troop.id);
+    scheduleStorage.deleteRoom(id);
+  });
+
+  await AT('REQ-0326: cancelling a DEPARTED troop mid-run defers to RETURN -- the in-flight dive settles its rewards normally, THEN the troop disbands (no restart), every seat returned, disbandEvent lists all four owners', async () => {
+    const owners = ['R6MidA', 'R6MidB', 'R6MidC', 'R6MidD'].map((n) => playersFixture.createPlayer(n, []));
+    for (const pl of owners) scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const { id, departed } = await openAndFillTroop(owners, 1);
+    assert.strictEqual(departed.state, 'active', 'precondition: troop departed, run in flight');
+    const runId = departed.lastRunId;
+    // A seated member cancels WHILE the run is active -> disband is DEFERRED.
+    const cancel = await scheduleReq('POST', '/api/schedule/troops/' + id + '/cancel', owners[2].token);
+    assert.strictEqual(cancel.status, 200, 'mid-run cancel: ' + JSON.stringify(cancel.body));
+    assert.strictEqual(cancel.body.troop.state, 'active', 'the troop stays active mid-run -- disband waits for RETURN');
+    assert.strictEqual(cancel.body.troop.disbandRequested, true, 'disbandRequested is flagged for the return');
+    assert.ok(!cancel.body.troop.disbandEvent, 'no disbandEvent yet -- the dive has not returned');
+    // The in-flight run is UNAFFECTED and still settles normally.
+    const run0 = scheduleStorage.readRun(runId);
+    assert.strictEqual(run0.result, 'victory', 'the in-flight dive is untouched by the cancel');
+    forceRunElapsed(runId);
+    const afterReturn = await scheduleReq('GET', '/api/schedule/troops/' + id, owners[0].token); // poll -> settle THEN disband
+    assert.strictEqual(afterReturn.status, 200, 'return poll: ' + JSON.stringify(afterReturn.body));
+    const run = scheduleStorage.readRun(runId);
+    assert.strictEqual(run.settled, true, 'the current dive settled its rewards normally before disband');
+    const t = afterReturn.body.troop;
+    assert.strictEqual(t.state, 'canceled', 'on RETURN the troop disbands instead of restarting');
+    assert.ok(t.slots.every((sl) => sl === null), 'every seat is returned on disband');
+    const stored = scheduleStorage.readRoom(id);
+    assert.strictEqual(stored.state, 'canceled', 'the disband is persisted');
+    assert.strictEqual(stored.status, 'canceled', 'a disbanded troop never auto-starts again');
+    assert.strictEqual(stored.lastRunId, runId, 'NO next run was scheduled (lastRunId is still the settled dive)');
+    assert.ok(stored.disbandEvent, 'a discrete disbandEvent is emitted on return');
+    assert.deepStrictEqual([...stored.disbandEvent.releasedOwners].sort(), owners.map((o) => o.playerId).sort(), 'disbandEvent lists all four released owners');
+    // The FINAL dive settled its rewards normally: at least one participant banked an item.
+    let banked = 0;
+    for (const pl of owners) {
+      const wh = await scheduleReq('GET', '/api/warehouse', pl.token);
+      banked += wh.body.items.filter((it) => it.sourceRunId === runId).length;
+    }
+    assert.ok(banked >= 1, 'the final dive settled its rewards normally before disband');
+    // A released owner can now deploy the same squad elsewhere.
+    const redeploy = await scheduleReq('POST', '/api/schedule/troops', owners[3].token, { dungeonId: 'test_dungeon', level: 1, squadIndex: 3 });
+    assert.strictEqual(redeploy.status, 200, 'a released owner redeploys squad 3 after disband: ' + JSON.stringify(redeploy.body));
+    scheduleStorage.deleteRoom(redeploy.body.troop.id);
+    scheduleStorage.deleteRoom(id);
+  });
+
+  await AT('REQ-0326: cancelling a departed troop BETWEEN runs (cooling down, no dive in flight) disbands immediately and schedules no next run', async () => {
+    const owners = ['R6CoolA', 'R6CoolB', 'R6CoolC', 'R6CoolD'].map((n) => playersFixture.createPlayer(n, []));
+    for (const pl of owners) scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const { id } = await openAndFillTroop(owners, 1);
+    const runId = scheduleStorage.readRoom(id).lastRunId;
+    forceRunElapsed(runId);
+    await scheduleReq('GET', '/api/schedule/troops/' + id, owners[0].token); // settle run #1 -> now cooling down
+    const cooling = scheduleStorage.readRoom(id);
+    assert.strictEqual(cooling.state, 'active', 'still departed, cycling between runs');
+    assert.strictEqual(cooling.status, 'open', 'between runs -> status open (no dive in flight)');
+    assert.ok(cooling.cooldownUntil && Date.parse(cooling.cooldownUntil) > Date.now(), 'precondition: cooling down, next run not yet due');
+    const res = await scheduleReq('POST', '/api/schedule/troops/' + id + '/cancel', owners[1].token);
+    assert.strictEqual(res.status, 200, 'between-runs cancel: ' + JSON.stringify(res.body));
+    assert.strictEqual(res.body.troop.state, 'canceled', 'a between-runs cancel disbands immediately (no dive to finish)');
+    assert.ok(res.body.troop.slots.every((sl) => sl === null), 'every seat returned');
+    assert.deepStrictEqual([...res.body.troop.disbandEvent.releasedOwners].sort(), owners.map((o) => o.playerId).sort(), 'disbandEvent lists all four owners');
+    assert.strictEqual(scheduleStorage.readRoom(id).lastRunId, runId, 'no next run scheduled on disband');
+    scheduleStorage.deleteRoom(id);
+  });
+
+  // ===================================================================
+  // REQ-0357: the wipe-streak circuit breaker. Three consecutive
+  // zero-progress wipes = observable evidence of a hopeless matchup; the
+  // room must STOP occupying its lane and ANNOUNCE why, instead of
+  // auto-restarting forever (the live 15-min wipe loop this REQ fixes).
+  // The sim's own wipe production is proven in sim/tests; here we drive
+  // the settlement machinery through the same summary-rewrite seam the
+  // REQ-0325 wipe test uses.
+  // ===================================================================
+  function rewriteRunAsWipe(runId, finalProgressPct) {
+    const run = scheduleStorage.readRun(runId);
+    run.result = 'wipe';
+    run.finalProgressPct = finalProgressPct;
+    run.rewards = [];
+    run.lrdstReward = 0;
+    run.levelAfter = 1;
+    run.settled = false;
+    scheduleStorage.writeRun(run.id, run);
+    forceRunElapsed(run.id);
+  }
+  function clearCooldown(roomId) {
+    const room = scheduleStorage.readRoom(roomId);
+    room.cooldownUntil = new Date(Date.now() - 1000).toISOString();
+    scheduleStorage.writeRoom(room.id, room);
+  }
+
+  await AT('REQ-0357: a troop that wipes at 0% progress three runs straight is DISBANDED by the breaker (seats returned, reason wipe_streak, every member notified)', async () => {
+    const owners = ['R7WsA', 'R7WsB', 'R7WsC', 'R7WsD'].map((n) => playersFixture.createPlayer(n, []));
+    for (const pl of owners) scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const { id } = await openAndFillTroop(owners, 1);
+    for (let cycle = 1; cycle <= 3; cycle++) {
+      const roomNow = scheduleStorage.readRoom(id);
+      assert.ok(roomNow.lastRunId, 'cycle ' + cycle + ': a run is in flight');
+      rewriteRunAsWipe(roomNow.lastRunId, 0);
+      await scheduleReq('GET', '/api/schedule/troops/' + id, owners[0].token); // settle
+      const settled = scheduleStorage.readRoom(id);
+      if (cycle < 3) {
+        assert.strictEqual(settled.wipeStreak, cycle, 'streak counts consecutive zero-progress wipes');
+        assert.strictEqual(settled.state, 'active', 'below the limit the troop keeps cycling');
+        clearCooldown(id);
+        const prevRun = settled.lastRunId;
+        await scheduleReq('GET', '/api/schedule/troops/' + id, owners[0].token); // auto-start next
+        assert.notStrictEqual(scheduleStorage.readRoom(id).lastRunId, prevRun, 'cycle ' + cycle + ': next run auto-started');
+      } else {
+        assert.strictEqual(settled.state, 'canceled', 'the 3rd zero-progress wipe trips the breaker: no 4th run, troop disbanded');
+        assert.ok(settled.slots.every((sl) => sl === null), 'every seat returned');
+        assert.strictEqual(settled.disbandEvent.reason, 'wipe_streak', 'the disband records WHY');
+      }
+    }
+    for (const pl of owners) {
+      const feed = await scheduleReq('GET', '/api/notifications', pl.token);
+      const mine = feed.body.notifications.filter((n) => n.kind === 'troop_disbanded' && n.roomId === id);
+      assert.strictEqual(mine.length, 1, 'exactly one breaker notification for ' + pl.playerId);
+      assert.strictEqual(mine[0].payload.reason, 'wipe_streak', 'the notification carries the breaker reason');
+    }
+    scheduleStorage.deleteRoom(id);
+  });
+
+  await AT('REQ-0357: a SOLO room trips the same breaker -- canceled with a discrete haltEvent + one room_halted notification to the owner', async () => {
+    const owner = playersFixture.createPlayer('R7SoloW', []);
+    scheduleStorage.writeProfile(owner.playerId, makeTestCanvas());
+    const created = await scheduleReq('POST', '/api/schedule/rooms', owner.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, owner.token, { squadIndex: i });
+    await scheduleReq('GET', '/api/schedule/rooms/' + roomId, owner.token); // start run #1
+    for (let cycle = 1; cycle <= 3; cycle++) {
+      const roomNow = scheduleStorage.readRoom(roomId);
+      assert.ok(roomNow.lastRunId, 'cycle ' + cycle + ': a run is in flight');
+      rewriteRunAsWipe(roomNow.lastRunId, 0);
+      await scheduleReq('GET', '/api/schedule/rooms/' + roomId, owner.token); // settle
+      if (cycle < 3) {
+        clearCooldown(roomId);
+        await scheduleReq('GET', '/api/schedule/rooms/' + roomId, owner.token); // auto-start next
+      }
+    }
+    const halted = scheduleStorage.readRoom(roomId);
+    assert.strictEqual(halted.status, 'canceled', 'the solo lane stops');
+    assert.strictEqual(halted.haltEvent.reason, 'wipe_streak', 'the halt records WHY');
+    assert.strictEqual(halted.haltEvent.streak, 3, 'the halt records the streak');
+    const feed = await scheduleReq('GET', '/api/notifications', owner.token);
+    const mine = feed.body.notifications.filter((n) => n.kind === 'room_halted' && n.roomId === roomId);
+    assert.strictEqual(mine.length, 1, 'exactly one room_halted notification');
+    assert.strictEqual(mine[0].payload.reason, 'wipe_streak');
+    scheduleStorage.deleteRoom(roomId);
+  });
+
+  await AT('REQ-0357: ANY progress (or a victory) RESETS the streak -- a struggling-but-moving room is never broken', async () => {
+    const owner = playersFixture.createPlayer('R7SoloR', []);
+    scheduleStorage.writeProfile(owner.playerId, makeTestCanvas());
+    const created = await scheduleReq('POST', '/api/schedule/rooms', owner.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, owner.token, { squadIndex: i });
+    await scheduleReq('GET', '/api/schedule/rooms/' + roomId, owner.token);
+    // two zero-progress wipes...
+    for (let cycle = 1; cycle <= 2; cycle++) {
+      rewriteRunAsWipe(scheduleStorage.readRoom(roomId).lastRunId, 0);
+      await scheduleReq('GET', '/api/schedule/rooms/' + roomId, owner.token);
+      clearCooldown(roomId);
+      await scheduleReq('GET', '/api/schedule/rooms/' + roomId, owner.token);
+    }
+    assert.strictEqual(scheduleStorage.readRoom(roomId).wipeStreak, 2, 'two zero-progress wipes counted');
+    // ...then a wipe WITH progress: streak resets, room keeps cycling.
+    rewriteRunAsWipe(scheduleStorage.readRoom(roomId).lastRunId, 40);
+    await scheduleReq('GET', '/api/schedule/rooms/' + roomId, owner.token);
+    const after = scheduleStorage.readRoom(roomId);
+    assert.strictEqual(after.wipeStreak, 0, 'progress resets the streak (a wipe at 40% is a fight, not a pathology)');
+    assert.notStrictEqual(after.status, 'canceled', 'the room keeps its lane');
+    for (const item of schedule.listWarehouse(owner.playerId)) scheduleStorage.deleteWarehouseItem(owner.playerId, item.itemUid);
+    scheduleStorage.deleteRoom(roomId);
+  });
+
+  // ===================================================================
+  // REQ-0327: the troop-disband NOTIFICATION FEED. ONE mechanism a human
+  // device and a bot program consume IDENTICALLY (GET /api/notifications,
+  // auth = X-Auth-Token). disbandTroopRoom (REQ-0326) appends ONE
+  // troop_disbanded entry to each released owner feed; GET returns the
+  // caller unseen entries; ack hides them; a bot account (no browser)
+  // reads its own identical entry via the same endpoint (owner item 7).
+  // ===================================================================
+  await AT('REQ-0327: disbanding a full troop of 4 (on return) gives EACH owner exactly one troop_disbanded entry; GET returns it once; ack hides it; a bot account reads its identical entry via the same endpoint', async () => {
+    const owners = ['R7A', 'R7B', 'R7C', 'R7BotD'].map((n) => playersFixture.createPlayer(n, []));
+    for (const pl of owners) scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const level = 2;
+    const open = await scheduleReq('POST', '/api/schedule/troops', owners[0].token, { dungeonId: 'test_dungeon', level, formationId: 'formation1', squadIndex: 0 });
+    const id = open.body.troop.id;
+    for (let i = 1; i < 4; i++) await scheduleReq('POST', '/api/schedule/troops/' + id + '/join', owners[i].token, { squadIndex: i });
+    // Precondition: no owner has any notification before the disband.
+    for (const pl of owners) {
+      const pre = await scheduleReq('GET', '/api/notifications', pl.token);
+      assert.strictEqual(pre.status, 200, 'feed read: ' + JSON.stringify(pre.body));
+      assert.strictEqual(pre.body.notifications.length, 0, 'no notification before disband for ' + pl.playerId);
+    }
+    // Cancel mid-run defers to RETURN; drive the dive home so the disband
+    // (and its emission) fire on the settle poll.
+    const cancel = await scheduleReq('POST', '/api/schedule/troops/' + id + '/cancel', owners[1].token);
+    assert.strictEqual(cancel.status, 200, 'cancel: ' + JSON.stringify(cancel.body));
+    const runId = scheduleStorage.readRoom(id).lastRunId;
+    forceRunElapsed(runId);
+    await scheduleReq('GET', '/api/schedule/troops/' + id, owners[0].token); // poll -> settle THEN disband -> emit
+    assert.strictEqual(scheduleStorage.readRoom(id).state, 'canceled', 'precondition: the troop disbanded on return');
+    // EACH of the four owners gained EXACTLY ONE troop_disbanded entry.
+    const idOf = {};
+    for (const pl of owners) {
+      const feed = await scheduleReq('GET', '/api/notifications', pl.token);
+      assert.strictEqual(feed.status, 200, 'feed: ' + JSON.stringify(feed.body));
+      const mine = feed.body.notifications.filter((n) => n.kind === 'troop_disbanded' && n.roomId === id);
+      assert.strictEqual(mine.length, 1, 'owner ' + pl.playerId + ' gets exactly one troop_disbanded entry');
+      const entry = mine[0];
+      assert.strictEqual(entry.attackLv, level, 'the entry carries the troop attack level');
+      assert.strictEqual(entry.seenAt, null, 'a fresh entry is unseen');
+      assert.ok(typeof entry.id === 'number' && entry.id > 0, 'the entry has a positive numeric id');
+      assert.ok(typeof entry.ts === 'string' && entry.ts.length > 0, 'the entry carries a timestamp');
+      assert.strictEqual(entry.payload.reason, 'member_cancel', 'the payload carries the disband reason');
+      idOf[pl.playerId] = entry.id;
+    }
+    // Idempotent: a second settle poll never double-emits.
+    await scheduleReq('GET', '/api/schedule/troops/' + id, owners[0].token);
+    const again = await scheduleReq('GET', '/api/notifications', owners[0].token);
+    assert.strictEqual(again.body.notifications.filter((n) => n.roomId === id).length, 1, 'a re-poll never double-notifies (exactly one entry stands)');
+    // ack hides the entry for THAT owner only.
+    const ack = await scheduleReq('POST', '/api/notifications/ack', owners[0].token, { ids: [idOf[owners[0].playerId]] });
+    assert.strictEqual(ack.status, 200, 'ack: ' + JSON.stringify(ack.body));
+    assert.strictEqual(ack.body.acked, 1, 'exactly one entry acked');
+    const afterAck = await scheduleReq('GET', '/api/notifications', owners[0].token);
+    assert.strictEqual(afterAck.body.notifications.filter((n) => n.roomId === id).length, 0, 'ack hides the entry from the unseen feed');
+    // The BOT account (no browser) still reads its identical entry via the SAME endpoint (item 7).
+    const botFeed = await scheduleReq('GET', '/api/notifications', owners[3].token);
+    const botMine = botFeed.body.notifications.filter((n) => n.roomId === id);
+    assert.strictEqual(botMine.length, 1, 'the bot account reads its own identical entry via the same endpoint');
+    assert.strictEqual(botMine[0].kind, 'troop_disbanded', 'same kind for the bot');
+    assert.strictEqual(botMine[0].attackLv, level, 'same attackLv for the bot');
+    // since cursor: passing the bot own latest id returns nothing strictly-newer.
+    const sinceSelf = await scheduleReq('GET', '/api/notifications?since=' + botMine[0].id, owners[3].token);
+    assert.strictEqual(sinceSelf.status, 200, 'since read: ' + JSON.stringify(sinceSelf.body));
+    assert.strictEqual(sinceSelf.body.notifications.filter((n) => n.roomId === id).length, 0, 'a since cursor at the latest id returns only strictly-newer entries');
+    // No leak: an unrelated caller never sees this disband entry.
+    const outsider = playersFixture.createPlayer('R7Outsider', []);
+    const outFeed = await scheduleReq('GET', '/api/notifications', outsider.token);
+    assert.strictEqual(outFeed.status, 200, 'outsider feed read ok');
+    assert.strictEqual(outFeed.body.notifications.filter((n) => n.roomId === id).length, 0, 'no disband notification leaks to a non-owner');
+    scheduleStorage.deleteRoom(id);
+  });
+
+  await AT('REQ-0327: a still-RECRUITING troop disband notifies exactly the seated owners immediately (<=4)', async () => {
+    const owners = ['R7RecA', 'R7RecB', 'R7RecC'].map((n) => playersFixture.createPlayer(n, []));
+    for (const pl of owners) scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const open = await scheduleReq('POST', '/api/schedule/troops', owners[0].token, { dungeonId: 'test_dungeon', level: 4, formationId: 'formation1', squadIndex: 0 });
+    const id = open.body.troop.id;
+    await scheduleReq('POST', '/api/schedule/troops/' + id + '/join', owners[1].token, { squadIndex: 1 });
+    await scheduleReq('POST', '/api/schedule/troops/' + id + '/join', owners[2].token, { squadIndex: 2 });
+    const res = await scheduleReq('POST', '/api/schedule/troops/' + id + '/cancel', owners[1].token);
+    assert.strictEqual(res.body.troop.state, 'canceled', 'immediate disband while recruiting');
+    for (const pl of owners) {
+      const feed = await scheduleReq('GET', '/api/notifications', pl.token);
+      const mine = feed.body.notifications.filter((n) => n.roomId === id && n.kind === 'troop_disbanded');
+      assert.strictEqual(mine.length, 1, 'each seated owner is notified immediately: ' + pl.playerId);
+      assert.strictEqual(mine[0].attackLv, 4, 'the entry carries the troop attack level');
+    }
+    scheduleStorage.deleteRoom(id);
+  });
+
+  scheduleStorage.deleteRoom(r5TroopId);
+
+  // Cleanup the shared open troop so it never leaks into later suites' state.
+  scheduleStorage.deleteRoom(openTroopId);
+
   // REQ-0145a (sf): publish this group's shared fixtures for the later suites.
   Object.assign(h, { schedule, scheduleStorage, makeTestCanvas, fillAllSlots, forceRunElapsed, scheduleP1, scheduleP2, scheduleReq, fillAllSlotsSnapshotsFrom });
 };

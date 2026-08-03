@@ -34,6 +34,10 @@ function sellerViewContext(sellerId) {
 // mutates + persists the listing when the item is simply gone.
 function deriveView(listing, ctx, nowMs) {
   if (listing.state !== 'active') return { state: listing.state, suspended: false };
+  // REQ-0328: a warehouse-sourced listing's item is ESCROWED on the listing
+  // (no seller-canvas instance) -- it is never deploy/reference-suspended and
+  // never item-gone; it stays plainly active until settled/withdrawn/expired.
+  if (listing.source === 'warehouse') return { state: 'active', suspended: false };
   const kind = listing.kind || 'po';
   if (kind === 'tm') {
     // REQ-0195b: tm "stock" is the live balance; short -> SUSPENDED
@@ -88,6 +92,12 @@ function rollPctOf(listing, kind, caches) {
   if (kind === 'tm') return null;
   if (listing.state === 'settled' && listing.settlement && typeof listing.settlement.rollPct !== 'undefined') {
     return listing.settlement.rollPct;
+  }
+  // REQ-0328: warehouse-sourced -> the roll travels ON the listing (q for a
+  // po/si, bp.roll.pct for a unit); there is no seller-canvas instance.
+  if (listing.source === 'warehouse') {
+    if (kind === 'unit') return listing.bp && listing.bp.roll && typeof listing.bp.roll.pct === 'number' ? listing.bp.roll.pct : null;
+    return typeof listing.q === 'number' ? listing.q : null;
   }
   let ctx = caches && caches.sellers ? caches.sellers.get(listing.sellerId) : null;
   if (!ctx) { ctx = sellerViewContext(listing.sellerId); if (caches && caches.sellers) caches.sellers.set(listing.sellerId, ctx); }

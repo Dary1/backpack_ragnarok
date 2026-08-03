@@ -1,8 +1,14 @@
-// client/src/store/routing.ts -- REQ-0047 (f2): hash routing + invite flow + welcome banner + logout.
+// client/src/store/routing.ts -- REQ-0047 (f2): hash routing + invite flow + welcome banner.
+// REQ-0362: the logout() that used to live at the bottom of this file is GONE.
+// It cleared only the REQ-0037 invite token and reloaded, which left a
+// persisted Supabase session (REQ-0118c) untouched and therefore did nothing
+// visible. Sign-out is now Settings.tsx's AuthBlock alone -- one control that
+// drops the Supabase session AND the invite token. Do not re-add a
+// store-level logout(): a second entry point is how the two diverged.
 // Moved VERBATIM from client/src/store.ts (see that file for the barrel).
 // REQ-0052: extended with '#/dex/<id>' deep-link handling (DEX_ITEM_HASH_RE) --
 // see core.ts's module comment on DEX_ITEM_HASH_RE/dexFocusId for the design note.
-import { clearStoredToken, fetchMe, setStoredToken } from '../api';
+import { fetchMe, setStoredToken } from '../api';
 import type { ApiMe } from '../api';
 import { ARTADMIN_HASH_RE, CONTENTADMIN_HASH_RE, DEX_ITEM_HASH_RE, INVITE_HASH_RE, MARKET_SELL_HASH_RE, SORTIE_HASH_RE, routeFromHash, snapshot, setSnapshot } from './core';
 import type { Route } from './core';
@@ -216,19 +222,6 @@ export function initRouting(): () => void {
     return () => window.removeEventListener('hashchange', onHashChange);
   }
   return () => {};
-}
-
-/** REQ-0037: Settings page's Logout action. Clears the stored token and
- * reloads the page -- the simplest correct way back to a clean
- * dev-mode/unauthenticated state (every module-level store field, the
- * engine instance, the Pixi Applications, etc. all get a fresh start,
- * avoiding any risk of stale per-player state leaking into the next
- * session, which a soft in-place reset would have to reproduce by hand). */
-export function logout(): void {
-  clearStoredToken();
-  if (typeof location !== 'undefined') {
-    location.reload();
-  }
 }
 
 // ---------------------------------------------------------------------

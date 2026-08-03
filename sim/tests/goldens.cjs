@@ -7,6 +7,16 @@
 // sim/tests/goldens/replay_hashes.json on every CI run. Any internal
 // refactor of combat.cjs/dungen.cjs MUST keep every hash identical.
 //
+// REQ-0301: this is a content-INDEPENDENT engine-determinism contract. Every
+// input the matrix consumes -- scenario, live_items, and the dungeon domain
+// dungen reads through the os.homedir() fake -- is loaded from a DEDICATED,
+// FROZEN, self-owned fixture (sim/tests/goldens/fixture/), NOT from the
+// editable content/live + content/batches trees. Editing live/batch content
+// can therefore no longer drift a single hash. This supersedes REQ-0207's pin
+// of the goldens to the batch-002 roster; to deliberately MOVE the contract,
+// re-freeze the fixture and only then regenerate replay_hashes.json. See
+// sim/tests/goldens/fixture/README.
+//
 //   node sim/tests/goldens.cjs        # check mode (CI) -- exit 1 on drift
 //   node sim/tests/goldens.cjs gen    # regenerate the golden file
 const path = require('path');
@@ -17,18 +27,25 @@ const dungen = require(path.join(__dirname, '..', 'dungen.cjs'));
 
 const REPO_ROOT = path.join(__dirname, '..', '..');
 const GOLDEN_FILE = path.join(__dirname, 'goldens', 'replay_hashes.json');
+// REQ-0301: all content the matrix reads comes from a DEDICATED FROZEN fixture
+// (self-owned by this test), decoupling the goldens from editable live/batch
+// content. Layout mirrors the real repo so the os.homedir() fake below can seed
+// content/live/dungeon exactly as dungen.cjs expects. See fixture/README.
+const FIXTURE_DIR = path.join(__dirname, 'goldens', 'fixture');
+const FIXTURE_LIVE = path.join(FIXTURE_DIR, 'content', 'live');
+const FIXTURE_DUNGEON = path.join(FIXTURE_LIVE, 'dungeon');
 
-// Fixtures: identical loading discipline to sim/tests/run.cjs.
-const scenario = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'content', 'live', 'scenario.json'), 'utf8'));
-const liveItemsRaw = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'content', 'live', 'live_items.json'), 'utf8'));
+// Fixtures: identical loading discipline to sim/tests/run.cjs, but sourced from
+// the frozen fixture (REQ-0301) instead of content/live + content/batches.
+const scenario = JSON.parse(fs.readFileSync(path.join(FIXTURE_LIVE, 'scenario.json'), 'utf8'));
+const liveItemsRaw = JSON.parse(fs.readFileSync(path.join(FIXTURE_LIVE, 'live_items.json'), 'utf8'));
 const itemDefsById = {};
 for (const e of liveItemsRaw.entries) itemDefsById[e.id] = e;
-const BATCH_DIR = path.join(REPO_ROOT, 'content', 'batches', 'batch-002-dungeon-pilot');
-const enemiesRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'enemies.json'), 'utf8'));
-const skillsRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'skills.json'), 'utf8'));
-const dungeonRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'dungeon.json'), 'utf8'));
+const enemiesRaw = JSON.parse(fs.readFileSync(path.join(FIXTURE_DUNGEON, 'enemies.json'), 'utf8'));
+const skillsRaw = JSON.parse(fs.readFileSync(path.join(FIXTURE_DUNGEON, 'skills.json'), 'utf8'));
+const dungeonRaw = JSON.parse(fs.readFileSync(path.join(FIXTURE_DUNGEON, 'dungeon.json'), 'utf8'));
 // REQ-0184: monster_pack/1 defs -- dungeon.json's encounters name packs from here.
-const packsRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'packs.json'), 'utf8'));
+const packsRaw = JSON.parse(fs.readFileSync(path.join(FIXTURE_DUNGEON, 'packs.json'), 'utf8'));
 const monsterPackDefsById = {};
 for (const e of packsRaw.entries) monsterPackDefsById[e.id] = e;
 const enemyDefsById = {};
@@ -38,23 +55,24 @@ for (const s of skillsRaw.entries) {
   skillDefsById[s.id] = { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
 }
 
-// REQ-0207 (found-in-flight): PIN the dungen generators to a FIXED batch-002 roster.
+// REQ-0207 / REQ-0301: PIN the dungen generators to the FROZEN goldens fixture.
 // dungen.generate('default'/'test_fixed') resolves the live roster via os.homedir()
-// (repoRoot() -> ~/backpack_ragnarok/content/live/dungeon), so these DETERMINISM goldens
-// were silently coupled to whatever is deployed live. The batch-005 additive deploy
-// (dc80295) grew that roster 7 -> 15 and DRIFTED all 8 dungen/default goldens (proven:
-// pinning the roster back to batch-002 reproduces every stored hash byte-for-byte).
-// Determinism goldens must freeze the ENGINE, not track live content, so we redirect
-// dungen's homedir-relative live reads to a batch-002 fixture -- the same os.homedir()
-// fake the sim's other harnesses use. TEST-ONLY: no dungen/engine change; the goldens
-// stay UNMOVED and are now deploy-stable (a later content deploy can no longer drift them).
+// (repoRoot() -> ~/backpack_ragnarok/content/live/dungeon), so these DETERMINISM
+// goldens were originally coupled to whatever roster is deployed live -- the
+// batch-005 additive deploy (dc80295) once grew that roster 7 -> 15 and DRIFTED all
+// 8 dungen/default goldens. REQ-0207 first stopped that by pinning the fake to a
+// batch-002 copy; REQ-0301 makes the pin content-INDEPENDENT by seeding the fake
+// from this test's OWN frozen fixture (sim/tests/goldens/fixture/content/live/
+// dungeon) instead of content/batches/batch-002. dungen still resolves through the
+// faked homedir; the source of truth is now the self-owned fixture. TEST-ONLY: no
+// dungen/engine change; the goldens stay UNMOVED and can never be drifted by any
+// live/batch content edit (proven: editing batch-002 leaves every hash identical).
 const os = require('os');
-const GOLDEN_ROSTER_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'goldens-batch002-'));
+const GOLDEN_ROSTER_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'goldens-fixture-'));
 {
   const fixDungeon = path.join(GOLDEN_ROSTER_HOME, 'backpack_ragnarok', 'content', 'live', 'dungeon');
   fs.mkdirSync(fixDungeon, { recursive: true });
-  const b002 = path.join(REPO_ROOT, 'content', 'batches', 'batch-002-dungeon-pilot');
-  for (const f of fs.readdirSync(b002)) if (f.endsWith('.json')) fs.copyFileSync(path.join(b002, f), path.join(fixDungeon, f));
+  for (const f of fs.readdirSync(FIXTURE_DUNGEON)) if (f.endsWith('.json')) fs.copyFileSync(path.join(FIXTURE_DUNGEON, f), path.join(fixDungeon, f));
   os.homedir = () => GOLDEN_ROSTER_HOME; // dungen.cjs repoRoot() reads the live roster through this
 }
 

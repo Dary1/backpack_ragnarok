@@ -30,7 +30,7 @@
 // (abort carry, no engine call) the same way.
 //
 // REQ-0030 Phase 2 generalization: this class no longer talks to
-// mock-src/engine.js's canvas-only functions directly for legality/
+// shared/engine.js's canvas-only functions directly for legality/
 // mutation -- it goes through a BoardOps instance (see board/boardOps.ts),
 // which is either canvas ops (engine.canPlacePO/movePO/... bound to the
 // top-level GameState) or inventory-page ops (engine.invCanPlacePO/
@@ -82,6 +82,9 @@ import { itemTex } from './itemArt'; // REQ-0133 registry-first chain; itemTex l
 import { drawChargeRing } from './chargeRing';
 import { drawPOOutline } from './poOutline'; // REQ-0273: per-PO footprint outlines
 import { OVERLAY } from './overlayPalette'; // REQ-0143: colourblind-safe overlay palette (single source, BS-G1)
+import { paintUsageRibbons, cellsBBoxPx, topRightCellBBoxPx, topLeftCellBBoxPx } from './usageRibbons'; // REQ-0287
+import { publishRibbonProbe, type UsageRibbonProbeEntry } from './usageRibbonProbe'; // REQ-0287
+import { countPaint } from './paintProbe'; // REQ-0345
 import { flash, paintNeutralReturn, pulseCellsSuccess, renderGhostAssembly, renderGhostBP, renderGhostPO } from './ghosts';
 import { notifyStateChanged } from '../store';
 import { clearItemTip, clearItemTipForBoard, showItemTip } from './itemTip';
@@ -100,6 +103,21 @@ import { traceUnit } from './linkTrace';
 // never blocks a draw. Contain-fit / aspect handling is unchanged at every call
 // site (fitSpriteToBox), so a non-square item raster is fitted, never stretched.
 // (itemTex moved to board/itemArt.ts -- REQ-0288: the ghosts must resolve through the same chain.)
+
+/** REQ-0345: count every frame this Application submits, at the one seam both
+ * producers share -- see paintProbe.ts for why the obvious lower-level
+ * instrument (a patched WebGL context) was abandoned. Wraps the renderer INSTANCE's own `render`
+ * (Application.render() resolves `this.renderer` per call, so the Ticker's
+ * captured method reference still lands here), and must run AFTER app.init()
+ * -- `app.renderer` does not exist before that. */
+function countFrames(app: Application, boardKey: string): void {
+  const target = app.renderer as unknown as { render: (opts: unknown) => void };
+  const submit = target.render.bind(app.renderer);
+  target.render = (opts: unknown) => {
+    countPaint(boardKey);
+    submit(opts);
+  };
+}
 
 export interface BoardDeps {
   engine: EngineInstance;
@@ -141,6 +159,37 @@ function drawDashedSegment(parent: Container, x0: number, y0: number, x1: number
   parent.addChild(g);
 }
 
+
+// REQ-0336: per-item draw isolation. The loops below walk rows that came out of
+// a SAVED PROFILE -- data whose shape this renderer does not control and cannot
+// fully enumerate (REQ-0284's unit-less BP is the proof: `BP.unit` is typed
+// non-optional in shared/engine.d.ts, and real stored canvases omit it anyway).
+// Before this, ONE malformed row threw out of render() and, with no error
+// boundary over the boards, tore down the React root -- a blank app, which the
+// owner has reported repeatedly as "the freeze".
+//
+// This is the loop-level form of a rule the codebase already applies case by
+// case: REQ-0170's unit-less-BP branch says "draw the bag and skip the unit --
+// a degraded board beats a blank one", and REQ-0273 v4's poisoned-save handling
+// says "degraded render beats data loss". Those are per-KNOWN-case guards; this
+// makes it the invariant. An item that cannot be drawn is not drawn, is logged
+// once WITH ITS ID, and every other item on the board still renders.
+//
+// Deliberately not a silent catch: the console.warn keeps a real data bug
+// findable, and client/e2e/board-poisoned.spec.ts asserts the survivors stay
+// interactive -- the coverage REQ-0284's post-mortem named as missing ("every
+// fixture squad seated a Unit on EVERY BP", so no malformed shape was ever
+// exercised by e2e).
+function drawGuarded(what: string, id: string | undefined, fn: () => void): void {
+  try {
+    fn();
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[backpack_ragnarok] BoardRenderer: skipping unrenderable ' + what +
+      (id ? ' ' + id : '') + ' -- the rest of the board is unaffected', e);
+  }
+}
+
 export class BoardRenderer {
   app: Application;
   root = new Container();
@@ -163,6 +212,37 @@ export class BoardRenderer {
   gUnits = new Container();
   gChain = new Container();
   gTarget = new Container();
+  /** REQ-0346: the claim pulse's OWN layer -- the one board layer that
+   * render(state) does NOT clear.
+   *
+   * ghosts.ts pulseCellsSuccess() used to draw into gTarget, and so never
+   * reached the screen once in its life. Both of its call sites
+   * (useWarehouseData.ts's handleClaim, WorkshopPage.tsx's roll) call
+   * notifyStateChanged() on the very next line; that re-enters render(state),
+   * whose first act is gTarget.removeChildren(). The blink was destroyed in
+   * the same frame it was created -- measured through the real warehouse-claim
+   * flow at 0 pixels of its #59d68a across the whole 2s window, identically
+   * with REQ-0345's frame loop off and with the old Ticker put back.
+   *
+   * The fix is a LAYER, not a reordering, because that keeps render(state) the
+   * SINGLE authority over gTarget (REQ-0346's stated preference): the pulse is
+   * a timer-owned overlay with a lifetime of its own, independent of any game
+   * state, so it gets a container of its own rather than borrowing one whose
+   * contents are a pure function of the state. Delaying the callback instead
+   * would have made a product callback's ordering load-bearing for a visual --
+   * the same class of invisible coupling that hid this bug in the first place.
+   *
+   * NOTHING may ever add this container to render(state)'s removeChildren()
+   * list -- a state-driven repaint mid-pulse must leave the blink standing.
+   * Its children are removed by exactly two things: the pulse's own final
+   * rect.destroy() (Pixi v8 detaches a destroyed child from its parent), and
+   * setOps()'s explicit sweep when this board changes identity out from under
+   * an in-flight pulse.
+   *
+   * Above gTarget (a claim cue must read OVER a drop-target tint) and below
+   * gCarry (a drag ghost still owns the topmost pixel). Purely decorative:
+   * eventMode 'none', set in the constructor alongside its neighbours. */
+  gPulse = new Container();
   gCarry = new Container();
   // REQ-0042: BP move-handle badge layer -- MUST render above gItems
   // (PO art), which is the whole point of the handle (grab a BP even
@@ -182,6 +262,11 @@ export class BoardRenderer {
   lastPointerDown = new Map<string, number>();
   lastBPPointerDown = new Map<string, number>(); // REQ-0045 (a2): BP dblclick-rotate tracking, kept separate from PO's own map (see this field's sibling doc).
   flashTimers = new Set<ReturnType<typeof setTimeout>>();
+  /** REQ-0345: the one in-flight requestAnimationFrame handle held by
+   * requestRender(), or null when this board has nothing to paint. It is
+   * null the overwhelming majority of the time -- that is the whole point:
+   * an untouched board schedules nothing at all. */
+  pendingPaint: number | null = null;
   // REQ-0142: link-trace hover subscription (redraw when the interrogated
   // Unit/beam changes -- hover lives outside the game store by design, so
   // nothing else would ever tell this board to repaint).
@@ -202,6 +287,9 @@ export class BoardRenderer {
   ghostProbe: { kind: CarryKind; cells: Cell[]; hasArt: boolean; legal: boolean } | null = null;
   /** REQ-0288: how many revert ("snapped home") cues this board has fired. */
   revertCount = 0;
+  /** REQ-0287: every ownership ribbon drawn by the last render(), for the
+   * e2e probe seam (published to usageRibbonProbe.ts / __backpackDebug). */
+  usageRibbonProbe: UsageRibbonProbeEntry[] = [];
 
   private constructor(app: Application, deps: BoardDeps) {
     this.app = app;
@@ -216,6 +304,7 @@ export class BoardRenderer {
       this.gUnits,
       this.gChain,
       this.gTarget,
+      this.gPulse, // REQ-0346: above the drop tint, below the drag ghost -- see field comment
       this.gCarry
     );
     // PixiJS v8 hit-testing note (REQ-0027 T0.2 interaction bug fix): once
@@ -238,15 +327,16 @@ export class BoardRenderer {
     // EventBoundary._interactivePrune() excludes it -- and its subtree --
     // from hit-testing entirely, regardless of add-order. gBeams (beam
     // lines/arrowheads/dud marks), gSkins (REQ-0266 BP skin composites),
-    // gTarget (drop-target tint/rings, reject-flash), and gCarry (drag
-    // ghost sprites) never host a listener anywhere in this file, so the
-    // whole group is marked here;
+    // gTarget (drop-target tint/rings, reject-flash), gPulse (REQ-0346
+    // claim pulse), and gCarry (drag ghost sprites) never host a listener
+    // anywhere in this file, so the whole group is marked here;
     // gBase/gItems/gSock/gUnits mix interactive hit objects with
     // decorative art and are annotated per-node at each creation site
     // below instead.
     this.gBeams.eventMode = 'none';
     this.gSkins.eventMode = 'none'; // REQ-0266
     this.gTarget.eventMode = 'none';
+    this.gPulse.eventMode = 'none'; // REQ-0346
     this.gCarry.eventMode = 'none';
     this.app.stage.addChild(this.root);
     this.app.stage.eventMode = 'static';
@@ -270,7 +360,27 @@ export class BoardRenderer {
     // per board forever; nothing about the scene graph or events differs.
     // (Cells/items keep painting their own opaque fills on top, so board
     // content renders identically to the old flat #121212 backdrop.)
-    await app.init({ canvas, width, height, backgroundAlpha: 0, antialias: true });
+    // REQ-0345 -- autoStart:false. PixiJS's TickerPlugin otherwise defaults
+    // autoStart to true (pixi.js 8.19.0 lib/app/TickerPlugin.mjs:14), adds
+    // Application.render at UPDATE_PRIORITY.LOW (:28) and starts the Ticker
+    // (:40), so EVERY mounted board re-rendered its whole scene ~60 times a
+    // second, forever. This board has no continuous animation (see render()'s
+    // tail comment, which said so long before anything acted on it) and
+    // App.tsx keeps BOTH boards mounted on every route -- a route switch only
+    // adds .route-hidden (display:none), which does not stop a Ticker -- so
+    // that was two full WebGL scenes per frame on screens with no board at
+    // all. Measured on the e2e box before this change: 41.2 frames/s per
+    // board on #/backpacks and 59.7 frames/s per board on #/dex, where both
+    // boards are display:none. After: 0.
+    //
+    // With autoStart:false the Ticker is created and Application.render is
+    // still registered on it, but Ticker.autoStart defaults to false and
+    // Ticker.add -> _startIfPossible() therefore requests no animation frame
+    // (lib/ticker/Ticker.mjs:30,160-165), so nothing schedules anything.
+    // Everything that must reach the screen now says so: render(state) paints
+    // synchronously, and every mutation outside it calls requestRender().
+    await app.init({ canvas, width, height, backgroundAlpha: 0, antialias: true, autoStart: false });
+    countFrames(app, boardIdKey(deps.ops.boardId));
     return new BoardRenderer(app, deps);
   }
 
@@ -332,6 +442,20 @@ export class BoardRenderer {
     cancelCarry();
     this.gCarry.removeChildren();
     this.gTarget.removeChildren();
+    // REQ-0346: an in-flight claim pulse names CELLS on the page that received
+    // the item. Once this board points at different ops it is drawing a
+    // different page, so those same cells now mean something else and the blink
+    // would be highlighting the wrong squares. Sweep it for the same reason the
+    // carry above is cancelled. Its blink timers keep running against detached
+    // (then destroyed) Graphics, which is harmless -- destroy() is idempotent.
+    this.gPulse.removeChildren();
+    // REQ-0345: the caller is still expected to render(state) right after
+    // (InventoryBoard.tsx's ops-swap effect does), but that is an unenforced
+    // contract and the Ticker used to cover for it within one frame. Ask for
+    // the repaint here too so a caller that forgets leaves a stale ghost on
+    // screen for at most a frame instead of until the next state change; the
+    // request is dropped for free if render(state) paints first.
+    this.requestRender();
   }
 
   destroy(): void {
@@ -352,8 +476,55 @@ export class BoardRenderer {
     // canvas detaches (a stale anchor would point at a gone element).
     clearItemTipForBoard(boardIdKey(this.boardId));
     this.app.stage.off('pointerup', this.onStagePointerUp);
+    // REQ-0345: a frame requested moments before teardown would otherwise fire
+    // against a destroyed renderer.
+    if (this.pendingPaint !== null) {
+      cancelAnimationFrame(this.pendingPaint);
+      this.pendingPaint = null;
+    }
     this.app.destroy(true, { children: true });
   }
+
+  /** REQ-0345: submit the CURRENT scene graph, synchronously. The one paint
+   * seam -- render(state) and the coalesced requestRender() below both end
+   * here, and mount()'s countFrames wrapper counts what actually leaves. */
+  paintNow(): void {
+    if (this.disposed) return;
+    // A frame already requested for this scene is now redundant.
+    if (this.pendingPaint !== null) {
+      cancelAnimationFrame(this.pendingPaint);
+      this.pendingPaint = null;
+    }
+    this.app.renderer.render({ container: this.app.stage });
+  }
+
+  /** REQ-0345: ask for ONE paint on the next animation frame, coalescing every
+   * request made in the same frame into it.
+   *
+   * This is what replaces the Ticker for the mutations that happen OUTSIDE
+   * render(state) and never called render() themselves -- which is why the
+   * always-on Ticker was NOT redundant and could not simply be deleted:
+   *   - the drag ghost + drop-target tint (onGlobalPointerMove, and the carry
+   *     subscription that clears them when a drag ends anywhere),
+   *   - the reject flash (ghosts.ts flash(), a 350ms red outline whose
+   *     setTimeout destroys the Graphics), and
+   *   - the claim pulse (ghosts.ts pulseCellsSuccess(), ~2s of blinks whose
+   *     setTimeout toggles rect.visible).
+   * All three mutate the scene graph and would have gone silently invisible
+   * the moment the frame loop stopped.
+   *
+   * rAF, not a loop: exactly one frame is requested per burst and nothing is
+   * scheduled once the burst is done, so an idle board costs zero. A
+   * pointermove storm collapses to one paint per displayed frame -- which is
+   * the most a permanent Ticker could ever have achieved either. */
+  requestRender(): void {
+    if (this.disposed || this.pendingPaint !== null) return;
+    this.pendingPaint = requestAnimationFrame(() => {
+      this.pendingPaint = null;
+      this.paintNow();
+    });
+  }
+
   render(state: GameState): void {
     this.lastState = state;
     const { engine, items, textures, layout, ops } = this.deps;
@@ -366,6 +537,11 @@ export class BoardRenderer {
     this.gUnits.removeChildren();
     this.gChain.removeChildren();
     this.gTarget.removeChildren();
+    // REQ-0346: gPulse is DELIBERATELY absent from this list, and must stay
+    // absent. It exists precisely so that this method -- which BOTH claim-pulse
+    // call sites re-enter on the very next line via notifyStateChanged() --
+    // cannot destroy the blink it was just asked to show. See that field's own
+    // comment for the measurement that made it a separate layer.
 
     const container = ops.container(state);
     const cbp = ops.cellBPMap(state);
@@ -395,6 +571,7 @@ export class BoardRenderer {
     // fighting the BP-color grid tint (alpha 0.26) or an item's own dark
     // backdrop (alpha 0.22) already drawn at similar alpha levels nearby.
     const tint = engine.tintSets(state);
+    this.usageRibbonProbe = []; // REQ-0287: rebuilt fresh per render (probe seam)
     // REQ-0143: colourblind-safe usage wash from the central overlay palette
     // (was red 0xff3b3b / yellow 0xffd23b -- two warm hues that collapse under
     // deuteranopia). selfSquad=vermillion, otherSquad=blue: a blue/warm split
@@ -471,147 +648,164 @@ export class BoardRenderer {
     // BP outlines + labels — drawn identically on both boards (REQ-0030
     // spec item 1: "BPs drawn as on canvas").
     for (const bp of container.bps) {
-      const cells = engine.bpCells(bp);
-      const lifted = bp.id === carriedBPId; // REQ-0288: this bag is airborne
-      // REQ-0266 (item 23): the bag wears its skin. The 5-rung chain lives in
-      // skin/bpSkinResolve.ts (instance -> profile -> set -> neutral -> plain).
-      // `instanceSkinId` is null because a BP instance carries no bp_skin slot
-      // yet; a BP with no unit has nothing to key on, so it passes neither the
-      // profile nor the set id and lands on neutral -- exactly as D-C requires.
-      // Building/caching the composite is skin/bpSkinTexture.ts's job, and so
-      // is THE GUARD that keeps this binding a NO-DIFF for an unskinned BP: it
-      // paints only when the resolved def declares real art (art.fill_texture)
-      // AND that raster is decoded and in hand, and returns null otherwise. That
-      // guard is not an optimisation. `neutral` is always registered, so this
-      // chain lands on a def for EVERY BP on both boards; a composite body is
-      // opaque and gSkins is above gBase; so an art-less def painted flat
-      // #2b3240 over the per-BP colour tint -- the one cue that tells one BP
-      // from another -- and over the inner half of its 3px coloured outline.
-      // resolveBpSkin still REPORTS the rung it really took (`neutral`, or
-      // `set` for a skin whose artwork is not adopted); it just no longer causes
-      // a paint. Decoding is ASYNC and render() is not, so a skinned BP renders
-      // unskinned on the frame that starts the decode and notifyStateChanged()
-      // brings the pixels in on the next one; a raster that 404s is cached there
-      // as a permanent miss and the BP stays unskinned. Missing art never blocks
-      // a draw, and never degrades one either.
-      // Golden G2 is untouched: nothing data-driven is baked into the composite
-      // -- the connection-shape markers, the charge ring and the link/beam lines
-      // are all still drawn per frame from engine state, further below.
-      const bpSkin = resolveBpSkin(
-        {
-          instanceSkinId: null,
-          profileSkinId: bp.unit ? pickedSkinId(bp.unit.id, 'bpskin') : null,
-          unitSetSkinId: bp.unit ? defaultSkinId(bp.unit.id, 'bpskin') : null,
-        },
-        hasBpSkin
-      );
-      const skinSprite = bpSkin.skinId
-        ? bpSkinSprite(cells, bpSkinDefs()[bpSkin.skinId], () => notifyStateChanged())
-        : null;
-      if (skinSprite && !lifted) { // REQ-0288: the skin rides with the ghost
-        skinSprite.eventMode = 'none'; // decorative, see constructor note
-        this.gSkins.addChild(skinSprite);
-      }
-      const outline = new Graphics();
-      const cellSet = new Set(cells.map(([r, c]) => `${r},${c}`));
-      for (const [r, c] of cells) {
-        const x = PAD + (c - 1) * CELL;
-        const y = PAD + (r - 1) * CELL;
-        if (!cellSet.has(`${r - 1},${c}`)) outline.moveTo(x, y).lineTo(x + CELL, y);
-        if (!cellSet.has(`${r + 1},${c}`)) outline.moveTo(x, y + CELL).lineTo(x + CELL, y + CELL);
-        if (!cellSet.has(`${r},${c - 1}`)) outline.moveTo(x, y).lineTo(x, y + CELL);
-        if (!cellSet.has(`${r},${c + 1}`)) outline.moveTo(x + CELL, y).lineTo(x + CELL, y + CELL);
-      }
-      outline.stroke({ color: bp.color, width: 3, cap: 'square', alpha: lifted ? 0.4 : 1 }); // REQ-0288: shadow when airborne
-      outline.eventMode = 'none'; // decorative, see constructor note
-      this.gBase.addChild(outline);
+      drawGuarded('BP', bp.id, () => {
+        const cells = engine.bpCells(bp);
+        const lifted = bp.id === carriedBPId; // REQ-0288: this bag is airborne
+        // REQ-0266 (item 23): the bag wears its skin. The 5-rung chain lives in
+        // skin/bpSkinResolve.ts (instance -> profile -> set -> neutral -> plain).
+        // `instanceSkinId` is null because a BP instance carries no bp_skin slot
+        // yet; a BP with no unit has nothing to key on, so it passes neither the
+        // profile nor the set id and lands on neutral -- exactly as D-C requires.
+        // Building/caching the composite is skin/bpSkinTexture.ts's job, and so
+        // is THE GUARD that keeps this binding a NO-DIFF for an unskinned BP: it
+        // paints only when the resolved def declares real art (art.fill_texture)
+        // AND that raster is decoded and in hand, and returns null otherwise. That
+        // guard is not an optimisation. `neutral` is always registered, so this
+        // chain lands on a def for EVERY BP on both boards; a composite body is
+        // opaque and gSkins is above gBase; so an art-less def painted flat
+        // #2b3240 over the per-BP colour tint -- the one cue that tells one BP
+        // from another -- and over the inner half of its 3px coloured outline.
+        // resolveBpSkin still REPORTS the rung it really took (`neutral`, or
+        // `set` for a skin whose artwork is not adopted); it just no longer causes
+        // a paint. Decoding is ASYNC and render() is not, so a skinned BP renders
+        // unskinned on the frame that starts the decode and notifyStateChanged()
+        // brings the pixels in on the next one; a raster that 404s is cached there
+        // as a permanent miss and the BP stays unskinned. Missing art never blocks
+        // a draw, and never degrades one either.
+        // Golden G2 is untouched: nothing data-driven is baked into the composite
+        // -- the connection-shape markers, the charge ring and the link/beam lines
+        // are all still drawn per frame from engine state, further below.
+        const bpSkin = resolveBpSkin(
+          {
+            instanceSkinId: null,
+            profileSkinId: bp.unit ? pickedSkinId(bp.unit.id, 'bpskin') : null,
+            unitSetSkinId: bp.unit ? defaultSkinId(bp.unit.id, 'bpskin') : null,
+          },
+          hasBpSkin
+        );
+        const skinSprite = bpSkin.skinId
+          ? bpSkinSprite(cells, bpSkinDefs()[bpSkin.skinId], () => notifyStateChanged())
+          : null;
+        if (skinSprite && !lifted) { // REQ-0288: the skin composite rides with the ghost
+          skinSprite.eventMode = 'none'; // decorative, see constructor note
+          this.gSkins.addChild(skinSprite);
+        }
+        const outline = new Graphics();
+        const cellSet = new Set(cells.map(([r, c]) => `${r},${c}`));
+        for (const [r, c] of cells) {
+          const x = PAD + (c - 1) * CELL;
+          const y = PAD + (r - 1) * CELL;
+          if (!cellSet.has(`${r - 1},${c}`)) outline.moveTo(x, y).lineTo(x + CELL, y);
+          if (!cellSet.has(`${r + 1},${c}`)) outline.moveTo(x, y + CELL).lineTo(x + CELL, y + CELL);
+          if (!cellSet.has(`${r},${c - 1}`)) outline.moveTo(x, y).lineTo(x, y + CELL);
+          if (!cellSet.has(`${r},${c + 1}`)) outline.moveTo(x + CELL, y).lineTo(x + CELL, y + CELL);
+        }
+        outline.stroke({ color: bp.color, width: 3, cap: 'square', alpha: lifted ? 0.4 : 1 }); // REQ-0288: shadow when airborne
+        outline.eventMode = 'none'; // decorative, see constructor note
+        this.gBase.addChild(outline);
 
-      // REQ-0033 Phase 2: BP usage tint -- the BP's OWN footprint cells,
-      // independent of whatever POs sitting on/inside it also get tinted
-      // individually below (a BP used by the current squad = red on its
-      // OWN cells too, per spec's "applies to POs, SIs, AND BPs alike").
-      // REQ-0266: drawn into gSkins, NOT gBase. This wash is a STATE signal
-      // ("this BP is committed to a squad"), not decoration, and a textured
-      // skin -- which is opaque and sits in gSkins -- would otherwise hide it.
-      // Zero visual difference when no skin paints: gSkins is the very next
-      // layer above gBase and the only other thing in it is this BP's own
-      // composite. (The PO/SI tints need no such move: they already draw into
-      // gItems, which is above gSkins.)
-      drawTintOverlay(this.gSkins, cells, bp.id, tintRedSet, tintYellowSet);
+        // REQ-0033 Phase 2: BP usage tint -- the BP's OWN footprint cells,
+        // independent of whatever POs sitting on/inside it also get tinted
+        // individually below (a BP used by the current squad = red on its
+        // OWN cells too, per spec's "applies to POs, SIs, AND BPs alike").
+        // REQ-0266: drawn into gSkins, NOT gBase. This wash is a STATE signal
+        // ("this BP is committed to a squad"), not decoration, and a textured
+        // skin -- which is opaque and sits in gSkins -- would otherwise hide it.
+        // Zero visual difference when no skin paints: gSkins is the very next
+        // layer above gBase and the only other thing in it is this BP's own
+        // composite. (The PO/SI tints need no such move: they already draw into
+        // gItems, which is above gSkins.)
+        drawTintOverlay(this.gSkins, cells, bp.id, tintRedSet, tintYellowSet);
 
-      const r0 = Math.min(...cells.map((cell) => cell[0]));
-      const c0 = Math.min(...cells.filter((cell) => cell[0] === r0).map((cell) => cell[1]));
-      const label = new Text({
-        text: `${bp.name} · HP ${cells.length * 5}`,
-        style: { fill: bp.color, fontSize: 12, fontWeight: 'bold' },
+        const r0 = Math.min(...cells.map((cell) => cell[0]));
+        const c0 = Math.min(...cells.filter((cell) => cell[0] === r0).map((cell) => cell[1]));
+        const label = new Text({
+          text: `${bp.name} · HP ${cells.length * 5}`,
+          style: { fill: bp.color, fontSize: 12, fontWeight: 'bold' },
+        });
+        label.x = PAD + (c0 - 1) * CELL + 4;
+        label.y = PAD + (r0 - 1) * CELL - 18;
+        label.eventMode = 'none'; // decorative, see constructor note
+        this.gBase.addChild(label);
+
+        // REQ-0288: an airborne bag leaves ONLY its lift shadow behind. Every
+        // draw below this line is bag furniture that rides with the ghost --
+        // the ✥ move badge, the REQ-0287 ownership ribbons (a wedge hovering
+        // over a lifted footprint reads as 'the bag is still here') and the
+        // empty-cell grab handles (re-grabbing an airborne bag is nonsense).
+        // They are the tail of this closure, so one early return serves all
+        // three. The label above deliberately STAYS: it names the origin the
+        // bag snaps back to when the drop is cancelled.
+        if (lifted) return;
+
+        // REQ-0042: move-handle badge at the BP's TOP-LEFT cell (r0,c0,
+        // same top-left this label already computed above), on BOTH boards
+        // (this loop runs for canvas and inventory alike -- no ops.isCanvas
+        // gate, unlike the direction-dots block below which IS
+        // canvas-only). Necessary because a BP fully covered by placed POs
+        // has no empty cell left for the existing empty-cell-grab-handle
+        // mechanism (this same loop, further below) to use -- the badge is
+        // an ALWAYS-VISIBLE grab affordance regardless of what's on top of
+        // the BP. Drawn into gBadges (above gItems/PO art, see the
+        // constructor's addChild order) so it is never occluded by a PO's
+        // own sprite. Only the badge glyph itself is pointer-interactive
+        // (eventMode='static' + pointerdown) -- the decorative backing
+        // circle behind it gets eventMode='none', same convention every
+        // other decorative node in this file follows (see the constructor's
+        // own doc comment on why this is load-bearing, not cosmetic).
+        const badgeX = PAD + (c0 - 1) * CELL + 14;
+        const badgeY = PAD + (r0 - 1) * CELL + 14;
+        const badgeBg = new Graphics();
+        badgeBg.circle(badgeX, badgeY, 12);
+        badgeBg.fill({ color: '#0e0d0b', alpha: 0.85 });
+        // REQ-0287: a shared-elsewhere BP tints its handle ring otherSquad so a
+        // fully PO-covered BP still shows its shared status at the move handle.
+        badgeBg.stroke({ color: tintYellowSet.has(bp.id) ? OVERLAY.usage.otherSquad.color : bp.color, width: 1.5 });
+        badgeBg.eventMode = 'none'; // decorative backing, see constructor note
+        this.gBadges.addChild(badgeBg);
+        const badgeGlyph = new Text({
+          text: '✥', // simple, reliably-rendering move/cross-arrows glyph
+          style: { fill: '#f2fbff', fontSize: 16 },
+        });
+        badgeGlyph.anchor.set(0.5);
+        badgeGlyph.x = badgeX;
+        badgeGlyph.y = badgeY;
+        badgeGlyph.eventMode = 'static';
+        badgeGlyph.cursor = 'grab';
+        // SAME whole-BP-move entry point the unit-grab core (below) and
+        // the empty-cell handles (further below) both call -- reused
+        // verbatim, not a new drag code path.
+        badgeGlyph.on('pointerdown', (e: FederatedPointerEvent) => this.handleBPPointerDown(e, bp.id));
+        this.gBadges.addChild(badgeGlyph);
+        // REQ-0287: ownership ribbons for this BP, drawn AFTER the badge so the
+        // corner wedge never occludes the centred handle glyph. tr anchors on
+        // the top-right-most cell, tl on the top-left-most (the BP:Unit law
+        // welds Unit to BP -- the BP ribbon speaks for its Unit, no separate
+        // Unit marker).
+        paintUsageRibbons(this, bp.id, topRightCellBBoxPx(cells), topLeftCellBBoxPx(cells), tintRedSet, tintYellowSet);
+
+        // Empty-cell BP grab handles (REQ-0027 T0.2, generalized REQ-0030
+        // Phase 2): every BP cell that is neither occupied by a placed PO
+        // nor the unit's own cell is an invisible drag source for moving
+        // the whole BP (matches the mock's `hit` rects in this exact spot in
+        // its renderAll()). Works identically on an inventory page -- BP
+        // drag semantics are "grab = unit core or empty BP cell" on both
+        // boards per REQ-0030 spec item 3.
+        const occForHandles = ops.occupancy(state);
+        const unitMapForHandles: Record<string, string> = {};
+        for (const b of container.bps) { if (!b.unit) continue; unitMapForHandles[engine.key(...engine.unitCell(b))] = b.id; } // REQ-0170: same skip-a-unitless-BP policy as engine.unitMap()
+        for (const [r, c] of cells) {
+          const ck = `${r},${c}`;
+          if (occForHandles[ck] || unitMapForHandles[ck]) continue;
+          const hit = new Graphics();
+          hit.rect(PAD + (c - 1) * CELL, PAD + (r - 1) * CELL, CELL, CELL);
+          hit.fill({ color: '#000000', alpha: 0.001 }); // invisible but hit-testable
+          hit.eventMode = 'static';
+          hit.cursor = 'grab';
+          hit.on('pointerdown', (e: FederatedPointerEvent) => this.handleBPPointerDown(e, bp.id));
+          this.gBase.addChild(hit);
+        }
       });
-      label.x = PAD + (c0 - 1) * CELL + 4;
-      label.y = PAD + (r0 - 1) * CELL - 18;
-      label.eventMode = 'none'; // decorative, see constructor note
-      this.gBase.addChild(label);
-
-      // REQ-0042: move-handle badge at the BP's TOP-LEFT cell (r0,c0,
-      // same top-left this label already computed above), on BOTH boards
-      // (this loop runs for canvas and inventory alike -- no ops.isCanvas
-      // gate, unlike the direction-dots block below which IS
-      // canvas-only). Necessary because a BP fully covered by placed POs
-      // has no empty cell left for the existing empty-cell-grab-handle
-      // mechanism (this same loop, further below) to use -- the badge is
-      // an ALWAYS-VISIBLE grab affordance regardless of what's on top of
-      // the BP. Drawn into gBadges (above gItems/PO art, see the
-      // constructor's addChild order) so it is never occluded by a PO's
-      // own sprite. Only the badge glyph itself is pointer-interactive
-      // (eventMode='static' + pointerdown) -- the decorative backing
-      // circle behind it gets eventMode='none', same convention every
-      // other decorative node in this file follows (see the constructor's
-      // own doc comment on why this is load-bearing, not cosmetic).
-      if (!lifted) { // REQ-0288: the handle rides with the ghost, not the origin
-      const badgeX = PAD + (c0 - 1) * CELL + 14;
-      const badgeY = PAD + (r0 - 1) * CELL + 14;
-      const badgeBg = new Graphics();
-      badgeBg.circle(badgeX, badgeY, 12);
-      badgeBg.fill({ color: '#0e0d0b', alpha: 0.85 });
-      badgeBg.stroke({ color: bp.color, width: 1.5 });
-      badgeBg.eventMode = 'none'; // decorative backing, see constructor note
-      this.gBadges.addChild(badgeBg);
-      const badgeGlyph = new Text({
-        text: '✥', // simple, reliably-rendering move/cross-arrows glyph
-        style: { fill: '#f2fbff', fontSize: 16 },
-      });
-      badgeGlyph.anchor.set(0.5);
-      badgeGlyph.x = badgeX;
-      badgeGlyph.y = badgeY;
-      badgeGlyph.eventMode = 'static';
-      badgeGlyph.cursor = 'grab';
-      // SAME whole-BP-move entry point the unit-grab core (below) and
-      // the empty-cell handles (further below) both call -- reused
-      // verbatim, not a new drag code path.
-      badgeGlyph.on('pointerdown', (e: FederatedPointerEvent) => this.handleBPPointerDown(e, bp.id));
-      this.gBadges.addChild(badgeGlyph);
-      } // REQ-0288 (!lifted)
-
-      // Empty-cell BP grab handles (REQ-0027 T0.2, generalized REQ-0030
-      // Phase 2): every BP cell that is neither occupied by a placed PO
-      // nor the unit's own cell is an invisible drag source for moving
-      // the whole BP (matches the mock's `hit` rects in this exact spot in
-      // its renderAll()). Works identically on an inventory page -- BP
-      // drag semantics are "grab = unit core or empty BP cell" on both
-      // boards per REQ-0030 spec item 3.
-      const occForHandles = ops.occupancy(state);
-      const unitMapForHandles: Record<string, string> = {};
-      for (const b of container.bps) { if (!b.unit) continue; unitMapForHandles[engine.key(...engine.unitCell(b))] = b.id; } // REQ-0170: same skip-a-unitless-BP policy as engine.unitMap()
-      for (const [r, c] of cells) {
-        if (lifted) continue; // REQ-0288: no handles on the airborne bag
-        const ck = `${r},${c}`;
-        if (occForHandles[ck] || unitMapForHandles[ck]) continue;
-        const hit = new Graphics();
-        hit.rect(PAD + (c - 1) * CELL, PAD + (r - 1) * CELL, CELL, CELL);
-        hit.fill({ color: '#000000', alpha: 0.001 }); // invisible but hit-testable
-        hit.eventMode = 'static';
-        hit.cursor = 'grab';
-        hit.on('pointerdown', (e: FederatedPointerEvent) => this.handleBPPointerDown(e, bp.id));
-        this.gBase.addChild(hit);
-      }
     }
 
     // beams — CANVAS ONLY (REQ-0030 spec item 7 / Unit dormancy: "no
@@ -849,6 +1043,9 @@ export class BoardRenderer {
       // BP-color tint but stays below the PO's own sprite art, which is
       // added to gItems next).
       drawTintOverlay(this.gItems, ops.cellsOf(state, p), p.uid, tintRedSet, tintYellowSet);
+      // REQ-0287: ownership ribbon over the PO footprint bbox (into gBadges).
+      const poRibbonBbox = cellsBBoxPx(ops.cellsOf(state, p));
+      paintUsageRibbons(this, p.uid, poRibbonBbox, poRibbonBbox, tintRedSet, tintYellowSet);
       const texture = itemTex(textures, p.id, def.icon);
       if (texture) {
         const sprite = new Sprite(texture);
@@ -1036,108 +1233,110 @@ export class BoardRenderer {
     // cores render but DIMMED in inventory, no beams/no direction dots).
     // Still a valid BP-drag grab handle on both boards (spec item 3).
     for (const bp of container.bps) {
-      // REQ-0170: a BP without a Unit cannot exist (the BP:Unit law) and the purge
-      // removed every one that did. If a stale save ever produces one anyway, draw
-      // the bag and skip the unit -- a degraded board beats a blank one.
-      if (!bp.unit) continue;
-      if (bp.id === carriedBPId) continue; // REQ-0288: unit rides with the ghost
-      const lc = engine.unitCell(bp);
-      const x = cx(lc[1]);
-      const y = cy(lc[0]);
-      const core = new Graphics();
-      core.circle(x, y, 26);
-      core.fill({ color: '#0e0d0b', alpha: ops.isCanvas ? 0.55 : INV_UNIT_ALPHA });
-      core.stroke({ color: '#59d6d6', alpha: ops.isCanvas ? 0.5 : INV_UNIT_ALPHA, width: 1 });
-      core.eventMode = 'static';
-      core.cursor = 'grab';
-      core.on('pointerdown', (e: FederatedPointerEvent) => this.handleBPPointerDown(e, bp.id));
-      this.gUnits.addChild(core);
-      // REQ-0125a: the art in a Unit cell is no longer a string literal. It
-      // comes from THE resolver (board/unitIcon.ts), through the ratified G6
-      // skin chain: active skin -> default unit icon -> legacy glyph ->
-      // placeholder. Today no BP carries a skin or a default icon (no unit art
-      // exists -- REQ-0127 is on hold behind REQ-0136 -- and no unit IDENTITY
-      // exists to key one on -- REQ-0128 owns the Unit model, and the user's
-      // 2026-07-12 ruling was explicitly NOT to invent a unitId field here to
-      // unblock the renderer). So every BP falls through to the legacy
-      // `icon-unit_core` glyph and this board stays pixel-identical to
-      // pre-REQ-0125a. That fall-through IS the deliverable: REQ-0125b lands
-      // identity and REQ-0127 lands art as DATA, without touching this file,
-      // and REQ-0133 reuses this same chain for item rasters.
-      const icon = resolveUnitIcon(
-        {
-          // REQ-0266: the `skin` rung is fed for real at last. activeUnitSkinKey()
-          // runs the profile-pick -> def-default chain over the unit_skin/1 defs and
-          // returns NULL -- never the default key -- when the unit has no skin, or
-          // when that skin's artwork is not adopted. So a BP with no skin still
-          // reports rung 'default' and the chain's own report stays honest.
-          // Identity + default art landed in REQ-0170, so `defaultKey` is a real key:
-          // the BP's Unit id, namespaced by unitIconKey(). A BP whose art failed to
-          // load (or whose unit id is unknown) simply falls through the chain to the
-          // legacy glyph -- the seam does its job without a change at this draw site.
-          skinKey: bp.unit ? activeUnitSkinKey(bp.unit.id) : null,
-          defaultKey: bp.unit ? unitIconKey(bp.unit.id) : null,
-        },
-        (k) => textures.has(k)
-      );
-      const unitTexture = icon.key ? textures.get(icon.key) : undefined;
-      if (unitTexture) {
-        const sprite = new Sprite(unitTexture);
-        // Contain-fit into the 44x44 art box via the SHARED box-fit every other
-        // icon on this board already uses (geom.fitSpriteToBox ->
-        // render/itemCard.fitBoxInBounds). The old code hard-set width/height to
-        // 44x44, which is a no-op for the 1:1 legacy glyph but would STRETCH any
-        // non-square art -- and aspect is inviolable (common_content_pipeline.md
-        // section 2). Unit icons are 1:1 by definition (unit_icon_pipeline.md
-        // section 0), so this changes nothing today; it is the path REQ-0133's
-        // non-square item rasters will come through.
-        fitSpriteToBox(sprite, x - 22, y - 22, 44, 44);
-        // REQ-0273 (bug 1): real art (resolver rungs 'skin'/'default') is the
-        // character's identity and draws at FULL opacity on every board. The
-        // REQ-0030 dormancy dim (INV_UNIT_ALPHA * 2) now applies only to the
-        // legacy placeholder glyph -- a UI symbol, not art -- so boards with no
-        // unit art stay pixel-identical to before. Before REQ-0266 fed the skin
-        // rung, the glyph was the only thing that ever reached this line, which
-        // is why the dim read as intentional for years and as a defect the day
-        // real art arrived.
-        sprite.alpha = ops.isCanvas || icon.rung !== 'legacy' ? 1 : INV_UNIT_ALPHA * 2;
-        sprite.eventMode = 'none'; // decorative art, see constructor note
-        this.gUnits.addChild(sprite);
-      }
-
-      // G7 charge ring (unit_icon_pipeline.md section 1). Renderer-drawn, never
-      // baked into art (G2). NULL today at every production call site: no charge
-      // data exists anywhere in the codebase (see chargeRing.ts's header for the
-      // audit -- the placement engine has no time axis at all, and sim's only
-      // `cooldown` is the ROOM re-entry timer, which is REQ-0098's ring, not a
-      // unit's; canvas units are dormant by construction anyway). So
-      // drawChargeRing() no-ops and no ring appears. The drawing itself is
-      // finished and visually verified (web/preview/unit-charge-ring/); REQ-0129
-      // changes this ONE argument from null to a real 0-1 value and it lights up.
-      const ring = new Graphics();
-      drawChargeRing(ring, x, y, null);
-      ring.eventMode = 'none'; // decorative, must not eat the BP drag handle
-      this.gUnits.addChild(ring);
-      // Direction dots (which way the unit's rays would fire) are a canvas-only
-      // concept -- an inventory BP's unit is dormant, so no dots are drawn there
-      // (REQ-0030 spec item 1: "no beams").
-      //
-      // REQ-0170: the dirs come from the Unit's connection_shape, not from the BP.
-      // OFFSET shapes (the knight jumps) get NO dots on purpose: a jump has no
-      // compass angle, and faking one by pointing a dot at the nearest 45 degrees
-      // would tell the player something untrue. Their links still render as beams
-      // (drawn from engine.traceBeams above), which is the honest picture.
-      const connShape = ops.isCanvas ? engine.connShapeOf(bp) : null;
-      if (connShape && connShape.kind === 'ray') {
-        for (const d of (connShape.dirs ?? [])) {
-          const ang = (DIR_ANGLES[d] * Math.PI) / 180;
-          const dot = new Graphics();
-          dot.circle(x + Math.cos(ang) * 30, y + Math.sin(ang) * 30, 4);
-          dot.fill({ color: '#59d6d6' });
-          dot.eventMode = 'none'; // decorative, see constructor note
-          this.gUnits.addChild(dot);
+      drawGuarded('BP unit', bp.id, () => {
+        // REQ-0170: a BP without a Unit cannot exist (the BP:Unit law) and the purge
+        // removed every one that did. If a stale save ever produces one anyway, draw
+        // the bag and skip the unit -- a degraded board beats a blank one.
+        if (!bp.unit) return;
+        if (bp.id === carriedBPId) return; // REQ-0288: the unit core + art ride with the ghost
+        const lc = engine.unitCell(bp);
+        const x = cx(lc[1]);
+        const y = cy(lc[0]);
+        const core = new Graphics();
+        core.circle(x, y, 26);
+        core.fill({ color: '#0e0d0b', alpha: ops.isCanvas ? 0.55 : INV_UNIT_ALPHA });
+        core.stroke({ color: '#59d6d6', alpha: ops.isCanvas ? 0.5 : INV_UNIT_ALPHA, width: 1 });
+        core.eventMode = 'static';
+        core.cursor = 'grab';
+        core.on('pointerdown', (e: FederatedPointerEvent) => this.handleBPPointerDown(e, bp.id));
+        this.gUnits.addChild(core);
+        // REQ-0125a: the art in a Unit cell is no longer a string literal. It
+        // comes from THE resolver (board/unitIcon.ts), through the ratified G6
+        // skin chain: active skin -> default unit icon -> legacy glyph ->
+        // placeholder. Today no BP carries a skin or a default icon (no unit art
+        // exists -- REQ-0127 is on hold behind REQ-0136 -- and no unit IDENTITY
+        // exists to key one on -- REQ-0128 owns the Unit model, and the user's
+        // 2026-07-12 ruling was explicitly NOT to invent a unitId field here to
+        // unblock the renderer). So every BP falls through to the legacy
+        // `icon-unit_core` glyph and this board stays pixel-identical to
+        // pre-REQ-0125a. That fall-through IS the deliverable: REQ-0125b lands
+        // identity and REQ-0127 lands art as DATA, without touching this file,
+        // and REQ-0133 reuses this same chain for item rasters.
+        const icon = resolveUnitIcon(
+          {
+            // REQ-0266: the `skin` rung is fed for real at last. activeUnitSkinKey()
+            // runs the profile-pick -> def-default chain over the unit_skin/1 defs and
+            // returns NULL -- never the default key -- when the unit has no skin, or
+            // when that skin's artwork is not adopted. So a BP with no skin still
+            // reports rung 'default' and the chain's own report stays honest.
+            // Identity + default art landed in REQ-0170, so `defaultKey` is a real key:
+            // the BP's Unit id, namespaced by unitIconKey(). A BP whose art failed to
+            // load (or whose unit id is unknown) simply falls through the chain to the
+            // legacy glyph -- the seam does its job without a change at this draw site.
+            skinKey: bp.unit ? activeUnitSkinKey(bp.unit.id) : null,
+            defaultKey: bp.unit ? unitIconKey(bp.unit.id) : null,
+          },
+          (k) => textures.has(k)
+        );
+        const unitTexture = icon.key ? textures.get(icon.key) : undefined;
+        if (unitTexture) {
+          const sprite = new Sprite(unitTexture);
+          // Contain-fit into the 44x44 art box via the SHARED box-fit every other
+          // icon on this board already uses (geom.fitSpriteToBox ->
+          // render/itemCard.fitBoxInBounds). The old code hard-set width/height to
+          // 44x44, which is a no-op for the 1:1 legacy glyph but would STRETCH any
+          // non-square art -- and aspect is inviolable (common_content_pipeline.md
+          // section 2). Unit icons are 1:1 by definition (unit_icon_pipeline.md
+          // section 0), so this changes nothing today; it is the path REQ-0133's
+          // non-square item rasters will come through.
+          fitSpriteToBox(sprite, x - 22, y - 22, 44, 44);
+          // REQ-0273 (bug 1): real art (resolver rungs 'skin'/'default') is the
+          // character's identity and draws at FULL opacity on every board. The
+          // REQ-0030 dormancy dim (INV_UNIT_ALPHA * 2) now applies only to the
+          // legacy placeholder glyph -- a UI symbol, not art -- so boards with no
+          // unit art stay pixel-identical to before. Before REQ-0266 fed the skin
+          // rung, the glyph was the only thing that ever reached this line, which
+          // is why the dim read as intentional for years and as a defect the day
+          // real art arrived.
+          sprite.alpha = ops.isCanvas || icon.rung !== 'legacy' ? 1 : INV_UNIT_ALPHA * 2;
+          sprite.eventMode = 'none'; // decorative art, see constructor note
+          this.gUnits.addChild(sprite);
         }
-      }
+
+        // G7 charge ring (unit_icon_pipeline.md section 1). Renderer-drawn, never
+        // baked into art (G2). NULL today at every production call site: no charge
+        // data exists anywhere in the codebase (see chargeRing.ts's header for the
+        // audit -- the placement engine has no time axis at all, and sim's only
+        // `cooldown` is the ROOM re-entry timer, which is REQ-0098's ring, not a
+        // unit's; canvas units are dormant by construction anyway). So
+        // drawChargeRing() no-ops and no ring appears. The drawing itself is
+        // finished and visually verified (web/preview/unit-charge-ring/); REQ-0129
+        // changes this ONE argument from null to a real 0-1 value and it lights up.
+        const ring = new Graphics();
+        drawChargeRing(ring, x, y, null);
+        ring.eventMode = 'none'; // decorative, must not eat the BP drag handle
+        this.gUnits.addChild(ring);
+        // Direction dots (which way the unit's rays would fire) are a canvas-only
+        // concept -- an inventory BP's unit is dormant, so no dots are drawn there
+        // (REQ-0030 spec item 1: "no beams").
+        //
+        // REQ-0170: the dirs come from the Unit's connection_shape, not from the BP.
+        // OFFSET shapes (the knight jumps) get NO dots on purpose: a jump has no
+        // compass angle, and faking one by pointing a dot at the nearest 45 degrees
+        // would tell the player something untrue. Their links still render as beams
+        // (drawn from engine.traceBeams above), which is the honest picture.
+        const connShape = ops.isCanvas ? engine.connShapeOf(bp) : null;
+        if (connShape && connShape.kind === 'ray') {
+          for (const d of (connShape.dirs ?? [])) {
+            const ang = (DIR_ANGLES[d] * Math.PI) / 180;
+            const dot = new Graphics();
+            dot.circle(x + Math.cos(ang) * 30, y + Math.sin(ang) * 30, 4);
+            dot.fill({ color: '#59d6d6' });
+            dot.eventMode = 'none'; // decorative, see constructor note
+            this.gUnits.addChild(dot);
+          }
+        }
+      });
     }
     // Sockets (diegetic, REQ-0027 T0.2, generalized REQ-0030 Phase 2):
     // empty-socket outlines (dashed circle/rounded-rect + glyph, per socket
@@ -1147,93 +1346,95 @@ export class BoardRenderer {
     // edge) -- 'bond' sockets only ever appear via ops.sockets() on the
     // canvas board (pageSockets() never emits one, per engine.js design).
     for (const s of ops.sockets(state)) {
-      if (carriedUids.has(s.host) || (s.siUid && carriedUids.has(s.siUid))) continue;
-      const pos = socketScreenPos(this, state, s, asm);
-      if (!pos) continue;
-      const { x, y } = pos;
-      if (s.siUid) {
-        const a = container.sis.find((z) => z.uid === s.siUid);
-        if (!a) continue;
-        const siDef = this.deps.siDefs[a.id];
-        const g = new Container();
-        g.eventMode = 'static';
-        g.cursor = 'grab';
-        if (a.id === 'acc_guard') {
-          const bar = new Graphics();
-          bar.roundRect(x - 23, y - 7, 46, 14, 6);
-          bar.fill({ color: '#b08340' });
-          bar.stroke({ color: '#2b2016', width: 2.5 });
-          bar.circle(x - 12, y, 2.2);
-          bar.fill({ color: '#e9b64d' });
-          bar.circle(x + 12, y, 2.2);
-          bar.fill({ color: '#e9b64d' });
-          bar.eventMode = 'none'; // decorative, see constructor note
-          g.addChild(bar);
-        } else if (siDef) {
-          const tex = itemTex(textures, a.id, siDef.icon);
-          if (tex) {
-            const sprite = new Sprite(tex);
-            sprite.x = x - 12;
-            sprite.y = y - 12;
-            sprite.width = 24;
-            sprite.height = 24;
-            sprite.eventMode = 'none'; // decorative art, see constructor note
-            g.addChild(sprite);
+      drawGuarded('socket', s.host, () => {
+        if (carriedUids.has(s.host) || (s.siUid && carriedUids.has(s.siUid))) return;
+        const pos = socketScreenPos(this, state, s, asm);
+        if (!pos) return;
+        const { x, y } = pos;
+        if (s.siUid) {
+          const a = container.sis.find((z) => z.uid === s.siUid);
+          if (!a) return;
+          const siDef = this.deps.siDefs[a.id];
+          const g = new Container();
+          g.eventMode = 'static';
+          g.cursor = 'grab';
+          if (a.id === 'acc_guard') {
+            const bar = new Graphics();
+            bar.roundRect(x - 23, y - 7, 46, 14, 6);
+            bar.fill({ color: '#b08340' });
+            bar.stroke({ color: '#2b2016', width: 2.5 });
+            bar.circle(x - 12, y, 2.2);
+            bar.fill({ color: '#e9b64d' });
+            bar.circle(x + 12, y, 2.2);
+            bar.fill({ color: '#e9b64d' });
+            bar.eventMode = 'none'; // decorative, see constructor note
+            g.addChild(bar);
+          } else if (siDef) {
+            const tex = itemTex(textures, a.id, siDef.icon);
+            if (tex) {
+              const sprite = new Sprite(tex);
+              sprite.x = x - 12;
+              sprite.y = y - 12;
+              sprite.width = 24;
+              sprite.height = 24;
+              sprite.eventMode = 'none'; // decorative art, see constructor note
+              g.addChild(sprite);
+            }
           }
-        }
-        // REQ-0033 Phase 2: seated-SI usage tint -- a small translucent
-        // wash directly under the SI's own icon (a circle, not a full
-        // grid cell, since a seated SI's visual footprint is the socket
-        // glyph itself, not a cell-aligned box -- matching the acc_guard
-        // bar / icon sizing immediately above, which are also drawn in
-        // raw x/y screen space rather than cell-snapped).
-        const siTintColor = tintRedSet.has(a.uid) ? TINT_RED : tintYellowSet.has(a.uid) ? TINT_YELLOW : null;
-        if (siTintColor !== null) {
-          const siTint = new Graphics();
-          siTint.circle(x, y, 16);
-          siTint.fill({ color: siTintColor, alpha: TINT_ALPHA });
-          siTint.eventMode = 'none'; // decorative tint overlay, see constructor note
-          g.addChild(siTint);
-        }
-        const hitCircle = new Graphics();
-        hitCircle.circle(x, y, 15);
-        hitCircle.fill({ color: '#000000', alpha: 0.001 });
-        g.addChild(hitCircle);
-        g.on('pointerdown', (e: FederatedPointerEvent) => this.beginDrag(e, 'si', a.uid, undefined));
-        g.on('pointerup', () => this.handleItemTap('si', a.id, { x: x - 16, y: y - 16, w: 32, h: 32 }, a.uid));
-        this.gSock.addChild(g);
-      } else {
-        const g = new Graphics();
-        g.eventMode = 'none'; // decorative empty-socket outline, see constructor note
-        if (s.t === 'bond') {
-          g.roundRect(x - 23, y - 7, 46, 14, 6);
-          g.stroke({ color: '#b08340', width: 1.5, alpha: 0.8 });
+          // REQ-0033 Phase 2: seated-SI usage tint -- a small translucent
+          // wash directly under the SI's own icon (a circle, not a full
+          // grid cell, since a seated SI's visual footprint is the socket
+          // glyph itself, not a cell-aligned box -- matching the acc_guard
+          // bar / icon sizing immediately above, which are also drawn in
+          // raw x/y screen space rather than cell-snapped).
+          const siTintColor = tintRedSet.has(a.uid) ? TINT_RED : tintYellowSet.has(a.uid) ? TINT_YELLOW : null;
+          if (siTintColor !== null) {
+            const siTint = new Graphics();
+            siTint.circle(x, y, 16);
+            siTint.fill({ color: siTintColor, alpha: TINT_ALPHA });
+            siTint.eventMode = 'none'; // decorative tint overlay, see constructor note
+            g.addChild(siTint);
+          }
+          const hitCircle = new Graphics();
+          hitCircle.circle(x, y, 15);
+          hitCircle.fill({ color: '#000000', alpha: 0.001 });
+          g.addChild(hitCircle);
+          g.on('pointerdown', (e: FederatedPointerEvent) => this.beginDrag(e, 'si', a.uid, undefined));
+          g.on('pointerup', () => this.handleItemTap('si', a.id, { x: x - 16, y: y - 16, w: 32, h: 32 }, a.uid));
           this.gSock.addChild(g);
         } else {
-          g.circle(x, y, 9);
-          g.fill({ color: '#0e0d0b', alpha: 0.5 });
-          g.stroke({ color: '#b08340', width: 1.5, alpha: 0.8 });
-          // Graphics has allowChildren=false in PixiJS v8 (it's a leaf
-          // "view" node, like Sprite/Text) -- calling g.addChild(glyph)
-          // directly triggers the "addChild: Only Containers will be
-          // allowed to add children in v8.0.0" deprecation warning (the
-          // only console warning this app produced). Fixed by wrapping
-          // both the Graphics and the Text in a plain Container (which
-          // does allow children) and adding that to gSock instead.
-          const glyph = new Text({
-            text: SOCK_GLYPH[s.t] ?? '?',
-            style: { fill: '#b08340', fontSize: 9 },
-          });
-          glyph.anchor.set(0.5);
-          glyph.x = x;
-          glyph.y = y + 1;
-          glyph.eventMode = 'none'; // decorative, see constructor note
-          const wrap = new Container();
-          wrap.eventMode = 'none'; // decorative, see constructor note
-          wrap.addChild(g, glyph);
-          this.gSock.addChild(wrap);
+          const g = new Graphics();
+          g.eventMode = 'none'; // decorative empty-socket outline, see constructor note
+          if (s.t === 'bond') {
+            g.roundRect(x - 23, y - 7, 46, 14, 6);
+            g.stroke({ color: '#b08340', width: 1.5, alpha: 0.8 });
+            this.gSock.addChild(g);
+          } else {
+            g.circle(x, y, 9);
+            g.fill({ color: '#0e0d0b', alpha: 0.5 });
+            g.stroke({ color: '#b08340', width: 1.5, alpha: 0.8 });
+            // Graphics has allowChildren=false in PixiJS v8 (it's a leaf
+            // "view" node, like Sprite/Text) -- calling g.addChild(glyph)
+            // directly triggers the "addChild: Only Containers will be
+            // allowed to add children in v8.0.0" deprecation warning (the
+            // only console warning this app produced). Fixed by wrapping
+            // both the Graphics and the Text in a plain Container (which
+            // does allow children) and adding that to gSock instead.
+            const glyph = new Text({
+              text: SOCK_GLYPH[s.t] ?? '?',
+              style: { fill: '#b08340', fontSize: 9 },
+            });
+            glyph.anchor.set(0.5);
+            glyph.x = x;
+            glyph.y = y + 1;
+            glyph.eventMode = 'none'; // decorative, see constructor note
+            const wrap = new Container();
+            wrap.eventMode = 'none'; // decorative, see constructor note
+            wrap.addChild(g, glyph);
+            this.gSock.addChild(wrap);
+          }
         }
-      }
+      });
     }
 
     // Free-placed SIs (REQ-0030 Phase 2, inventory-only): an SI whose host
@@ -1263,6 +1464,9 @@ export class BoardRenderer {
       // as every other tint call site -- see the drawTintOverlay doc
       // comment near `container`/`cbp` above for the color/alpha choice).
       drawTintOverlay(g, [[r, c]], a.uid, tintRedSet, tintYellowSet);
+      // REQ-0287: ownership ribbon over the SI single-cell footprint.
+      const siRibbonBbox = cellsBBoxPx([[r, c]]);
+      paintUsageRibbons(this, a.uid, siRibbonBbox, siRibbonBbox, tintRedSet, tintYellowSet);
       if (siDef) {
         const tex = itemTex(textures, a.id, siDef.icon);
         if (tex) {
@@ -1303,7 +1507,15 @@ export class BoardRenderer {
     // loop for event-routing correctness. Rendering synchronously here
     // makes hit-testing correct immediately after every state change,
     // independent of tab visibility/ticker timing.
-    this.app.renderer.render({ container: this.app.stage });
+    // REQ-0345: that auto-render loop is now gone for good (mount() passes
+    // autoStart:false), so this call is no longer merely an ordering fix for
+    // hit-testing -- it is the ONLY thing that puts a state change on screen.
+    // It stays SYNCHRONOUS rather than going through requestRender() for
+    // exactly the reason above: lastObjectRendered must be correct before the
+    // caller's next pointer event, not one animation frame later.
+    // REQ-0287: publish this board's ribbon probe snapshot (e2e read seam).
+    publishRibbonProbe(boardIdKey(this.boardId), this.usageRibbonProbe);
+    this.paintNow();
   }
   /**
    * Screen (board-canvas-local pixel) position of a socket -- REQ-0027
@@ -1570,6 +1782,10 @@ export class BoardRenderer {
         this.gCarry.removeChildren();
         this.gTarget.removeChildren();
         this.ghostProbe = null; // REQ-0288: carry ended
+        // REQ-0345: an unresolved drop (outside both boards, or on a tab
+        // button) clears the overlays with NO engine call and therefore no
+        // notifyStateChanged()/render() -- nothing else would repaint here.
+        this.requestRender();
       }
     });
   }
@@ -1635,6 +1851,7 @@ export class BoardRenderer {
       this.gCarry.removeChildren();
       this.gTarget.removeChildren();
       this.ghostProbe = null; // REQ-0288: the pointer left this board
+      this.requestRender(); // REQ-0345: the ghost/tint just went away -- repaint without them
       return;
     }
     const local = clientToLocal(this, e.clientX, e.clientY);
@@ -1806,6 +2023,10 @@ export class BoardRenderer {
       }
     }
     updateCarry(local.x, local.y, drop);
+    // REQ-0345: everything above rebuilt gCarry/gTarget for this pointer
+    // position. Coalesced, so a fast drag paints once per frame, not once per
+    // native pointermove.
+    this.requestRender();
   };
 
   /** Cross-board socket legality preview for an SI -- splices the SI
@@ -1817,7 +2038,10 @@ export class BoardRenderer {
       cancelCarryWithFeedback(); // REQ-0288: the origin board flashes "snapped home"
       this.gCarry.removeChildren();
       this.gTarget.removeChildren();
+      // REQ-0345: render(state) paints; the no-state case still has cleared
+      // layers to get rid of.
       if (this.lastState) this.render(this.lastState);
+      else this.requestRender();
     }
   };
 

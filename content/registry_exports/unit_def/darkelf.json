@@ -1,0 +1,90 @@
+{
+ "system_name": "darkelf",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "8fa96393974d15693c7eb0a5aeafea7365c1542c6cc849a1708a3a27830cff15",
+ "provenance": {
+  "model": "claude-opus-4-8",
+  "params": {},
+  "prompt": "units003 kit design S1 (REQ-0201); reviewer-amended (REQ-0201 adoption notes)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:10:50.531Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "darkelf",
+  "i18n": {
+   "ja": {
+    "name": "ダークエルフ"
+   }
+  },
+  "icon": "units003_darkelf",
+  "name": "Dark Elf",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       2,
+       3
+      ],
+      "t": "add_on_hit_status",
+      "status": "Weakness"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "s": [
+     3,
+     4
+    ],
+    "t": "every_secs"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Her gaze saps the strong.",
+  "rarity": "Rare",
+  "flavor_ja": "その眼差しが強者を蝕む。",
+  "connection_shape": "bishop"
+ }
+}

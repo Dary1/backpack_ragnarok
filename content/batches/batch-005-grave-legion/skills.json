@@ -514,6 +514,215 @@
       "modes": [
         "battle"
       ]
+    },
+    {
+      "id": "zombie_already_rotten",
+      "name_en": "Already Rotten",
+      "name_ja": "腐りきった肉",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "status_immune",
+        "status": "Poison"
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "ghost_incorporeal",
+      "name_en": "Incorporeal",
+      "name_ja": "幽体",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "damage_reduction",
+        "n": [
+          1,
+          3
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "mummy_death_curse",
+      "name_en": "Dying Curse",
+      "name_ja": "断末魔の呪い",
+      "trigger": {
+        "t": "on_death"
+      },
+      "verb": {
+        "t": "death_throes",
+        "n": [
+          3,
+          6
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "skel_no_flesh",
+      "name_en": "No Flesh to Rot",
+      "name_ja": "燃やす肉もなし",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "status_immune",
+        "status_kind": "dot"
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "wight_undying",
+      "name_en": "Undying",
+      "name_ja": "不死の執念",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "grant_self_status",
+        "status": "Regen",
+        "n": [
+          1,
+          3
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "necro_deathly_ward",
+      "name_en": "Deathly Ward",
+      "name_ja": "死の護り",
+      "trigger": {
+        "t": "OnSquadBeenHit"
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Weakness",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "lich_undying_will",
+      "name_en": "Undying Will",
+      "name_ja": "不滅の意志",
+      "trigger": {
+        "t": "battle_start"
+      },
+      "verb": {
+        "t": "status_immune",
+        "status": "Stun"
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "bonedrag_death_collapse",
+      "name_en": "Bone Collapse",
+      "name_ja": "骨竜崩落",
+      "trigger": {
+        "t": "on_death"
+      },
+      "verb": {
+        "t": "death_throes",
+        "n": [
+          8,
+          14
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
     }
   ]
 }

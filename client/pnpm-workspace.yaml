@@ -1,0 +1,2 @@
+patchedDependencies:
+  pixi.js: patches/pixi.js.patch

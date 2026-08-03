@@ -7,8 +7,8 @@
 // written as \uXXXX escapes (pure-ASCII source; JS decodes at runtime).
 //   GET  /api/bio/:bpUid        -> { ok, bio: <DTO> }
 //   POST /api/bio/:bpUid/name   -> append a carried name (rename history)
-const { sendJSON, readBody } = require('../lib/http_util.cjs'); // REQ-0199: getAuthToken dropped (JWT-first resolver reads the req itself)
-const admin = require('../admin.cjs');
+const { sendJSON } = require('../lib/http_util.cjs'); // REQ-0199: getAuthToken dropped (JWT-first resolver reads the req itself)
+const { resolveCallerOr401, withJsonBody } = require('../lib/route_kit.cjs');
 const storage = require('../storage.cjs');
 const bio = require('../services/bio.cjs');
 // REQ-0199: both handlers below resolve the caller through
@@ -16,6 +16,10 @@ const bio = require('../services/bio.cjs');
 // the REQ-0037 X-Auth-Token path + dev_mode fallback -- for parity with
 // schedule/warehouse/profile. Previously the X-Auth-Token-ONLY resolver
 // mis-resolved a JWT-only caller to the dev_mode fallback (the WRONG player).
+// REQ-0349: that resolution is now lib/route_kit.cjs's resolveCallerOr401, so
+// the parity is structural rather than copied. The wrong-method reply stays a
+// 404 'not found' (not the kit's 405) -- that is this family's pre-REQ-0349
+// behaviour and REQ-0349 changes no status codes.
 const BIO_RE = /^\/api\/bio\/([^/]+)$/;
 const BIO_NAME_RE = /^\/api\/bio\/([^/]+)\/name$/;
 const I18N = {
@@ -58,13 +62,10 @@ function tryBioRoutes(req, res, url, p) {
   const mName = p.match(BIO_NAME_RE);
   if (mName) {
     if (req.method !== 'POST') { sendJSON(res, 404, { ok: false, error: 'not found' }); return; }
-    const resolved = admin.resolveAuthFromRequest(req);
-    if (!resolved.ok) { sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason }); return; }
+    const ctx = resolveCallerOr401(req, res);
+    if (!ctx) return;
     const uid = decodeURIComponent(mName[1]);
-    readBody(req, (err, bodyStr) => {
-      if (err) { sendJSON(res, 400, { ok: false, error: 'bad body' }); return; }
-      let body;
-      try { body = JSON.parse(bodyStr || '{}'); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid json' }); return; }
+    withJsonBody(req, res, {}, (body) => {
       const name = body && typeof body.name === 'string' ? body.name.trim() : '';
       if (!name) { sendJSON(res, 400, { ok: false, error: 'name required' }); return; }
       const doc = bio.recordRename(uid, name);
@@ -75,8 +76,7 @@ function tryBioRoutes(req, res, url, p) {
   const m = p.match(BIO_RE);
   if (!m) return false;
   if (req.method !== 'GET') { sendJSON(res, 404, { ok: false, error: 'not found' }); return; }
-  const resolved = admin.resolveAuthFromRequest(req);
-  if (!resolved.ok) { sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason }); return; }
+  if (!resolveCallerOr401(req, res)) return;
   const uid = decodeURIComponent(m[1]);
   const doc = storage.readBio(uid);
   if (!doc) { sendJSON(res, 404, { ok: false, error: 'no biography for bp: ' + uid }); return; }

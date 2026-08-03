@@ -89,8 +89,6 @@ import { BoardCoords, CanvasStatsChip, EmbarkDock, SaveSeal } from './CanvasChro
 import { CanvasSidePanel } from './canvas/CanvasSidePanel'; // REQ-0140
 import { CanvasSelectionOverlay } from './canvas/CanvasSelectionOverlay'; // REQ-0140
 import { CanvasEmptyState } from './canvas/CanvasEmptyState'; // REQ-0140/0141
-import { ForecastOverlay } from './forecast/ForecastOverlay'; // REQ-0057
-import { ForecastPanel } from './forecast/ForecastPanel'; // REQ-0057
 import { DexRoot } from './dex/DexRoot';
 import { ArtAdminPage } from './artadmin/ArtAdminPage'; // REQ-0151
 import { ContentAdminPage } from './contentadmin/ContentAdminPage'; // REQ-0155
@@ -102,6 +100,7 @@ import { FloatingItemTip } from './FloatingItemTip';
 // item tip is -- it floats over whichever board the pointer is interrogating.
 import { BeamTracePanel } from './BeamTracePanel';
 import { InviteBanner } from './InviteBanner';
+import { TroopDisbandToast } from './TroopDisbandToast'; // REQ-0327
 import { LandingPage } from './landing/LandingPage';
 import { Nav } from './Nav';
 import { PlaceholderPage } from './PlaceholderPage';
@@ -117,6 +116,7 @@ import { Settings } from './Settings';
 import { FirstRunGuide } from './guide/FirstRunGuide'; // REQ-0141
 import { ContextualHint } from './guide/ContextualHint'; // REQ-0141
 import { Tabs } from './Tabs';
+import { RenderErrorBoundary } from './RenderErrorBoundary'; // REQ-0336
 import { initRouting, setLocale, useGameStore } from './store';
 
 /** The inventory column's actual content (Tabs + board-wrap +
@@ -124,7 +124,7 @@ import { initRouting, setLocale, useGameStore } from './store';
  * rendered EITHER inline (normal Backpacks-page position, default) OR
  * via createPortal into a WarehouseTab-registered slot, with the exact
  * same JSX either way (no behavior fork -- see module comment above). */
-function InventoryColumn({ locale, ready }: { locale: ReturnType<typeof useGameStore>['locale']; ready: boolean }) {
+function InventoryColumn({ locale, ready, resetKey }: { locale: ReturnType<typeof useGameStore>['locale']; ready: boolean; resetKey: number }) {
   // REQ-0070: stagehead title row (ja shows the mock's EN sub-caption; the
   // key is empty for EN, so nothing doubles up) + the ornate MJOLNIR board
   // stage around the SAME always-mounted InventoryBoard. Structure-only
@@ -144,7 +144,19 @@ function InventoryColumn({ locale, ready }: { locale: ReturnType<typeof useGameS
         <i className="k br" />
         <i className="k bl" />
         <div className="board-gridbox">
-          <InventoryBoard />
+          {/* REQ-0336: the boards had NO error boundary. REQ-0285 closed this
+              class for the Monitor subtree only, and REQ-0284's post-mortem is
+              explicit that an uncaught throw here tears down the React ROOT --
+              a blank app, not a blank board. resetKey is the active inventory
+              page so switching tabs re-arms it. */}
+          <RenderErrorBoundary
+            locale={locale}
+            surface="inventory board"
+            testId="inventory-board-error"
+            resetKey={resetKey}
+          >
+            <InventoryBoard />
+          </RenderErrorBoundary>
         </div>
       </div>
       <div className="inventory-note">{t(locale, 'app.inventoryNote')}</div>
@@ -190,6 +202,10 @@ function App() {
         />
       )}
       <InviteBanner text={snapshot.welcomeBanner} locale={snapshot.locale} />
+      {/* REQ-0327: the troop-disband toast -- polls /api/notifications and
+          surfaces the one notification kind. Top-level (outside the route
+          switch), like InviteBanner, so it can appear on any route. */}
+      <TroopDisbandToast locale={snapshot.locale} />
       {/* REQ-0141: first-run guided tour + contextual hint. Non-modal; both
           render null unless on the canvas page with an active guide/hint. */}
       <FirstRunGuide />
@@ -225,16 +241,18 @@ function App() {
               <i className="k br" />
               <i className="k bl" />
               <div className="board-gridbox">
-                <Board />
+                {/* REQ-0336: see the inventory board's note. resetKey is the
+                    active squad -- switching squads re-arms the boundary, so a
+                    single unrenderable squad never strands the whole view. */}
+                <RenderErrorBoundary
+                  locale={snapshot.locale}
+                  surface="canvas board"
+                  testId="canvas-board-error"
+                  resetKey={snapshot.state?.presets?.active ?? -1}
+                >
+                  <Board />
+                </RenderErrorBoundary>
                 <BoardCoords />
-                {/* REQ-0057: the ray-forecast heat layer. A pointer-events:none
-                    DOM layer over the SAME grid geometry BoardCoords already
-                    mirrors (PAD 38 / CELL 80) -- the Pixi board underneath is
-                    untouched, so every drag/dblclick/long-press keeps working
-                    while the weather map is up (which is the whole point:
-                    "visible WHILE building"). Renders nothing when the overlay
-                    is off. */}
-                <ForecastOverlay />
                 {/* REQ-0140: panel->board selection ring (DOM overlay, no
                     BoardRenderer change) + zero-BP guidance over the board. */}
                 <CanvasSelectionOverlay />
@@ -254,9 +272,6 @@ function App() {
                   this relatively-positioned .board-wrap-canvas). */}
               <SquadTrashZone />
             </div>
-            {/* REQ-0057: the forecast's controls + legend, under the stage.
-                Renders just the toggle until the overlay is switched on. */}
-            <ForecastPanel />
           </div>
           {/* REQ-0041: render the inventory column INLINE here only when
               no slot has claimed it (see InventoryColumn's doc above) --
@@ -267,7 +282,7 @@ function App() {
               visible gap either way). */}
           {inventorySlot === null ? (
             <div className="canvas-legacy-inv">
-              <InventoryColumn locale={snapshot.locale} ready={inventoryReady} />
+              <InventoryColumn locale={snapshot.locale} ready={inventoryReady} resetKey={snapshot.activeInvPage} />
             </div>
           ) : null}
           {/* REQ-0140: the MJOLNIR right-panel composition (inventory list +
@@ -297,7 +312,7 @@ function App() {
             visibility already naturally follows the Schedule/Warehouse
             tab being on-screen; no additional route-hidden bookkeeping is
             needed for the portaled copy). */}
-        {inventorySlot !== null ? createPortal(<InventoryColumn locale={snapshot.locale} ready={inventoryReady} />, inventorySlot) : null}
+        {inventorySlot !== null ? createPortal(<InventoryColumn locale={snapshot.locale} ready={inventoryReady} resetKey={snapshot.activeInvPage} />, inventorySlot) : null}
 
         {route === 'landing' ? <LandingPage locale={snapshot.locale} me={snapshot.me} /> : null}
         {route === 'schedule' ? <SchedulePage locale={snapshot.locale} /> : null}

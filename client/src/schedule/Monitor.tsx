@@ -22,6 +22,7 @@ import { t } from '../i18n';
 import type { Locale } from '../store';
 import { useGameStore } from '../store';
 import { formatCountdown } from './RoomCard';
+import { seatIsOwnedBy } from './seats'; // REQ-0337
 import { MonitorRenderer, type MonitorSquadVisual } from './MonitorRenderer';
 import { ChimeEngine, type ChimeStats } from './chimes/ChimeEngine';
 import { loadChimePrefs, CHIME_PREFS_EVENT } from './chimes/chimePrefs';
@@ -55,6 +56,8 @@ interface MonitorProps {
   room: ApiRoom;
   locale: Locale;
   dungeonName: string;
+  /** REQ-0304: the DRAWN dungeon's theme, surfaced in the monitor header post-entry. */
+  dungeonTheme?: string;
   isAdmin: boolean;
   onRunSettled?: () => void;
 }
@@ -67,7 +70,7 @@ function latestOfType(events: ApiRunEvent[], evName: string): ApiRunEvent | null
   return null;
 }
 
-export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: MonitorProps) {
+export function Monitor({ room, locale, dungeonName, dungeonTheme, isAdmin, onRunSettled }: MonitorProps) {
   const snapshot = useGameStore();
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => { const id = setInterval(() => setNowMs(Date.now()), 1000); return () => clearInterval(id); }, []);
@@ -80,7 +83,9 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
   const cursorRef = useRef(0);
   const lastSilentEpochRef = useRef(0);
   const runIdRef = useRef<string | null>(null);
-  const squadsMountedRef = useRef(false);
+  // REQ-0355: 'own' (legacy own-store visuals) | 'run:<id>' (roster seat
+  // canvases) -- keyed so an auto-restarted run's fresh snapshots re-mount.
+  const squadsMountKeyRef = useRef<string | null>(null);
   const rosterSetRef = useRef<string | null>(null);
   const [rewards, setRewards] = useState<ApiWarehouseItem[] | null>(null);
   const [content, setContent] = useState<ApiContentPayload | null>(null);
@@ -149,18 +154,54 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
   // REQ-0276 B3: keep the renderer's locale in sync (enemy nameJa + KO copy).
   useEffect(() => { if (mountedOnce) rendererRef.current?.setLocale(locale); }, [mountedOnce, locale]);
 
-  // Mount player squads once + push the enemy/player roster to the renderer.
+  // Mount player squads + push the enemy/player roster to the renderer.
+  // REQ-0355: seat visuals now come FIRST from the run roster's frozen per-seat
+  // canvases (server-served, so ALL FOUR seats render for every troop member --
+  // previously a seat held by another owner drew as an empty placeholder); the
+  // REQ-0337 own-store path stays as the fallback for legacy runs.
+  const rosterSlots = run?.roster?.slots;
+  const hasSeatCanvases = !!rosterSlots?.some((sl) => sl?.canvas && ((sl.canvas.bps?.length ?? 0) > 0 || (sl.canvas.pos?.length ?? 0) > 0));
   useEffect(() => {
-    if (!mountedOnce || !rendererRef.current || squadsMountedRef.current) return;
+    if (!mountedOnce || !rendererRef.current) return;
+    const mountKey = hasSeatCanvases ? `run:${run?.runId ?? ''}` : 'own';
+    if (squadsMountKeyRef.current === mountKey) return;
     const squadStore = snapshot.state?.presets;
     const activeCanvas = snapshot.state;
     const itemDefs = snapshot.gameData?.ITEMS;
-    if (!activeCanvas) return;
+    if (!hasSeatCanvases && !activeCanvas) return;
     const squads: MonitorSquadVisual[] = room.slots.map((slot, idx) => {
       const bps: MonitorSquadVisual['bps'] = [];
       const icons: MonitorSquadVisual['icons'] = [];
       let label = `U${idx + 1}`;
-      if (slot.squadIndex != null) {
+      // REQ-0337: `slot` is NULL for a co-op Troop's free seat (a solo room's
+      // unfilled slot is `{squadIndex:null}`), and a seat held by ANOTHER player
+      // names a squad on THEIR canvas which we do not have. isOwnSeat covers
+      // both: anything that is not our own seat draws as the bare `U{n}`
+      // placeholder with no BPs, which is the honest rendering -- we cannot know
+      // what their squad looks like. Reading slot.squadIndex unguarded threw a
+      // TypeError here the moment a Troop was watched (caught live 2026-07-29,
+      // contained by MonitorErrorBoundary but the whole Watch pane was dead).
+      // REQ-0355: the run's own frozen seat canvas draws ANY owner's seat.
+      const seatCanvas = rosterSlots?.[idx]?.canvas;
+      if (seatCanvas && ((seatCanvas.bps?.length ?? 0) > 0 || (seatCanvas.pos?.length ?? 0) > 0)) {
+        if (seatIsOwnedBy(slot, room.ownerId)) label = squadStore?.names[slot.squadIndex] ?? label;
+        else label = seatCanvas.bps?.[0]?.name ?? label;
+        for (const bp of seatCanvas.bps ?? []) {
+          const u = bp.unit ?? undefined;
+          const seatCell: [number, number] | undefined =
+            u && Array.isArray(u.off) && Number.isFinite(bp.origin[0] + u.off[0]) && Number.isFinite(bp.origin[1] + u.off[1])
+              ? [bp.origin[0] + u.off[0], bp.origin[1] + u.off[1]]
+              : undefined;
+          bps.push({ color: bp.color ?? '#8a8a8a', cells: bp.shape.map(([dr, dc]) => [bp.origin[0] + dr, bp.origin[1] + dc]), unitId: u?.id, seatCell });
+        }
+        if (itemDefs) {
+          for (const po of seatCanvas.pos ?? []) {
+            if (!Array.isArray(po.cell)) continue;
+            const def = itemDefs[po.id]; if (!def) continue;
+            icons.push({ textureKey: def.icon, shape: def.shape, rot: po.rot, origin: po.cell, itemId: po.id });
+          }
+        }
+      } else if (seatIsOwnedBy(slot, room.ownerId)) {
         const squadCanvas = squadStore && slot.squadIndex === squadStore.active ? activeCanvas : squadStore?.store[slot.squadIndex] ?? null;
         if (squadCanvas?.bps?.length) {
           label = squadStore?.names[slot.squadIndex] ?? label;
@@ -198,7 +239,7 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
         const formation = payload.formations.find((f) => f.id === room.formationId);
         const withRealBoxes = squads.map((u) => ({ ...u, box: formation?.canvases[`unit${u.slotIndex + 1}`] ?? u.box }));
         rendererRef.current?.mountSquads(withRealBoxes);
-        squadsMountedRef.current = true;
+        squadsMountKeyRef.current = mountKey;
         interface MonitorDebugEntry {
           squads: () => MonitorSquadVisual[];
           enemyBounds: () => Array<{ x: number; labelWidth: number; labelText: string }>;
@@ -208,6 +249,8 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
           chimeStats: () => ChimeStats | null;
           enemyActors: () => unknown[];
           setTestRoster: (roster: import('../api').ApiRunRoster) => number;
+          ramps: () => { pt: number; cooldowns: Array<{ key: string; frac: number }>; charges: Array<{ key: string; value: number; capacity: number; frac: number }>; badges: string[] };
+          setPlayhead: (ms: number) => void;
         }
         const debugWin = window as unknown as { __monitorDebug?: Record<string, MonitorDebugEntry> };
         if (!debugWin.__monitorDebug) debugWin.__monitorDebug = {};
@@ -227,13 +270,18 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
             rendererRef.current?.setRoster(roster);
             return rendererRef.current?.getBuiltEnemyCount() ?? -1;
           },
+          // REQ-0292 P2: pt-clock ramp seam -- setPlayhead drives the clock, ramps()
+          // reports cooldown/charge fractions + tracked skill-badge keys at that pt.
+          ramps: () => rendererRef.current?.getRampsSnapshot() ?? { pt: 0, cooldowns: [], charges: [], badges: [] },
+          setPlayhead: (ms: number) => rendererRef.current?.setPlayhead(ms),
         };
       } catch (e) {
         // eslint-disable-next-line no-console
         console.warn('[backpack_ragnarok] Monitor: squad/formation mount failed', e);
       }
     })();
-  }, [mountedOnce, room.slots, room.formationId, snapshot.state, snapshot.gameData, room.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mountedOnce, hasSeatCanvases, run?.runId, room.slots, room.formationId, room.ownerId, snapshot.state, snapshot.gameData, room.id]);
 
   // Push roster (M1) to the renderer once available (drives stage plates/HP ticks).
   useEffect(() => {
@@ -264,6 +312,13 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
     else if (idx > cursorRef.current) r.applyEvents(run.events.slice(cursorRef.current, idx), { silent: silentBatch });
     cursorRef.current = idx;
   }, [releasedIdx, silentEpoch, run]);
+
+  // REQ-0292 P2: push the presentation-time playhead + pacingVersion into the
+  // renderer so its persistent ramp ticker evaluates the cooldown/charge sweeps
+  // against the SAME pt clock the release cursor uses. playheadMs updates every
+  // rAF; setPlayhead is a cheap field set (the Pixi ticker does the drawing).
+  useEffect(() => { rendererRef.current?.setPlayhead(playheadMs); }, [playheadMs]);
+  useEffect(() => { rendererRef.current?.setPacingVersion(run?.pacingVersion ?? 1); }, [run?.pacingVersion, mountedOnce]);
 
   // Rewards fetch once settled + non-wipe.
   useEffect(() => {
@@ -320,16 +375,38 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
     for (const en of run?.roster?.enemies ?? []) m.set(en.id, locale === 'ja' ? en.nameJa : en.name);
     return m;
   }, [run?.roster, locale]);
+  // REQ-0355: BP display names from the run's seat canvases (the feed used to
+  // print raw content ids like "bp_starter_guard" for every player-side line).
+  const bpNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const sl of run?.roster?.slots ?? []) for (const bp of sl.canvas?.bps ?? []) if (bp.name && !m.has(bp.id)) m.set(bp.id, bp.name);
+    return m;
+  }, [run?.roster]);
   const feedRows = useMemo<FeedRow[]>(() => {
+    // One resolver for every dst the feed sees: an enemy instance label
+    // ("frost_giant#1") localizes its base name and keeps the instance tag;
+    // a player BP content id resolves through the seat canvases.
+    const displayName = (id: string): string => {
+      const hash = id.indexOf('#');
+      const base = hash >= 0 ? id.slice(0, hash) : id;
+      const en = enemyNameById.get(id) ?? enemyNameById.get(base);
+      if (en) return hash >= 0 ? `${en}${id.slice(hash)}` : en;
+      return bpNameById.get(id) ?? id;
+    };
     const rows: FeedRow[] = [];
     for (let i = 0; i < released.length; i++) {
-      const fr = feedRow(locale, released[i], i, { dungeonName, enemyName: (id) => enemyNameById.get(id) ?? id });
+      const fr = feedRow(locale, released[i], i, { dungeonName, enemyName: displayName });
       if (fr) rows.push(fr);
     }
     return rows;
-  }, [released, locale, dungeonName, enemyNameById]);
+  }, [released, locale, dungeonName, enemyNameById, bpNameById]);
   const rosterState = useMemo(() => reduceRunRoster(run?.roster ?? null, released, locale === 'ja' ? 'ja' : 'en'), [run?.roster, released, locale]);
-  const squadNames = useMemo(() => room.slots.map((slot) => (slot.squadIndex != null ? snapshot.state?.presets?.names[slot.squadIndex] ?? null : null)), [room.slots, snapshot.state]);
+  // REQ-0337: null-safe + owner-scoped (see the squad-visual mount above and
+  // schedule/seats.ts). This useMemo was the exact frame in the live TypeError.
+  const squadNames = useMemo(() => room.slots.map((slot, idx) => {
+    if (seatIsOwnedBy(slot, room.ownerId)) return snapshot.state?.presets?.names[slot.squadIndex] ?? null;
+    return run?.roster?.slots?.[idx]?.canvas?.bps?.[0]?.name ?? null; // REQ-0355: another owner's seat -- best available label
+  }), [room.slots, room.ownerId, snapshot.state, run?.roster]);
   const railNodes = useMemo<RailNode[]>(() => {
     if (!run) return [];
     return railNodesFrom(run.events, locale).map((n) => ({ ...n, passed: n.ptMs <= playheadMs }));
@@ -348,7 +425,7 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
       <i className="k tl" /><i className="k tr" /><i className="k br" /><i className="k bl" />
 
       <MonitorHeader
-        locale={locale} dungeonId={room.dungeonId} dungeonName={dungeonName} level={room.level}
+        locale={locale} dungeonId={room.dungeonId} dungeonName={dungeonName} theme={dungeonTheme} level={room.level}
         live={isLive} returnAt={returnAt} seed={isAdmin ? room.genSeed ?? null : null}
         isAdmin={isAdmin} onCopyJsonl={onCopyJsonl} copyStatus={copyStatus}
       />

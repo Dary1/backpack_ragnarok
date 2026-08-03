@@ -2,9 +2,10 @@
 // sim/lib/packs.cjs -- REQ-0047 (d): enemy pack compilation (enemy def schema v2).
 // Moved VERBATIM from sim/combat.cjs. Determinism contract: goldens must
 // stay byte-identical (sim/tests/goldens.cjs).
-const { freshStatusBag, foldBattleStartStatusVerbs } = require('./status.cjs');
+const { freshStatusBag, foldBattleStartStatusVerbs, applyStatus } = require('./status.cjs'); // REQ-0299: applyStatus for grant_self_status
 const { deepCopy } = require('./core.cjs'); // REQ-0121
 const { foldFlatBonusInPlace } = require('./hpbelow.cjs'); // REQ-0121
+const { scaleEnemyHpRange, scaleSkillsForLevel } = require('./level_scale.cjs'); // REQ-0293
 // REQ-0184: the A1 layout grammar. sim/ and server/ both import this from
 // shared/ so there is exactly ONE definition of where a member stands --
 // the placer and the machine check can never disagree about a cell.
@@ -53,7 +54,12 @@ function packMembers(packDef, enemyDefsById, enemyFieldBox) {
   });
 }
 
-function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyFieldBox) {
+function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyFieldBox, opts) {
+  // REQ-0293: optional enemy level scaling. opts = { scaling, effLevel }. When
+  // opts is absent or opts.scaling is falsy the behaviour is BYTE-IDENTICAL to
+  // before this REQ (no field is touched, the RNG stream order is unchanged).
+  const scaling = opts && opts.scaling;
+  const effLevel = (opts && opts.effLevel) || 0;
   // enemyFieldBox: {rowMin,colMin,rowMax,colMax} region of the enemy field
   // this pack occupies. REQ-0184 corrected the caller to hand over the
   // PLACEABLE area (B2:Y17) rather than the whole A1:Z18 plane -- see
@@ -64,7 +70,20 @@ function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyField
   const members = packMembers(packDef, enemyDefsById, enemyFieldBox);
   const enemies = members.map((mem, idx) => {
     const eid = mem.eid, def = mem.def, fieldCells = mem.fieldCells;
-    const hpMax = Math.round(hpStream.range(def.hp[0], def.hp[1]));
+    // REQ-0293: roll HP over the SCALED range. At neutral scaleEnemyHpRange
+    // returns def.hp itself (same values), so the stream draw is identical.
+    const scaledHp = scaling ? scaleEnemyHpRange(def.hp, scaling, effLevel) : def.hp;
+    const [hpLo, hpHi] = scaledHp;
+    let hpMax = Math.round(hpStream.range(hpLo, hpHi));
+    // REQ-0297 scaling-care (a): the correction is EXPONENTIAL (g^effLevel), so a
+    // scaled hp is mathematically always > 0 -- integer ROUNDING is the only way
+    // it reaches literal 0. When scaling actually moved the range DOWN far enough
+    // that a positive hp rounds to 0, floor it at 1 (a tiny positive minimum) as a
+    // LAST RESORT so a scaled enemy never spawns dead. Gated on scaleEnemyHpRange
+    // having returned a NEW array (factor !== 1): the factor-1 / no-scaling path
+    // keeps scaledHp === def.hp, so this branch never runs there and the roll is
+    // BYTE-IDENTICAL to today.
+    if (scaledHp !== def.hp && hpMax < 1 && (hpLo > 0 || hpHi > 0)) hpMax = 1;
     const fp = def.footprint || [1, 1];
     const fh = fp[0], fw = fp[1];
     let skills = (def.skills || []).map(sid => {
@@ -76,6 +95,11 @@ function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyField
     // label the ray with its skills.json def id WITHOUT copying the shared skill
     // objects (REQ-0121's shared-ref invariant, asserted in sim/tests/run.cjs).
     const skillIds = (def.skills || []).slice();
+    // REQ-0293: scale this instance skills BEFORE the buff_self deep-copy. At
+    // neutral (no profile / identity / effLevel 0) scaleSkillsForLevel returns
+    // the SAME shared refs, so the hasBuffSelf path and the goldens below are
+    // untouched; a non-identity profile hands back a fresh deep copy.
+    if (scaling) skills = scaleSkillsForLevel(skills, skillIds, scaling, effLevel);
     // REQ-0121: any buff_self on this enemy (battle_start fold now, or
     // on_hp_below fold at crossing time) mutates strike/multi_strike
     // n-ranges of THIS INSTANCE's skills -- deep-copy the whole skills
@@ -87,7 +111,7 @@ function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyField
     // this enemy's own skills list (an EnemySkill's own innate passive,
     // e.g. bone-and-sinew undead immune to Poison).
     const statusBag = freshStatusBag();
-    const { immuneSet, bonusVsStatus, damageReductionRanges, buffSelfRanges } = foldBattleStartStatusVerbs(skills);
+    const { immuneSet, bonusVsStatus, damageReductionRanges, buffSelfRanges, selfStatuses } = foldBattleStartStatusVerbs(skills);
     statusBag._immune = immuneSet;
     // REQ-0121: resolve battle_start-folded scalars via a per-instance
     // named stream (named streams are independent -- adding these pulls
@@ -102,6 +126,13 @@ function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyField
       buffSelfFlat += rng.stream('pack/fold/' + eid + '#' + idx).range(n[0], n[1]);
     }
     if (buffSelfFlat) foldFlatBonusInPlace(skills, buffSelfFlat);
+    // REQ-0299: grant_self_status -- fold battle_start self-buff statuses
+    // (Spikes/Regen) onto THIS instance's own statusBag. A named stream keeps
+    // content WITHOUT the verb byte-identical; stacks are integers.
+    for (const ss of (selfStatuses || [])) {
+      const rolled = Math.round(rng.stream('pack/selfstatus/' + eid + '#' + idx).range(ss.n[0], ss.n[1]));
+      if (rolled > 0) applyStatus(statusBag, ss.status, rolled);
+    }
     return {
       id: eid + '#' + idx, defId: eid, name: def.name, hp: hpMax, hpMax,
       footprint: [fh, fw], fieldCells, skills, skillIds, statusBag, // REQ-0280: skillIds parallels skills

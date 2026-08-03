@@ -4,7 +4,13 @@
 // the REQ-0037 X-Auth-Token path + dev_mode fallback), and this module also
 // owns POST /api/auth/link -- attaching a verified Supabase identity to the
 // caller's EXISTING invite/guest player WITHOUT losing their profile.
+// REQ-0349: GET /api/me resolves through the kit. POST /api/auth/link keeps
+// admin.resolveAuth(xToken) DELIBERATELY -- a link must prove ownership of the
+// EXISTING player via the X-Auth-Token specifically, so the kit's JWT-first
+// resolveCallerOr401 would be the wrong resolver there. That asymmetry is the
+// point of the endpoint, not an oversight.
 const { sendJSON, getAuthToken, getBearerToken } = require('../lib/http_util.cjs');
+const { resolveCallerOr401 } = require('../lib/route_kit.cjs');
 const admin = require('../admin.cjs');
 const players = require('../players.cjs');
 const supabaseAuth = require('../lib/supabase_auth.cjs');
@@ -12,12 +18,9 @@ const supabaseAuth = require('../lib/supabase_auth.cjs');
 function tryMeRoute(req, res, url, p) {
   if (p === '/api/me' && req.method === 'GET') {
     try {
-      const resolved = admin.resolveAuthFromRequest(req);
-      if (!resolved.ok) {
-        sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason });
-        return;
-      }
-      const player = resolved.player;
+      const ctx = resolveCallerOr401(req, res);
+      if (!ctx) return;
+      const player = ctx.player;
       sendJSON(res, 200, { playerId: player.playerId, name: player.name, roles: player.roles });
     } catch (e) {
       sendJSON(res, 500, { ok: false, error: 'me read failed: ' + e.message });

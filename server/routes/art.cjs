@@ -7,6 +7,20 @@
 // async: on a match we kick off the async work and return true immediately
 // so the router stops dispatching, while the response is written later.
 const { sendJSON, readBody, getAuthToken } = require('../lib/http_util.cjs');
+// REQ-0349: this family takes ONLY the kit's 405 guard. Deliberately not the
+// rest, and the reason is not laziness:
+//   * its body reader (readJsonBody, below) is PROMISE-based because every
+//     handler here is async/await, not a callback -- withJsonBody's shape does
+//     not fit without changing every handler;
+//   * its httpForCode table is a strict SUPERSET of the kit's (DUPLICATE,
+//     DUPLICATE_SEED, ADOPTED_UNDELETABLE, NO_ADOPTED, NOT_OK, BAD_SHAPE,
+//     BAD_JSON), so adopting sendDomainError would either drop codes or push
+//     art-registry vocabulary into a module every family shares;
+//   * its auth is an item_admin ROLE gate (requireAdmin), not caller resolution.
+// This file and routes/content.cjs are also the two route modules with NO
+// service layer (30 and 27 direct storage.* calls). That, not the preamble, is
+// their real problem, and it is its own REQ -- see REQ-0349 section 5 (Out).
+const { methodGuard } = require('../lib/route_kit.cjs');
 const admin = require('../admin.cjs');
 const storage = require('../storage.cjs');
 const jobs = require('../services/art_jobs.cjs');
@@ -216,6 +230,9 @@ function defaultsForKind(kind) {
   // the role-specific style (ray = fill grammar, hit = burst) is applied by
   // tools/art_job.py compose_prompt, and the wording is a Fable-pass decision.
   if (kind === 'vfx') return { prompt_template: '{main_object}' };
+  // REQ-0292: skill_icon prompt is a passthrough at the template level; the final
+  // icon prompt-template ruling is P3's (Fable). The operator/P3 writes the wording.
+  if (kind === 'skill_icon') return { prompt_template: '{main_object}' };
   return { prompt_template: '' };
 }
 
@@ -587,7 +604,7 @@ function tryArtRoutes(req, res, url, p) {
     if (!requireAdmin(req, res)) return true;
     if (req.method === 'GET') { run(res, hList(req, res)); return true; }
     if (req.method === 'POST') { run(res, hCreate(req, res)); return true; }
-    sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return true;
+    methodGuard(req, res, ['GET', 'POST']); return true;
   }
   if (RE_DEV_BUMP.test(p) && req.method === 'POST') {
     if (!isDevFallback(req) || !devClearAllowed()) { sendJSON(res, 403, { ok: false, error: 'forbidden: dev-only hook (needs dev_mode fallback + ALLOW_DEV_CLEAR=1)' }); return true; }
@@ -623,7 +640,7 @@ function tryArtRoutes(req, res, url, p) {
     if (!requireAdmin(req, res)) return true;
     if (req.method === 'GET') { run(res, hGet(req, res, decodeURIComponent(m[1]))); return true; }
     if (req.method === 'PATCH') { run(res, hPatch(req, res, decodeURIComponent(m[1]))); return true; }
-    sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return true;
+    methodGuard(req, res, ['GET', 'PATCH']); return true;
   }
   // public serving (no auth)
   if ((m = RE_PUB_META.exec(p)) && req.method === 'GET') { run(res, hServeMeta(req, res, decodeURIComponent(m[1]))); return true; }

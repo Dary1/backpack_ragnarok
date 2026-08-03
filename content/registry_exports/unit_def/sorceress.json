@@ -1,0 +1,100 @@
+{
+ "system_name": "sorceress",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "cdae11c352ec9ccb0495d997dcd653ba175649ecde0f5d54b50d2f03327633cf",
+ "provenance": {
+  "model": "claude-opus-4-8",
+  "params": {},
+  "prompt": "units003 kit design S1 (REQ-0201); reviewer-amended (REQ-0201 adoption notes)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:12:21.370Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "sorceress",
+  "i18n": {
+   "ja": {
+    "name": "炎術師"
+   }
+  },
+  "icon": "units003_sorceress",
+  "name": "Sorceress",
+  "charge": {
+   "gain": "damage",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       18,
+       28
+      ],
+      "t": "multi_strike",
+      "hits": [
+       2,
+       3
+      ]
+     },
+     "target": "self"
+    },
+    {
+     "verb": {
+      "n": [
+       3,
+       4
+      ],
+      "t": "add_on_hit_status",
+      "status": "Burn"
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "on_damage_dealt"
+   },
+   "capacity": [
+    60,
+    90
+   ]
+  },
+  "flavor": "Embers become an inferno.",
+  "rarity": "Rare",
+  "flavor_ja": "残り火が業火となる。",
+  "connection_shape": "queen"
+ }
+}

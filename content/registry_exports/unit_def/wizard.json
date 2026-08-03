@@ -1,0 +1,89 @@
+{
+ "system_name": "wizard",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "3805fe1ce4407234f001d6e5e2e0f55e8dd3bfffb2d8887d284c3e7ffa3b4738",
+ "provenance": {
+  "model": "claude-opus-4-8",
+  "params": {},
+  "prompt": "units003 kit design S1 (REQ-0201); reviewer-amended (REQ-0201 adoption notes)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:12:21.662Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "wizard",
+  "i18n": {
+   "ja": {
+    "name": "魔法使い"
+   }
+  },
+  "icon": "units003_wizard",
+  "name": "Wizard",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       2,
+       3
+      ],
+      "t": "advance_cooldown"
+     },
+     "target": "bp_connected_max_cooldown_item"
+    }
+   ],
+   "trigger": {
+    "s": [
+     4,
+     5
+    ],
+    "t": "every_secs"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Time bends around the old man's staff.",
+  "rarity": "Rare",
+  "flavor_ja": "老翁の杖の周りで時が歪む。",
+  "connection_shape": "bishop"
+ }
+}

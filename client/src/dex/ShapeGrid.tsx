@@ -37,7 +37,7 @@
 // of pixel-sampling the canvas/image.
 //
 // CRITICAL: shape/port cells are [row, col], NOT [col, row] -- this is a
-// hard project convention (see mock-src/engine.js, e.g. "coordinates are
+// hard project convention (see shared/engine.js, e.g. "coordinates are
 // [row,col], SAME convention" at engine.js:447, cited in
 // docs/REQ/REQ-0035-item-encyclopedia.md). Every cell below is read as
 // cell[0]=row, cell[1]=col and NEVER transposed.

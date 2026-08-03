@@ -16,20 +16,36 @@
       },
       "members": [
         {
-          "enemy": "alpha_werewolf",
-          "at": "B6"
+          "enemy": "dire_wolf",
+          "at": "B2"
         },
         {
           "enemy": "dire_wolf",
           "at": "G2"
         },
         {
+          "enemy": "alpha_werewolf",
+          "at": "L2"
+        },
+        {
+          "enemy": "alpha_werewolf",
+          "at": "P2"
+        },
+        {
           "enemy": "boar",
-          "at": "G12"
+          "at": "T2"
+        },
+        {
+          "enemy": "boar",
+          "at": "T5"
         },
         {
           "enemy": "giant_bat",
-          "at": "M7"
+          "at": "B6"
+        },
+        {
+          "enemy": "giant_bat",
+          "at": "F6"
         }
       ],
       "note": "Lifesteal tempo: fast melee (alpha_werewolf rending/feral, dire_wolf, boar tusk) sustains through damage via feral_bite while the giant bat's blood_drain feeds from the flank."
@@ -48,19 +64,35 @@
       "members": [
         {
           "enemy": "basilisk",
-          "at": "B7"
+          "at": "B2"
         },
         {
-          "enemy": "giant_spider",
-          "at": "I3"
-        },
-        {
-          "enemy": "giant_scorpion",
-          "at": "I12"
+          "enemy": "basilisk",
+          "at": "H2"
         },
         {
           "enemy": "giant_snake",
-          "at": "N7"
+          "at": "N2"
+        },
+        {
+          "enemy": "giant_spider",
+          "at": "R2"
+        },
+        {
+          "enemy": "giant_spider",
+          "at": "V2"
+        },
+        {
+          "enemy": "giant_spider",
+          "at": "R5"
+        },
+        {
+          "enemy": "giant_scorpion",
+          "at": "V5"
+        },
+        {
+          "enemy": "giant_scorpion",
+          "at": "B6"
         }
       ],
       "note": "Poison engine: giant_spider (venom_bite) and giant_snake (venom_spit) stack Poison, then giant_scorpion (stinger) and basilisk (toxic_maw) cash it in via bonus_vs_status x1.5."

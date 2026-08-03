@@ -1,5 +1,8 @@
 # E2E harness (hermetic) — usage since REQ-0214 / REQ-0217
 
+Premise: the post-REQ-0217 hermetic harness is current.
+Expires-when: superseded by a harness rewrite.
+
 2026-07-17. Supersedes every older description of the e2e rig.
 
 ## Principles
@@ -18,20 +21,23 @@
 Preferred — SCOPED run (shares nothing box-global; safe to run while other
 sessions work; skips the box lock):
 
-    E2E_FLEET_ROOT=/tmp/bp_e2e_workers_<reqNNNN> \
-    E2E_PROXY_PORT=<NNNN>2 E2E_FLEET_BASE_PORT=<NNNN>4 \
-    PLAYWRIGHT_BASE_URL=http://127.0.0.1:<NNNN>2 \
+    source tools/e2e_ports.sh          # -> PROXYPORT, E2E_PORT_BASE, ... (a free decade)
+    E2E_FLEET_ROOT=/tmp/bp_e2e_workers_req0NNN \
+    E2E_PROXY_PORT=$PROXYPORT E2E_FLEET_BASE_PORT=$((E2E_PORT_BASE + 4)) \
+    PLAYWRIGHT_BASE_URL=http://127.0.0.1:$PROXYPORT \
     E2E_PARALLEL=4 pnpm exec playwright test        # from client/
 
-Ports follow the REQ-decade rule (tools/e2e_ports.sh): index 2 = proxy,
-indexes 4..(4+workers-1) = fleet apis, so E2E_PARALLEL<=6 fits a decade.
+Ports come from the rental port desk (tools/port_desk.sh) via tools/e2e_ports.sh
+(REQ-0323): sourcing the helper leases a free block of 10 consecutive ports, so
+index 2 = proxy and indexes 4..(4+workers-1) = fleet apis, and E2E_PARALLEL<=6
+fits the block. Get them by sourcing the helper -- never hand-type a port.
 
 Legacy — `pnpm run e2e` (tools/e2e_run.sh): shared proxy 8803 + fleet
 8810+, serialized by the box lock. Works, but queues against every other
 session; prefer scoped runs.
 
 From a `req-NNNN-*` worktree, `tools/ci.sh` runs its [7/7] e2e stage SCOPED
-AUTOMATICALLY (decade derived from the branch name; REQ-0234). An explicit
+AUTOMATICALLY (ports leased from the desk; REQ-0234/REQ-0323). An explicit
 PLAYWRIGHT_BASE_URL, or the main checkout, keeps the legacy path.
 
 Provisioning (REQ-0234): a fresh worktree needs `pnpm install
@@ -55,25 +61,21 @@ timeout).
    for crash forensics — the default root archives to
    /tmp/bp_e2e_workers_logs_last).
 
-## The freeze (temporary)
-The pre-REQ-0217 harness backed up/cleared/restored LIVE state and wrote
-the LIVE dev profile every run (2026-07-17 incident). Until every worktree
-is rebased onto the merged harness, a daemon holds the e2e box lock so old
-runs cannot start: see ~/.cache/backpack/E2E_FREEZE_README.txt. Scoped
-hermetic runs are unaffected. Lift the freeze by killing the flock/sleep
-pair once old worktrees are gone.
+## The freeze -- LIFTED (REQ-0236; doc truth-up 2026-08-02, REQ-0359)
 
-Since REQ-0234 the freeze pins ONLY the legacy shared-port path: ci.sh's
-[7/7] auto-scopes from a req- worktree, and the admin + registry harnesses
-take per-REQ locks (~/.cache/backpack/e2e.<req>.lock) instead of the box
-lock — rebased trees run the full gate chain without ever touching the
-frozen lock. tools/e2e_run.sh also names the lock holder (and points at the
-freeze README) IMMEDIATELY instead of stalling silently for E2E_LOCK_WAIT.
+The 2026-07-17 freeze (reboot-persistent `backpack-e2e-freeze` user unit holding
+the e2e box lock so pre-REQ-0217 harnesses could not run) was lifted under
+REQ-0236 after the worktree sweep (104 pre-harness trees removed, 2026-07-27).
+Verified 2026-08-02: unit inactive AND disabled; all 12 `req-*` worktrees contain
+the merged hermetic harness (ancestor check vs `35a8edce`);
+`~/.cache/backpack/e2e.box.lock` remains as an inert 0-byte file (advisory lock,
+no holder). Accepted residual: `monsters-002-style-bakeoff` (HANDS-OFF art WIP)
+predates the harness and is never used for e2e.
 
 ## Rules that stay
 - Box lock (REQ-0117) still guards the LEGACY shared-port path.
-- Port decades (REQ-0172) unchanged; scoped runs live inside their REQ's
-  own decade.
+- Port decades (REQ-0172), rebased onto the 5000 base by REQ-0321 to match
+  PROJECT.md; scoped runs live inside their REQ's own decade.
 - Admin harnesses (artadmin/artinspect/contentadmin) keep their own
   isolated HOME-remap rigs (REQ-0159); since REQ-0234 they drive the
   post-0217 proxy via E2E_FLEET_BASE_PORT=<their api port> (the proxy's old

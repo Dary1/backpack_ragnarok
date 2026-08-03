@@ -212,19 +212,25 @@ export function flash(self: BoardRenderer, cells: Cell[] | undefined, color: str
       const timer = setTimeout(() => {
         rect.destroy();
         self.flashTimers.delete(timer);
+        self.requestRender(); // REQ-0345: the outline is gone -- repaint without it
       }, FLASH_MS);
       self.flashTimers.add(timer);
     }
+    // REQ-0345: this function is one of the three that made the always-on
+    // Ticker load-bearing -- it mutates the scene graph and has never called
+    // render(). With the Ticker off it must paint itself, at both ends of the
+    // 350ms window: once to show the outline, once when the timer removes it.
+    self.requestRender();
   }
 
   /** REQ-0041 -- warehouse-claim placement pulse ("ピコンピコン"): a
    * SUCCESS-colored (green) blinking outline over `cells` for ~2 seconds
    * total, reusing this class's EXISTING flash-overlay mechanism
-   * (gTarget layer + self.flashTimers bookkeeping, same as the private
-   * flash() reject-feedback above) rather than inventing a new Pixi
-   * overlay approach -- per the task brief's own instruction to reuse
-   * an existing highlight/flash mechanism if the renderer already has
-   * one. PUBLIC (unlike flash()) so WarehouseTab.tsx's claim-flow code
+   * (an overlay Container + self.flashTimers bookkeeping, same as the
+   * private flash() reject-feedback above) rather than inventing a new
+   * Pixi overlay approach -- per the task brief's own instruction to
+   * reuse an existing highlight/flash mechanism if the renderer already
+   * has one. PUBLIC (unlike flash()) so WarehouseTab.tsx's claim-flow code
    * can call it directly on the renderer instance it already holds a
    * ref to, immediately after committing the engine placement mutation
    * (before/alongside notifyStateChanged()). Composed of repeated
@@ -232,6 +238,27 @@ export function flash(self: BoardRenderer, cells: Cell[] | undefined, color: str
    * item" cue, visually different from the reject-flash's single red
    * outline. Safe to call on a disposed renderer (no-op) or with no
    * cells (no-op either way).
+   *
+   * REQ-0346 -- WHY THIS DRAWS INTO gPulse AND NOT gTarget.
+   * Until REQ-0346 these rects went into gTarget, and this pulse therefore
+   * never reached the screen, in its entire life. Both call sites call
+   * notifyStateChanged() on the very next line; that re-enters
+   * BoardRenderer.render(state), whose first act is gTarget.removeChildren().
+   * The rects were detached before any frame showed them and the timers below
+   * blinked an orphan. REQ-0345 measured it through the real claim flow -- 0
+   * pixels of #59d68a across the whole 2s window, identically with the old
+   * Ticker running and without it -- and proved the mechanism below is sound
+   * by delaying that one call 600ms in a throwaway build, which made every
+   * blink paint (596 px, on the exact 330ms rhythm, no Ticker). The fault was
+   * purely ORDERING. gPulse is a layer render(state) never clears (its field
+   * comment in BoardRenderer.ts carries the full reasoning); it fixes the
+   * ordering without making a product callback's position load-bearing for a
+   * visual, and leaves render(state) the single authority over gTarget. Any
+   * future overlay that must survive a state-driven repaint belongs there too;
+   * anything that is a pure function of the state does not.
+   * Pixel-asserted by client/e2e/claim-pulse.spec.ts through the real
+   * warehouse-claim path, because a DOM-level assertion passes on this
+   * function even when it draws nothing -- which is how this went unnoticed.
    */
 export function pulseCellsSuccess(self: BoardRenderer, cells: Cell[] | undefined): void {
     if (self.disposed) return;
@@ -241,7 +268,7 @@ export function pulseCellsSuccess(self: BoardRenderer, cells: Cell[] | undefined
       rect.roundRect(PAD + (c - 1) * CELL + 2, PAD + (r - 1) * CELL + 2, CELL - 4, CELL - 4, 6);
       rect.stroke({ color: '#59d68a', width: 3 });
       rect.visible = true;
-      self.gTarget.addChild(rect);
+      self.gPulse.addChild(rect); // REQ-0346: NOT gTarget -- see this function's doc
       let elapsed = 0;
       let currentTimer: ReturnType<typeof setTimeout>;
       const blink = (): void => {
@@ -250,12 +277,19 @@ export function pulseCellsSuccess(self: BoardRenderer, cells: Cell[] | undefined
         rect.visible = !rect.visible;
         if (elapsed >= CLAIM_PULSE_TOTAL_MS) {
           rect.destroy();
+          self.requestRender(); // REQ-0345: last blink -- repaint without the outline
           return;
         }
         currentTimer = setTimeout(blink, CLAIM_PULSE_BLINK_MS);
         self.flashTimers.add(currentTimer);
+        // REQ-0345: one paint per blink. Same reason as flash() above -- the
+        // Ticker used to draw the on/off toggle and nothing else ever will.
+        // Exact and cheap: the blinks are already setTimeout-driven, so this
+        // costs ~6 frames across the whole 2s pulse instead of ~120.
+        self.requestRender();
       };
       currentTimer = setTimeout(blink, CLAIM_PULSE_BLINK_MS);
       self.flashTimers.add(currentTimer);
     }
+    self.requestRender(); // REQ-0345: show the outline's first (visible) state
   }

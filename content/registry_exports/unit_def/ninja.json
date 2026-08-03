@@ -1,0 +1,85 @@
+{
+ "system_name": "ninja",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "01755602bac2ec8081fab62bd825a860c06ec3438ff4174fbd9b3761b69318c3",
+ "provenance": {
+  "model": "claude-opus-4-8",
+  "params": {},
+  "prompt": "units003 kit design S1 (REQ-0201); reviewer-amended (REQ-0201 adoption notes)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:10:51.270Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "ninja",
+  "i18n": {
+   "ja": {
+    "name": "忍者"
+   }
+  },
+  "icon": "units003_ninja",
+  "name": "Ninja",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       15,
+       25
+      ],
+      "t": "strike"
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "on_connected_unit_bp_been_hit"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Harm my ward, meet the shadow.",
+  "rarity": "Uncommon",
+  "flavor_ja": "我が主を害さば、影が応える。",
+  "connection_shape": "lance"
+ }
+}

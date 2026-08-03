@@ -1,0 +1,90 @@
+{
+ "system_name": "ancient_grimoire",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "2d2bd171159568016c0361f53662248d82aca52d76e807e6bf5ec2eaabc36d02",
+ "provenance": {
+  "model": "claude-fable-5",
+  "params": {},
+  "prompt": "art-first unit design from adopted items005 artwork (user directive 2026-07-17)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": "2026-07",
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-17T04:34:26.542Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "ancient_grimoire",
+  "i18n": {
+   "ja": {
+    "name": "古代の魔導書"
+   }
+  },
+  "icon": "items005_ancient_grimoire",
+  "name": "Ancient Grimoire",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       1,
+       2
+      ],
+      "t": "grant_charge"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "s": [
+     5,
+     7
+    ],
+    "t": "every_secs"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "The pages turn themselves, hungry to be cast.",
+  "rarity": "Rare",
+  "name_ja": "古代の魔導書",
+  "flavor_ja": "頁はひとりでにめくれ、詠唱を待ちわびる。",
+  "connection_shape": "bishop"
+ }
+}

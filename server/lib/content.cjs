@@ -310,39 +310,57 @@ async function refreshArtUrls() {
 // that same core path (see monstersFromCore below), so neither kind ever joins
 // this module's own overlay; formations is not a registry kind.
 const REGISTRY_KIND_BY_SECTION = { items: 'po_def', sis: 'si_def', tms: 'tm_def', units: 'unit_def', packs: 'gacha_pack' };
-let registryData = { po_def: {}, si_def: {}, tm_def: {}, unit_def: {}, gacha_pack: {} }; // { kind -> { bare -> adopted DATA (raw entry) } }
-let registryAt = 0;
-const REGISTRY_TTL_MS = 15000; // mirror ART_URLS_TTL_MS
 
-async function computeRegistryData() {
-  const empty = { po_def: {}, si_def: {}, tm_def: {}, unit_def: {}, gacha_pack: {} };
-  if (process.env.STORAGE_BACKEND !== 'pg') return empty; // the content registry is pg-only
-  const payload = ensureFilePayload();
-  const storage = require('../storage.cjs');
-  return {
-    po_def: await storage.resolveAdoptedContentData('po_def', Object.keys(payload.items || {})),
-    si_def: await storage.resolveAdoptedContentData('si_def', Object.keys(payload.sis || {})),
-    tm_def: await storage.resolveAdoptedContentData('tm_def', Object.keys(payload.tms || {})),
-    unit_def: await storage.resolveAdoptedContentData('unit_def', Object.keys(payload.units || {})), // REQ-0176
-    gacha_pack: await storage.resolveAdoptedContentData('gacha_pack', Object.keys(payload.packs || {})), // REQ-0176
-  };
+// REQ-0348: the snapshot itself is NO LONGER MAINTAINED HERE. Until this REQ
+// this module privately owned registryData / registryAt / REGISTRY_TTL_MS /
+// computeRegistryData / refreshRegistryData / a boot setImmediate warm -- an
+// exact second copy of services/core.cjs's, under the same names, kept in step
+// by hand and cross-referenced in both files' comments ("mirror lib/content.cjs
+// REGISTRY_TTL_MS" there, and this module's own mirror notes here).
+//
+// The copies had already drifted, and the drift was a LIVE DEFECT. REQ-0211
+// added per-kind try/catch isolation to core's computeRegistryData -- so one
+// kind whose pg enum value is not yet migrated degrades ALONE -- and never
+// applied it here. This module's version awaited five kinds in a single object
+// literal, so one throwing kind rejected the whole promise and
+// refreshRegistryData's outer catch then served a stale (or empty) overlay for
+// ALL FIVE: the game path kept 9 of its 10 kinds while /api/content quietly lost
+// every one. Deleting this copy fixes that by construction rather than by
+// patching the same bug a second time.
+//
+// What is NOT shared is the overlay APPLICATION below. That genuinely differs:
+// core's base map itemDefsById also carries the pilot dungeon/items.json
+// entries, which /api/content must NOT serve, and the per-kind transforms
+// differ too (eff_en/eff_ja rendering here, skill_def's double reshape there).
+// So each consumer keeps its own applyRegistryOverlay over the one shared
+// snapshot. Sharing more than the snapshot would change the served payload.
+function coreRegistrySnapshot() {
+  // Lazy require for the same reason monstersFromCore / gimicsFromCore /
+  // unitSkinsFromCore below already use one: it keeps standalone tool imports of
+  // this module light. NOT a cycle-breaker -- services/core.cjs does not require
+  // this module at all (it requires lib/content_files.cjs, a different module).
+  return require('../services/core.cjs').getRegistrySnapshot();
 }
 
 /** Recompute the registry snapshot now. AWAITED by the adopt/edit/delete/patch
  * handlers so the next /api/content reflects the change (the wiring e2e
- * determinism contract); also fired opportunistically on a TTL by getContent.
- * Never throws: a registry read failure keeps the last snapshot (empty at
- * worst) so /api/content never 500s on a transient DB hiccup. */
-async function refreshRegistryData() {
-  try { registryData = await computeRegistryData(); registryAt = Date.now(); }
-  catch (e) { /* keep last snapshot; /api/content must not fail on a registry read */ }
-  return registryData;
+ * determinism contract). REQ-0348: delegates to the ONE snapshot owner. Kept
+ * exported because both server/tests/content_serving_test.cjs and
+ * routes/content.cjs's invalidateServedContent() name it. Never throws -- that
+ * is core's contract now, unchanged. */
+function refreshRegistryData() {
+  return require('../services/core.cjs').refreshRegistryData();
 }
 
 function registryIsEmpty(reg) {
   if (!reg) return true;
-  return (Object.keys(reg.po_def).length + Object.keys(reg.si_def).length + Object.keys(reg.tm_def).length
-    + Object.keys(reg.unit_def).length + Object.keys(reg.gacha_pack).length) === 0; // REQ-0176
+  // Only the FIVE kinds THIS module overlays. The shared snapshot carries ten,
+  // so a registry holding nothing but (say) an adopted `dungeon` must still
+  // short-circuit here and hand back the file payload object UNCHANGED -- that
+  // byte-parity shortcut is what keeps the files-backend e2e fleet a true
+  // no-regression baseline.
+  return (Object.keys(reg.po_def || {}).length + Object.keys(reg.si_def || {}).length + Object.keys(reg.tm_def || {}).length
+    + Object.keys(reg.unit_def || {}).length + Object.keys(reg.gacha_pack || {}).length) === 0; // REQ-0176
 }
 // A registry-sourced po/si entry is served through the EXACT transform the
 // file path applies (eff_en/eff_ja render + i18n back-compat), so a verbatim
@@ -363,7 +381,7 @@ function overlaySection(base, regEntries, transform) {
 }
 let servedCache = null; // { fp, reg, payload } -- identity-keyed on the file payload + registry snapshot
 function applyRegistryOverlay(filePayload) {
-  const reg = registryData;
+  const reg = coreRegistrySnapshot();
   if (registryIsEmpty(reg)) return filePayload; // byte-identical to the pre-REQ payload (files backend / empty registry)
   if (servedCache && servedCache.fp === filePayload && servedCache.reg === reg) return servedCache.payload;
   const payload = Object.assign({}, filePayload, {
@@ -392,7 +410,7 @@ function sourceAccountingFor(section, regEntries) {
 }
 function getContentSources() {
   const fp = ensureFilePayload();
-  const reg = registryData;
+  const reg = coreRegistrySnapshot();
   return {
     backend: process.env.STORAGE_BACKEND === 'pg' ? 'pg' : 'files',
     covered_kinds: REGISTRY_KIND_BY_SECTION,
@@ -413,7 +431,7 @@ function getContentSources() {
 // disagree with what the operator is looking at. Returns the kind or null.
 // po/si only, because applyAdminEdit only ever covered live_items/live_sis.
 function registryServedKindFor(id) {
-  const reg = registryData;
+  const reg = coreRegistrySnapshot();
   if (!reg || !id) return null;
   if (reg.po_def && Object.prototype.hasOwnProperty.call(reg.po_def, id)) return 'po_def';
   if (reg.si_def && Object.prototype.hasOwnProperty.call(reg.si_def, id)) return 'si_def';
@@ -542,7 +560,11 @@ function getContent() {
   // separately from GET /api/profile/:id/skins.
   payload.unit_skins = unitSkinsFromCore().unit_skins;
   if (Date.now() - artUrlsAt > ART_URLS_TTL_MS) { refreshArtUrls().catch(() => {}); }
-  if (Date.now() - registryAt > REGISTRY_TTL_MS) { refreshRegistryData().catch(() => {}); }
+  // REQ-0348: the registry's own TTL refresh moved INTO the snapshot owner
+  // (services/core.cjs getRegistrySnapshot), which every read above goes
+  // through -- one timer policy instead of two that had to be kept equal by
+  // hand. art_urls keeps its own; it is a different DB-derived cache that
+  // merely happened to share the interval.
   return payload;
 }
 
@@ -550,6 +572,10 @@ function getContent() {
 // content + art (never blocks require; a no-op under the files backend). The
 // registry warm also emits the single boot fallback-warn line.
 setImmediate(() => { refreshArtUrls().catch(() => {}); });
+// REQ-0348: this no longer warms a snapshot of its own -- refreshRegistryData()
+// now delegates to the single owner, which also warms itself at boot. The call
+// is kept because the DISPLAY-path fallback warn line hangs off it, and it must
+// run after a refresh so the counts it reports are real.
 setImmediate(() => { refreshRegistryData().then(logRegistryFallbackOnce).catch(() => {}); });
 
 // ---- HTTP helpers ----
@@ -563,5 +589,6 @@ module.exports = {
   unitSkinsFromCore, // REQ-0266: the /api/content display slice (derived from the authority path)
   artUrlNameBatch, // REQ-0266: the pure id batch behind art_urls (D-A wiring, inspectable DB-free)
   refreshRegistryData, getContentSources,
+  REGISTRY_KIND_BY_SECTION, // REQ-0352: the display kind list, for the kind-list agreement gate
   registryServedKindFor, // REQ-0182b
 };

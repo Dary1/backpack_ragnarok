@@ -7,11 +7,30 @@ const crypto = require('crypto');
 const storage = require('../storage.cjs');
 const combat = require('../../sim/combat.cjs');
 const dungeonRoll = require('../../sim/dungeon_roll.cjs'); // REQ-0185: the dive roller
-const { WAREHOUSE_TTL_MS, SQUAD_SLOTS, getScheduleContent, resolveRewardItemId, genId } = require('./core.cjs');
+const fs = require('fs'); // REQ-0293
+const path = require('path'); // REQ-0293
+const { loadProfile } = require('../../sim/lib/level_scale.cjs'); // REQ-0293: enemy level-scaling engine
+const { WAREHOUSE_TTL_MS, SQUAD_SLOTS, getScheduleContent, resolveRewardItemId, genId, normalizeSlot, slotIsFilled } = require('./core.cjs');
 const { squadCanvasOf, applyPendingSwapIfAny } = require('./squads.cjs');
 const { addToWarehouse } = require('./warehouse.cjs');
 const bioService = require('./bio.cjs'); // REQ-0060
+const notifications = require('./notifications.cjs'); // REQ-0327: troop-disband notification feed emission hook
 const pacing = require('./pacing.cjs'); // REQ-0240: presentation-pacing serving-layer decoration
+
+// REQ-0357: consecutive zero-progress wipes tolerated before the circuit
+// breaker refuses the next auto-start (troop -> disband, solo -> halt).
+const WIPE_STREAK_LIMIT = 3;
+
+// REQ-0293: the enemy level-scaling manifest, loaded ONCE at module load (the
+// same discipline as the sim content fixtures). v1 ships NEUTRAL -- every rule
+// is identity -- so this changes no output; it wires the effLevel-driven,
+// per-field scaling path for the gated follow-up that supplies real g values.
+// null on a missing/malformed file => no scaling (today behaviour), never a
+// startup crash.
+let SCALING_PROFILE = null;
+try {
+  SCALING_PROFILE = loadProfile(JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'content', 'scaling_profile.json'), 'utf8')));
+} catch (_e) { SCALING_PROFILE = null; }
 
 function computeDurationSecs(events) {
   let maxT = 0;
@@ -53,6 +72,51 @@ function buildSquadSnapshots(room, profileCanvas) {
   });
 }
 
+// REQ-0325: is this a co-op Troop (a visibility:'public' room)? A Troop runs
+// with one squad snapshot PER SEATED OWNER and fans rewards to EVERY seated
+// participant; a solo (visibility:'self') room keeps the byte-for-byte single-
+// canvas / single-participant path below.
+function isTroopRoom(room) {
+  return !!room && room.visibility === 'public';
+}
+
+// loadOwnerCanvas: a seat owner's CURRENT saved profile canvas -- the SOURCE of
+// a troop run's frozen snapshot, re-read at every departure so an auto-restarted
+// run re-snapshots each owner's live squads. Null if the owner has no saved
+// profile (defensive: such a seat is dropped from the run, not crashed on).
+function loadOwnerCanvas(ownerId) {
+  const doc = storage.readProfile(ownerId);
+  return doc ? doc.canvas : null;
+}
+
+// buildTroopSquadSnapshots: REQ-0325. One squad snapshot per room slot, each
+// drawn from THAT slot owner's own current canvas (the frozen-canvas rule for a
+// co-op run). Returns { squadSnapshots, participants }:
+//   squadSnapshots -- a 4-length array runDungeon compiles POSITIONALLY into the
+//     formation slots; an empty/vanished seat becomes an empty squad so the run
+//     never crashes (REQ-0325 ruling: an emptied seat REDUCES participants, it
+//     does not abort the dive).
+//   participants   -- only the owners of FILLED, resolvable seats (the reward
+//     fan-out recipients passed to runDungeon -> distributeRewardsUniform).
+function buildTroopSquadSnapshots(room) {
+  const EMPTY_SQUAD = { bps: [], pos: [], sis: [] };
+  const squadSnapshots = [];
+  const participants = [];
+  (room.slots || []).forEach((rawSlot) => {
+    const slot = normalizeSlot(rawSlot, room);
+    if (!slot) { squadSnapshots.push(EMPTY_SQUAD); return; }
+    const canvas = loadOwnerCanvas(slot.ownerId);
+    const squadCanvas = canvas ? squadCanvasOf(canvas, slot.squadIndex) : null;
+    if (!squadCanvas) { squadSnapshots.push(EMPTY_SQUAD); return; } // owner/squad vanished -> drop this seat
+    squadSnapshots.push(squadCanvas);
+    participants.push(slot.ownerId);
+  });
+  // Pad to the 4 formation slots runDungeon expects (a troop always carries 4
+  // slots; stay defensive against a shorter legacy slots array).
+  while (squadSnapshots.length < SQUAD_SLOTS.length) squadSnapshots.push(EMPTY_SQUAD);
+  return { squadSnapshots, participants };
+}
+
 // startRun: golden b/j. Compiles SQUAD COPIES (deep-copied snapshots,
 // taken NOW, at start -- sim/combat.cjs's own compileSquadSnapshot deep-
 // copies again internally too, so a squad edited by its owner mid-run
@@ -67,7 +131,18 @@ function startRun(room, profileCanvas) {
   if (room.status === 'canceled') {
     const err = new Error('room is canceled'); err.code = 'CONFLICT'; throw err;
   }
-  const squadSnapshots = buildSquadSnapshots(room, profileCanvas);
+  // REQ-0325: a co-op Troop snapshots one squad per SEATED OWNER (each frozen
+  // from that owner's OWN current canvas) and fans rewards to ALL participants;
+  // a solo room keeps the single-canvas / single-participant path unchanged.
+  let squadSnapshots, participants;
+  if (isTroopRoom(room)) {
+    const built = buildTroopSquadSnapshots(room);
+    squadSnapshots = built.squadSnapshots;
+    participants = built.participants;
+  } else {
+    squadSnapshots = buildSquadSnapshots(room, profileCanvas);
+    participants = [room.ownerId]; // solo scope: the room owner is the sole participant/reward recipient
+  }
   const { itemDefsById, enemyDefsById, skillDefsById, unitDefsById, connShapes, monsterPackDefsById, gimicDefsById, dungeonDefsById } = getScheduleContent(); // REQ-0184: monsterPackDefsById; REQ-0185: gimicDefsById + dungeonDefsById (the roller reads these)
   // REQ-0043: the dungeon def now comes from sim/dungen.cjs's generator,
   // keyed off the room's OWN dungeonType/level/genSeed (stored at
@@ -89,13 +164,23 @@ function startRun(room, profileCanvas) {
   if (!dungeonDefRef) { const e = new Error('no dungeon def available to roll for room ' + room.id); e.code = 'BAD_REQUEST'; throw e; }
   const genSeed = room.genSeed || crypto.randomBytes(16).toString('hex');
   const dungeonDef = dungeonRoll.rollDungeon(dungeonDefRef, room.level, genSeed, { gimicDefsById });
+  // REQ-0297: enemy STRENGTH now scales PER PACK. Each encounter derives its own
+  // effLevel = attackLv - pack.powerLevel (+ boss bonus) inside the sim, where the
+  // pack def is resolved -- so runs.cjs no longer computes one dungeon-wide
+  // effLevel. REQ-0293/0295's dungeon.baseDifficulty is RETIRED as a runtime input
+  // (dungeon.Lv / baseDifficulty remain AUTHORING anchors only). attackLv IS
+  // room.level, passed to runDungeon below as `level`; COUNTS still key off
+  // room.level via the rollDungeon call above. A pack with no powerLevel scales at
+  // effLevel 0 (factor 1) => byte-identical, so today's live packs (none carry a
+  // powerLevel yet -- the calibrated values ship via the Phase-3 surgical path)
+  // are unchanged.
   const seed = crypto.randomBytes(16).toString('hex'); // crypto random, stored (per task brief) -- combat RNG, INDEPENDENT of genSeed (layout vs combat outcome stay separate seeds, see sim/dungen.cjs's own header comment)
-  const participants = [room.ownerId]; // solo scope: the room owner is the sole participant/reward recipient
 
   const result = combat.runDungeon({
     masterSeed: seed, dungeonDef, squadSnapshots, itemDefsById, enemyDefsById, skillDefsById,
     monsterPackDefsById, // REQ-0184: resolves an encounter's packId -> its monster_pack def
     formationId: room.formationId, level: room.level, participants,
+    scaling: SCALING_PROFILE, // REQ-0297: profile only; per-pack effLevel derived in the sim from room.level (= attackLv) + each pack's powerLevel (+ boss bonus)
     // REQ-0170: without these the sim would see every BP as unlinked -- the board
     // would draw rays the battle did not honour.
     unitDefsById, connShapes,
@@ -113,7 +198,9 @@ function startRun(room, profileCanvas) {
   const paced = pacing.paceEvents(result.events);
   // REQ-0240 M1: the per-slot player BP pools (exact hpMax) + enemy hints the
   // dock/plates read; enemy side derived from the ROLLED def + content defs.
-  const roster = pacing.buildRoster(result, dungeonDef, { monsterPackDefsById, enemyDefsById });
+  // REQ-0355: squadSnapshots ride into the roster as lean per-seat canvases so
+  // EVERY viewer of this run (all troop members) can draw all four seats.
+  const roster = pacing.buildRoster(result, dungeonDef, { monsterPackDefsById, enemyDefsById }, squadSnapshots);
   // REQ-0276 A2(iii): attachment instance id -> source gimic content id, so
   // the serving layer (pacing.decorateVisible) can bind att_* events to a
   // gimic for art/badges. Derived from the ROLLED def (rollDungeon now keeps
@@ -161,6 +248,7 @@ function startRun(room, profileCanvas) {
     result: result.result, // 'victory' | 'wipe' | 'incomplete'
     finalProgressPct: result.finalProgressPct,
     rewards: result.rewards, // [{item, participant}] per distributeRewardsUniform
+    participants, // REQ-0325: the seated owners this run fanned rewards across (solo: [ownerId])
     lrdstReward: result.lrdstReward || 0, // REQ-0042: total LRDST rolled this run (0 on wipe)
     cooldownSecs: result.cooldownSecs,
     levelAfter: result.level, // wipe -> level-1 (floored); else unchanged
@@ -178,6 +266,20 @@ function startRun(room, profileCanvas) {
   room.updatedAt = startedAt;
   storage.writeRoom(room.id, room);
   return runDoc;
+}
+
+// pickLrdstOwner: REQ-0325 -- the single warehouse recipient of a run's
+// aggregate LRDST drop, drawn UNIFORMLY at random from the run's participants
+// (uniform single-winner, golden p), deterministic in the run's own stored
+// seed. A legacy run doc predating `participants` (or any solo run) falls back
+// to the sole room owner -- byte-for-byte the pre-REQ single-participant credit.
+function pickLrdstOwner(run, room) {
+  const participants = (Array.isArray(run.participants) && run.participants.length)
+    ? run.participants
+    : [room.ownerId];
+  if (participants.length === 1) return participants[0];
+  const draw = combat.makeRng(run.seed).stream('rewards/lrdst-owner').next();
+  return participants[Math.min(participants.length - 1, Math.floor(draw * participants.length))];
 }
 
 // settleRun: applies a completed (run-clock-elapsed) run's EFFECTS
@@ -222,14 +324,21 @@ function settleRun(room, run, profileCanvas, itemDefsById) {
     // entirely when lrdstReward is 0 (a wipe, or -- defensively -- an
     // older run doc from before this field existed).
     if (run.lrdstReward > 0) {
+      // REQ-0325: the aggregate LRDST drop ALSO follows the uniform rule -- a
+      // single winner drawn UNIFORMLY at random from the run's participants
+      // (golden p), deterministic in the run's OWN stored seed (the same seeded-
+      // rng discipline distributeRewardsUniform uses for the item rewards above).
+      // A solo run carries the sole owner as the only participant, so this stays
+      // byte-for-byte the pre-REQ single-row-to-owner behaviour.
+      const lrdstOwner = pickLrdstOwner(run, room);
       const itemUid = genId('wh');
       const doc = {
-        itemUid, playerId: room.ownerId, itemId: 'lrdst', qty: run.lrdstReward,
+        itemUid, playerId: lrdstOwner, itemId: 'lrdst', qty: run.lrdstReward,
         kind: 'tm',
         harvestedAt: now, expiresAt: new Date(Date.now() + WAREHOUSE_TTL_MS).toISOString(),
         sourceRoomId: room.id, sourceRunId: run.id,
       };
-      addToWarehouse(room.ownerId, doc);
+      addToWarehouse(lrdstOwner, doc);
     }
   }
   // wipe: golden i "nothing else" -- no rewards, no other side effect
@@ -239,6 +348,14 @@ function settleRun(room, run, profileCanvas, itemDefsById) {
   room.cooldownUntil = new Date(Date.now() + run.cooldownSecs * 1000).toISOString();
   room.status = 'open'; // no run currently in flight; auto-schedule (below) will flip it back once cooldown clears
   room.updatedAt = now;
+
+  // REQ-0357: wipe-streak accounting. A wipe with NO progress is the
+  // observable signature of a hopeless matchup (level-down self-correction
+  // floors at LEVEL_MIN and then loops forever); count consecutive
+  // occurrences here, break the loop in maybeAutoStartNextRun. Any run that
+  // made ANY progress -- or won -- resets the streak.
+  const zeroProgressWipe = run.result === 'wipe' && !(run.finalProgressPct > 0);
+  room.wipeStreak = zeroProgressWipe ? (room.wipeStreak || 0) + 1 : 0;
 
   const swapped = applyPendingSwapIfAny(room, profileCanvas, itemDefsById);
 
@@ -288,6 +405,48 @@ function settleRoomIfDue(room, profileCanvas, itemDefsById) {
   return room;
 }
 
+// REQ-0326: disbandTroopRoom -- the all-or-nothing teardown a seated member's
+// cancel triggers on a co-op Troop (services/troops.cjs cancelTroop, and the
+// deferred on-RETURN path in maybeAutoStartNextRun below). It RETURNS THE SEATS:
+// every slot is cleared, so each seat owner's uids stop gating their other
+// deploys (squads.cjs roomSeatGates/deployedUidSet both key on a LIVE seat) and
+// stop being market-frozen. It flips state:'canceled' + status:'canceled' so no
+// next run ever auto-starts, and records a DISCRETE, observable `disbandEvent`
+// on the room doc carrying the roster of released owner ids -- the seam REQ-0327
+// reads to learn whom to notify. Idempotent: an already-canceled troop is
+// returned untouched (its disbandEvent preserved). All-or-nothing (golden g).
+function disbandTroopRoom(room, reason) {
+  if (room.state === 'canceled') return room; // already disbanded -- keep the recorded disbandEvent
+  const releasedOwners = [];
+  const seen = new Set();
+  for (const rawSlot of room.slots || []) {
+    const slot = normalizeSlot(rawSlot, room);
+    if (slot && slot.ownerId != null && !seen.has(slot.ownerId)) {
+      seen.add(slot.ownerId);
+      releasedOwners.push(slot.ownerId);
+    }
+  }
+  const now = new Date().toISOString();
+  room.slots = (room.slots || []).map(() => null); // return every seat (release the uids)
+  room.state = 'canceled';
+  room.status = 'canceled';       // off every run lane -> never auto-starts again
+  room.disbandRequested = false;  // consumed
+  room.disbandEvent = {           // REQ-0327 seam: the released-owner roster to notify
+    roomId: room.id,
+    reason: reason || 'member_cancel',
+    releasedOwners,
+    disbandedAt: now,
+  };
+  room.updatedAt = now;
+  storage.writeRoom(room.id, room);
+  // REQ-0327: append a troop_disbanded notification to EACH released owner's
+  // feed (humans and bots alike). Kept out of the run engine's core math --
+  // it runs after the seat-return / state:'canceled' teardown has committed,
+  // and is best-effort per owner (see services/notifications.cjs).
+  notifications.emitTroopDisbanded(room);
+  return room;
+}
+
 // maybeAutoStartNextRun (golden i "then AUTO-SCHEDULE the next run after
 // cooldown unless canceled" -- "scheduled auto-runs = core design fact").
 // Fires the moment the room's cooldownUntil has passed, UNLESS the room
@@ -297,6 +456,33 @@ function settleRoomIfDue(room, profileCanvas, itemDefsById) {
 // room instead of auto-starting the next one).
 function maybeAutoStartNextRun(room, profileCanvas) {
   if (room.status !== 'open') return room; // already active, or canceled
+  // REQ-0326: a co-op Troop whose seated member cancelled disbands ON RETURN --
+  // right here, the point the next run would auto-start. The in-flight dive has
+  // already settled normally (rewards fanned out, REQ-0325); instead of
+  // restarting, tear the troop down all-or-nothing: every seat returned, state
+  // 'canceled', a discrete disbandEvent recorded (the REQ-0327 notify roster).
+  // Checked BEFORE the cooldown guard so disband fires the instant the dive
+  // returns, not only once the (now-moot) cooldown would have cleared.
+  if (isTroopRoom(room) && room.disbandRequested) {
+    return disbandTroopRoom(room, 'member_cancel');
+  }
+  // REQ-0357: the wipe-streak circuit breaker. Three consecutive
+  // zero-progress wipes and the room does NOT get another run: a Troop
+  // disbands through the standard all-or-nothing teardown (seats returned,
+  // fleet freed, troop_disbanded notification with reason 'wipe_streak' to
+  // every member); a solo room cancels its lane and records a discrete
+  // haltEvent + a room_halted notification to its owner. The anomaly stops
+  // burning cycles AND announces itself -- the session can self-correct.
+  if ((room.wipeStreak || 0) >= WIPE_STREAK_LIMIT) {
+    if (isTroopRoom(room)) return disbandTroopRoom(room, 'wipe_streak');
+    const now = new Date().toISOString();
+    room.status = 'canceled';
+    room.haltEvent = { roomId: room.id, reason: 'wipe_streak', streak: room.wipeStreak, haltedAt: now };
+    room.updatedAt = now;
+    storage.writeRoom(room.id, room);
+    notifications.emitRoomHalted(room);
+    return room;
+  }
   // REQ-0058: a sealed-seed room is single-shot -- once its one run has
   // settled, never auto-start another (each participant runs a given
   // sealId exactly once). The FIRST run still auto-starts normally
@@ -317,10 +503,16 @@ function maybeAutoStartNextRun(room, profileCanvas) {
     return room;
   }
   if (room.cooldownUntil && Date.now() < Date.parse(room.cooldownUntil)) return room; // still cooling down
-  // All 4 slots still need a live assignment (a swap could have cleared
-  // one -- defensive; assignSlot never actually clears a slot today, but
-  // this guards any future path that could).
-  if (room.slots.some((s) => s.squadIndex == null)) return room;
+  // Solo: all 4 slots still need a live assignment (a swap could have cleared
+  // one -- defensive; assignSlot never actually clears a slot today, but this
+  // guards any future path that could). Troop (REQ-0325): proceed as long as at
+  // least ONE seat is still filled -- an emptied seat (REQ-0326) merely reduces
+  // participants; only a wholly-empty/disbanded troop has nothing to run.
+  if (isTroopRoom(room)) {
+    if (!(room.slots || []).some((s) => slotIsFilled(s))) return room;
+  } else if (room.slots.some((s) => s.squadIndex == null)) {
+    return room;
+  }
   // startRun() returns the RUN document (its own persisted record), not
   // the room -- but it mutates `room` in place (status/lastRunId/
   // updatedAt) before persisting it via storage.writeRoom, so the SAME
@@ -384,14 +576,17 @@ function lastRunSummary(room) {
 }
 
 module.exports = {
+  WIPE_STREAK_LIMIT, // REQ-0357
   computeDurationSecs,
   runClock,
   visibleEvents,
   buildSquadSnapshots,
+  buildTroopSquadSnapshots, // REQ-0325
   startRun,
   settleRun,
   settleRoomIfDue,
   maybeAutoStartNextRun,
+  disbandTroopRoom, // REQ-0326: co-op Troop teardown (member cancel -> disband on return / immediately)
   lastRunSummary,
   devBackdateActiveRun,
 };

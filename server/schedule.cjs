@@ -34,6 +34,7 @@ const runs = require('./services/runs.cjs');
 const gacha = require('./services/gacha.cjs');
 const seals = require('./services/seals.cjs'); // REQ-0058
 const sorties = require('./services/sorties.cjs'); // REQ-0239: atomic sortie (D1)
+const troops = require('./services/troops.cjs'); // REQ-0324: co-operative Troop recruit/join
 
 module.exports = {
   WAREHOUSE_CAP: core.WAREHOUSE_CAP,
@@ -41,6 +42,7 @@ module.exports = {
   SQUAD_SLOTS: core.SQUAD_SLOTS,
   DEFAULT_FORMATION_ID: core.DEFAULT_FORMATION_ID,
   DEFAULT_FAILURE_STEP: core.DEFAULT_FAILURE_STEP,
+  WIPE_STREAK_LIMIT: runs.WIPE_STREAK_LIMIT, // REQ-0357
   getScheduleContent: core.getScheduleContent,
   resolveRewardItemId: core.resolveRewardItemId,
   makeEngine: core.makeEngine,
@@ -49,6 +51,7 @@ module.exports = {
   isSquadIndependent: squads.isSquadIndependent,
   deployedUidSetsForGate: squads.deployedUidSetsForGate,
   createRoom: rooms.createRoom,
+  drawDungeonId: rooms.drawDungeonId, // REQ-0304: exported for the api harness's no-eligible-dungeon draw test
   getRoomOr404: rooms.getRoomOr404,
   getOwnRoomOr404: rooms.getOwnRoomOr404,
   listOwnRooms: rooms.listOwnRooms,
@@ -76,6 +79,14 @@ module.exports = {
   cancelRoom: rooms.cancelRoom,
   devClearRooms: rooms.devClearRooms,
   createSortie: sorties.createSortie, // REQ-0239 (D1): atomic create-room + assign 4 slots
+  // REQ-0324: co-operative Troop recruitment + human-equivalent join/leave
+  createTroop: troops.createTroop,
+  joinTroop: troops.joinTroop,
+  leaveTroop: troops.leaveTroop,
+  cancelTroop: troops.cancelTroop, // REQ-0326: seated-member cancel -> disband on return
+  getTroopOr404: troops.getTroopOr404,
+  settleTroopIfDue: troops.settleTroopIfDue, // REQ-0325
+  listRecruitingTroops: troops.listRecruitingTroops,
   lastRunSummary: runs.lastRunSummary, // REQ-0239 (B1): compact run window for the board
   listDungeonsAndFormations: core.listDungeonsAndFormations,
   devBackdateActiveRun: runs.devBackdateActiveRun,

@@ -8,8 +8,8 @@
 // REQ-0176 (REQ-0178 Phase-1b): getScheduleContent() is now REGISTRY-FIRST.
 // REQ-0178 made /api/content (server/lib/content.cjs) resolve
 // registry-adopted-variant -> live-file entry, but never touched THIS module --
-// the authority path (the gacha roll, the run simulation, market, warehouse,
-// forecast). That left adoption reaching the display but not the game. The same
+// the authority path (the gacha roll, the run simulation, market, warehouse).
+// That left adoption reaching the display but not the game. The same
 // resolution chain now runs here, for every registry kind, off a warm snapshot
 // so this loader stays SYNCHRONOUS (20+ consumers call it inside request paths).
 const crypto = require('crypto');
@@ -18,7 +18,21 @@ const path = require('path');
 const combat = require('../../sim/combat.cjs');
 const dungen = require('../../sim/dungen.cjs');
 const dungeonRoll = require('../../sim/dungeon_roll.cjs'); // REQ-0185: the dive roller (also serves the authored encounter summary)
-const Engine = require('../../mock-src/engine.js');
+// REQ-0309: shared/engine.d.ts now sits BESIDE shared/engine.js, and a .d.ts
+// always shadows a same-basename .js in TS module resolution. Nothing like it
+// ever sat beside the engine at its old mock-src/ path, so before the move TS
+// inferred this module's shape from the UMD factory itself. engine.d.ts is a
+// type LIBRARY: it exports EngineModule (the shape of engine.js's
+// module.exports) but never declares that the module IS one, so post-move the
+// namespace has no value members at all and Engine.create stops resolving.
+// Bind the value to the interface the project already hand-wrote for exactly
+// this module. A JSDoc cast: erased at runtime, zero behaviour change. It is
+// CHECKED, not asserted on faith -- tools/check_engine_types.cjs (ci.sh
+// [3.6/7]) pins all 49 EngineModule/EngineInstance members against the live
+// runtime object.
+const Engine = /** @type {import('../../shared/engine.js').EngineModule} */ (
+  /** @type {unknown} */ (require('../../shared/engine.js'))
+);
 
 
 // REQ-0145a (sc): content paths resolve through the ONE content-file
@@ -214,11 +228,13 @@ function ensureFilePayload() {
     skillDefsById[s.id] = { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
   }
 
-  // REQ-0057: skillDefsById is deliberately kept MECHANICS-ONLY (it is the
+  // REQ-0057 (feature retired by REQ-0308; the rule outlives it):
+  // skillDefsById is deliberately kept MECHANICS-ONLY (it is the
   // map handed straight to sim/lib/packs.cjs's compileEnemyPack, where
   // REQ-0121's buff_self fold mutates the objects in place -- the fewer
   // fields riding along in there, the smaller the blast radius). Display
-  // names for the forecast tooltip therefore live in a SIBLING map rather
+  // names (dex cards, via server/lib/content.cjs) therefore live in a
+  // SIBLING map rather
   // than being bolted onto the mechanics defs. skills.json carries flat
   // name_en/name_ja (schema skill/1), not the live_items.json `i18n` map,
   // so this normalises to the i18n shape every client-facing payload uses.
@@ -250,7 +266,7 @@ function ensureFilePayload() {
 // byte-identical to the pre-REQ loader. That is what keeps the default e2e
 // fleet a true no-regression baseline.
 // ---------------------------------------------------------------------
-const REGISTRY_KINDS = ['po_def', 'si_def', 'tm_def', 'unit_def', 'gacha_pack', 'monster_def', 'skill_def', 'gimic', 'dungeon', 'unit_skin']; // REQ-0211: gimic; REQ-0185: dungeon; REQ-0266: unit_skin -- it is in routes/content.cjs KINDS TOO (monster_pack is in that list and not this one, so its adoptions never reach serving; do not repeat that)
+const REGISTRY_KINDS = ['po_def', 'si_def', 'tm_def', 'unit_def', 'gacha_pack', 'monster_def', 'skill_def', 'gimic', 'dungeon', 'unit_skin', 'monster_pack']; // REQ-0211: gimic; REQ-0185: dungeon; REQ-0266: unit_skin; REQ-0352: monster_pack -- wired only AFTER the section-4 re-port made the registry match the live files (wiring it earlier would have served every pack's 1-3-member 2026-07-15 ancestor and zeroed level scaling). Must stay a subset of routes/content.cjs KINDS; the kind-list gate (server/tests/kind_lists_agree_test.cjs) asserts all four lists.
 // kind -> the file-payload map whose key set defines what we ask the registry for.
 const REGISTRY_MAP_BY_KIND = {
   po_def: 'itemDefsById',
@@ -263,6 +279,7 @@ const REGISTRY_MAP_BY_KIND = {
   gimic: 'gimicDefsById', // REQ-0211
   dungeon: 'dungeonDefsById', // REQ-0185
   unit_skin: 'unitSkinDefsById', // REQ-0266
+  monster_pack: 'monsterPackDefsById', // REQ-0352 (NOT packDefsById -- that is gacha)
 };
 const REGISTRY_TTL_MS = 15000; // mirror lib/content.cjs REGISTRY_TTL_MS / ART_URLS_TTL_MS
 
@@ -318,7 +335,7 @@ function registryIsEmpty(reg) {
 // MECHANICS-ONLY (sim/lib/packs.cjs's compileEnemyPack mutates these objects in
 // place, so the fewer fields riding along the better) and puts display names in
 // the sibling skillNamesById. A registry-sourced skill MUST go through the same
-// two reshapes, or the forecast tooltip and the combat fold silently disagree.
+// two reshapes, or the display names and the combat fold silently disagree.
 function skillMechanicsFrom(s) {
   return { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
 }
@@ -328,7 +345,9 @@ function skillNamesFrom(s) {
 
 function overlayMap(base, regEntries, transform) {
   const out = Object.assign({}, base);
-  for (const name of Object.keys(regEntries)) out[name] = transform ? transform(regEntries[name]) : regEntries[name];
+  // transform receives (registry entry, file entry) -- the base entry rides
+  // along for the ONE kind whose overlay is a merge, not a replace (REQ-0352).
+  for (const name of Object.keys(regEntries)) out[name] = transform ? transform(regEntries[name], out[name]) : regEntries[name];
   return out;
 }
 
@@ -355,6 +374,15 @@ function applyRegistryOverlay(fp) {
     gimicDefsById: overlayMap(fp.gimicDefsById, reg.gimic, null), // REQ-0211
     dungeonDefsById: overlayMap(fp.dungeonDefsById, reg.dungeon, null), // REQ-0185
     unitSkinDefsById: overlayMap(fp.unitSkinDefsById, reg.unit_skin, null), // REQ-0266
+    // REQ-0352: monster_pack is the ONE kind whose served entry has TWO
+    // writers: the registry (authored: id/name/i18n/note/members) and
+    // tools/autobalance_pack_powerlevel.cjs (derived: powerLevel, file-side
+    // only -- section 5 ruling). A whole-entry replace would delete the
+    // derived half, and sim/lib/level_scale.cjs effLevelForPack() returns 0
+    // for a non-finite powerLevel -- level scaling silently OFF for every
+    // pack, and no crash to say so. So this overlay MERGES: authored fields
+    // win, derived fields ride through from the file entry.
+    monsterPackDefsById: overlayMap(fp.monsterPackDefsById, reg.monster_pack, (raw, base) => Object.assign({}, base, raw)),
     skillDefsById: overlayMap(fp.skillDefsById, reg.skill_def, skillMechanicsFrom),
     skillNamesById: overlayMap(fp.skillNamesById, reg.skill_def, skillNamesFrom),
   });
@@ -369,6 +397,34 @@ function getScheduleContent() {
   const fp = ensureFilePayload();
   if (Date.now() - registryAt > REGISTRY_TTL_MS) { refreshRegistryData().catch(() => {}); } // opportunistic; never awaited here
   return applyRegistryOverlay(fp);
+}
+
+/** REQ-0348: THE registry snapshot -- { kind -> { bare -> adopted DATA } } --
+ * exposed so the DISPLAY path (server/lib/content.cjs) overlays from this one
+ * snapshot instead of maintaining a second copy of its own.
+ *
+ * Before REQ-0348 both modules privately owned the identical thing under the
+ * identical names (registryData, registryAt, a 15s REGISTRY_TTL_MS,
+ * computeRegistryData, refreshRegistryData, a boot setImmediate warm), kept in
+ * step by hand -- this file said "Mirrors server/lib/content.cjs exactly" and
+ * "mirror lib/content.cjs REGISTRY_TTL_MS", and that module said the same back.
+ * The copies had already drifted, and the drift was a live defect: REQ-0211's
+ * per-kind try/catch isolation landed HERE only, so on the display path one
+ * kind whose pg enum was not yet migrated still rejected the whole promise and
+ * blanked EVERY kind's overlay. One snapshot means one isolation policy.
+ *
+ * What is deliberately NOT shared is the overlay APPLICATION. That genuinely
+ * differs -- this module overlays itemDefsById (which also carries the pilot
+ * dungeon/items.json entries), the display path overlays its own `items`
+ * section (which must NOT serve those), and the per-kind transforms differ too
+ * (skill_def's double reshape here, eff_en/eff_ja rendering there). Each
+ * consumer keeps its own applyRegistryOverlay over this shared snapshot.
+ *
+ * Same opportunistic TTL refresh as getScheduleContent(): synchronous, never
+ * awaited, hands back the warm object. */
+function getRegistrySnapshot() {
+  if (Date.now() - registryAt > REGISTRY_TTL_MS) { refreshRegistryData().catch(() => {}); }
+  return registryData;
 }
 
 // Warm the snapshot at boot so the first roll/simulation after a restart is
@@ -489,7 +545,13 @@ function resolveRewardItemId(rollId) {
 // and safest against itemDefsById changing between calls (content hot-
 // reload, same mtime-cache convention as api.cjs's own content path).
 function makeEngine(itemDefsById, unitDefsById, connShapes) {
-  return Engine.create(itemDefsById, {}, { ROWS: 8, COLS: 8 }, { po_tags: {}, socket_tags: {} }, unitDefsById, connShapes);
+  // REQ-0309: keys are `po`/`socket`, NOT `po_tags`/`socket_tags`. engine.js's
+  // create() reads `(trees&&trees.po)||{}` and `(trees&&trees.socket)||{}`, so the
+  // old keys were silently ignored and fell through to {}. Provably a no-op TODAY --
+  // the values passed are empty either way -- but it is a live trap the moment any
+  // caller passes REAL trees, and it typechecked only while this module was untyped.
+  // tools/tool_gen_data.cjs:184 always emitted the correct {po, socket} shape.
+  return Engine.create(itemDefsById, {}, { ROWS: 8, COLS: 8 }, { po: {}, socket: {} }, unitDefsById, connShapes);
 }
 
 // ---------------------------------------------------------------------
@@ -537,6 +599,27 @@ function genId(prefix) {
 // preserves every existing caller's observed behavior byte-for-byte);
 // any other/absent dungeonId defaults to 'default' (the generator).
 
+// ---------------------------------------------------------------------
+// REQ-0324: room slot shape helpers (shared by the deploy gate + the
+// co-operative Troop views). A slot is EMPTY (null, or the legacy solo
+// shape { squadIndex: null }) or FILLED. A filled co-op/troop slot is
+// { ownerId, squadIndex, joinedAt }; a filled LEGACY solo slot is
+// { squadIndex: n } with NO owner field. normalizeSlot reads BOTH shapes,
+// migrating a legacy solo room ON READ: an ownerless filled slot is
+// attributed to the room's ownerId (the solo player who filled it),
+// exactly as REQ-0324's data-model section specifies. Pure, no I/O.
+// ---------------------------------------------------------------------
+function slotIsFilled(slot) {
+  return !!slot && slot.squadIndex !== null && slot.squadIndex !== undefined;
+}
+function normalizeSlot(slot, room) {
+  if (!slotIsFilled(slot)) return null;
+  const ownerId = (slot.ownerId !== null && slot.ownerId !== undefined)
+    ? slot.ownerId
+    : (room ? room.ownerId : null);
+  return { ownerId, squadIndex: slot.squadIndex, joinedAt: slot.joinedAt || null };
+}
+
 module.exports = {
   REPO_ROOT,
   CONTENT_DIR,
@@ -565,11 +648,15 @@ module.exports = {
   statMtimeMs,
   loadJSON,
   getScheduleContent,
+  REGISTRY_KINDS, // REQ-0352: for the kind-list agreement gate (kind_lists_agree_test)
   refreshRegistryData, // REQ-0176: awaited by routes/content.cjs invalidateServedContent()
+  getRegistrySnapshot, // REQ-0348: the ONE registry snapshot; the display path overlays from it too
   getScheduleSources, // REQ-0176: authority-path source accounting
   listDungeonsAndFormations,
   REWARD_ROLL_TO_ITEM_ID,
   resolveRewardItemId,
   makeEngine,
   genId,
+  slotIsFilled, // REQ-0324
+  normalizeSlot, // REQ-0324
 };

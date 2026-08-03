@@ -1,0 +1,86 @@
+{
+ "system_name": "cursed_doll",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "ba512f8d608a572378413f80a199d7bc54afa9fba84a7e2e9626d4695739defa",
+ "provenance": {
+  "model": "claude-opus-4-8",
+  "params": {},
+  "prompt": "REQ-0212 carrier units for the charge_strike/transfer_status/shield_break verbs (art-first, user directive 2026-07-17)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": "2026-07",
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-17T10:42:18.662Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "cursed_doll",
+  "i18n": {
+   "ja": {
+    "name": "呪いの人形"
+   }
+  },
+  "icon": "items005_cursed_doll",
+  "name": "Cursed Doll",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       1,
+       2
+      ],
+      "t": "transfer_status"
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "on_status_applied"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Whatever you pin to it, it mails back.",
+  "rarity": "Rare",
+  "name_ja": "呪いの人形",
+  "flavor_ja": "刺したものは、送り返される。",
+  "connection_shape": "backward_line"
+ }
+}

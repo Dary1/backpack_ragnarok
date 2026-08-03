@@ -27,7 +27,7 @@ function localCellsOfPO(poInst, itemDef) {
   // NOTE: rotation is folded at authoring/placement time in scenario.json
   // (rot field); for the sim's compile pass we only need the PLACED shape,
   // so we replicate rotOffsets' 90-degree-CW-per-step + renormalize logic
-  // exactly as engine.js's rotOffsets (mock-src/engine.js function
+  // exactly as engine.js's rotOffsets (shared/engine.js function
   // rotOffsets(base,k)) so results match engine.js bit-for-bit.
   let off = itemDef.shape.map(o => [o[0], o[1]]);
   const k = ((poInst.rot % 4) + 4) % 4;

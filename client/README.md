@@ -6,7 +6,7 @@ static server (`web/` @ :8801, tunneled at backpack-dev.qtie.jp).
 ## Scope (T0.1)
 Read-only board render from the live API: canvas grid, BPs, placed POs
 (sprite v7 art), linker beams, port ◇/◆ marks. No drag-drop, no auth, no
-combat playback yet (T0.2+). The engine (`mock-src/engine.js`) is consumed
+combat playback yet (T0.2+). The engine (`shared/engine.js`) is consumed
 as-is via a thin typed adapter in `src/engine/` — never forked or rewritten.
 
 ## Develop
@@ -16,17 +16,20 @@ pnpm install --frozen-lockfile
 pnpm run dev       # local dev server (Vite)
 ```
 
-## Worktree env (REQ-0278)
-`client/.env.local` (VITE_SUPABASE_URL + anon key — PUBLIC client values, but
-gitignored by the secret policy) lives ONLY in the main checkout, so a fresh
-worktree otherwise builds an env-LESS bundle and sign-in degrades to "not
-configured" (REQ-0118c). After `pnpm install`, provision it:
-```
-tools/provision_worktree_env.sh          # this worktree (idempotent)
-tools/provision_worktree_env.sh --all    # every worktree under ~/backpack_ragnarok_worktrees
-```
-`ci.sh [6.1/7]` then asserts a build with `.env.local` present carries the Supabase
-host; with it absent the step reports not-applicable with a reason (never a free pass).
+## Supabase config (REQ-0341 — nothing to provision)
+The client takes its two PUBLIC Supabase values (URL + anon key) from the API at
+runtime, `GET /api/config`, not from build-time `VITE_*` env. So:
+
+- **A worktree needs no env provisioning.** Any tree builds an identical, correct
+  `web/app`; the old `tools/provision_worktree_env.sh` and the `ci.sh [6.1/7]`
+  bundle-env tripwire are gone, and so is `client/.env.example`.
+- **The requirement moved to the server**: `server/.env` must carry
+  `SUPABASE_URL` and `SUPABASE_ANON_KEY`, and systemd reads `EnvironmentFile` at
+  START — so `backpack-api` must be restarted for a change there to take effect.
+  With them absent the route returns nulls and sign-in shows "not configured"
+  (REQ-0118c), exactly the old degraded behaviour.
+- Upside: rotating the anon key is a server-side edit + API restart. No client
+  rebuild, no redeploy of `web/app`.
 
 ## Build + deploy
 ```
@@ -39,7 +42,7 @@ web service (no ingress change needed; `web/` is already served as-is).
 
 ## Structure
 - `src/engine/` — `engine.d.ts` (typed surface for the parts T0.1 uses) +
-  `adapter.ts` (thin wrapper importing `mock-src/engine.js` unmodified).
+  `adapter.ts` (thin wrapper importing `shared/engine.js` unmodified).
 - `src/api.ts` — typed client for `/api/content` and
   `/api/profile/default/canvas` (falls back to the scenario baked into
   `/api/content` on 404).

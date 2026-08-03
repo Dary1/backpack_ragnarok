@@ -16,7 +16,7 @@
 //      ranged verb params must be [lo,hi] int ranges; tags from the po_tags/
 //      socket_tags hierarchy) to the variant's data against schema_ref.
 //   2. engine_types  -- check_engine_types.cjs, WIRED as a subprocess
-//      precondition (the mock-src/engine.js type surface must not have
+//      precondition (the shared/engine.js type surface must not have
 //      drifted) PLUS a per-kind field-type conformance check of the def
 //      against the runtime types engine.js consumes (its "declared type must
 //      match runtime type" doctrine, applied to the content record).
@@ -284,6 +284,18 @@ function schemaVocabCheck(kind, data, vocab, dialect) {
     } catch (e) {
       errs.push(e.message);
     }
+    // REQ-0352 section 5 ruling: powerLevel is DERIVED. Its sole writer is
+    // tools/autobalance_pack_powerlevel.cjs (into the live file at deploy);
+    // the registry owns the authored facts only (id/name/i18n/note/members).
+    // A variant carrying it would be silently clobbered at the next deploy --
+    // the worst field to put in front of an operator -- so the rule is
+    // enforced HERE, where content is authored, not discovered at deploy.
+    // NOT in shared/content_validate.cjs: the sim placer validates FILE
+    // entries with that function, and file entries legitimately carry the
+    // derived value.
+    if (data.powerLevel !== undefined) {
+      errs.push('powerLevel must not be authored in a monster_pack variant (REQ-0352: derived, written only by tools/autobalance_pack_powerlevel.cjs; the registry owns id/name/i18n/note/members)');
+    }
   } else if (kind === 'gimic') {
     // REQ-0211. A gimic's rules are executable in shared/content_validate.cjs
     // (validateGimicEntry) -- the SAME definition the dungeon generator relies on;
@@ -459,7 +471,7 @@ function engineTypesCheck(kind, data, root, dialect) {
   }
   // REQ-0266: a unit_skin declares no ENGINE-consumed record at all -- it is
   // pure cosmetics (identity + slot + an artwork reference + the units it may
-  // dress). mock-src/engine.js never sees one: the def is consumed by the
+  // dress). shared/engine.js never sees one: the def is consumed by the
   // CLIENT's resolution chains (unitIcon / bpSkinResolve) and by the art_urls
   // join, neither of which is an engine type surface. Recorded honestly as
   // not-applicable WITH a reason, never as a free PASS (REQ-0160 ruling Q2-sub).
@@ -624,6 +636,216 @@ function integrateCheck(kind, data, root) {
   return Object.assign({}, result, { applicable: true, content_live_unchanged: true });
 }
 
+// ---- 5. formation_fill (REQ-0300: the 30% rule as an admincontent warning) --
+//
+// REQ-0300 (user 2026-07-24: "put this 30% constraint into the admincontent
+// WARNING system"). A monster_pack/1 whose formation fills < FILL_MIN (30%) of
+// the enemy placeable area becomes a LIVE admincontent warning: a not-ok
+// `formation_fill` check row that lowers `overall`, rendered by the contentadmin
+// UI exactly like every other runChecks row (no new UI). The rule and its math
+// are REQ-0298's sim/lib/pack_formation.cjs (packFill + FILL_MIN) measured over
+// the SAME placeable area sim/lib/field.cjs defines -- REUSED, never re-derived,
+// so a field resize or a FILL_MIN re-tune moves the checker with the sim.
+//
+// ADDITIVE, not a weakening: schema_vocab (geometry + references) and
+// engine_types (member field types) are untouched -- a pack can be geometrically
+// perfect and still warn here for being too sparse. GIMIC content is a different
+// KIND and is never passed to this branch, so it is naturally exempt with no
+// per-pack flag (the REQ-0298 doctrine carried through). PURE / DB-free.
+
+/** The formation_fill row for an ALREADY-resolved pack (members -> enemy defs)
+ * over a given placeable-cell count. Split out so a test can pin the exact
+ * FILL_MIN boundary with a synthetic roster + count (the live field is 384,
+ * where 30% is non-integer). fillFrac >= FILL_MIN passes -- the fail test is a
+ * strict `<`, matching pack_formation.inspectPacks. */
+function _formationFillResult(data, enemyDefsById, placeableCells) {
+  const { FILL_MIN, packFill } = require(path.join(repoRoot(), 'sim', 'lib', 'pack_formation.cjs'));
+  const f = packFill(data, enemyDefsById, placeableCells);
+  const pct = (f.fillFrac * 100).toFixed(1);
+  const min = Math.round(FILL_MIN * 100);
+  if (f.fillFrac < FILL_MIN) {
+    return { ok: false, applicable: true,
+      detail: 'formation fill ' + pct + '% (' + f.occupiedCells + '/' + f.placeableCells + ') < ' + min
+        + '% minimum -- add monsters (boss packs: boss + entourage); gimic exempt' };
+  }
+  return { ok: true, applicable: true,
+    detail: 'formation fill ' + pct + '% (' + f.occupiedCells + '/' + f.placeableCells + ') >= ' + min + '% minimum' };
+}
+
+/** REQ-0300 formation-fill machine check for ONE monster_pack. Resolves member
+ * footprints against content/live/dungeon/enemies.json with the SAME read/guard
+ * the monster_pack schema_vocab check uses, then measures fill over the live
+ * placeable area (sim/lib/field.cjs FIELD_ROWS x FIELD_COLS). Deterministic and
+ * DB-free. If the enemy roster is unreadable it degrades to an HONEST
+ * applicable:false (never throws): the fill rule is simply skipped, exactly as
+ * the schema_vocab read degrades; the unreadable file is already reported by
+ * schema_vocab, so overall still FAILs there without a misleading fill number. */
+function formationFillCheck(kind, data) {
+  if (kind !== 'monster_pack') {
+    return { ok: true, applicable: false,
+      detail: 'formation_fill not applicable for ' + kind + ' (only monster_pack/1 has a field formation; gimic and every other kind are naturally exempt)' };
+  }
+  const { placeableCellsFor } = require(path.join(repoRoot(), 'sim', 'lib', 'pack_formation.cjs'));
+  const { FIELD_ROWS, FIELD_COLS } = require(path.join(repoRoot(), 'sim', 'lib', 'field.cjs'));
+  let enemyDefs;
+  try {
+    const enemies = loadJson(path.join(repoRoot(), 'content', 'live', 'dungeon', 'enemies.json'));
+    enemyDefs = {};
+    for (const e of (enemies.entries || [])) enemyDefs[e.id] = e;
+  } catch (e) {
+    return { ok: true, applicable: false,
+      detail: 'formation_fill n/a: cannot read content/live/dungeon/enemies.json to resolve member footprints (' + e.message + ')' };
+  }
+  return _formationFillResult(data, enemyDefs, placeableCellsFor(FIELD_ROWS, FIELD_COLS));
+}
+
+// ---- 6. serving (REQ-0354) -- the advisory drift tag + its live-file sha --
+//
+// "Adopted but inert" (REQ-0352/0353) was invisible where the operator works.
+// This row compares ONE variant's data against the live content FILES -- the
+// same corpus, through the same COVERED kind->file mapping, as
+// tools/verify_content_registry_parity.cjs (required here, never re-derived,
+// so the mapping cannot fork; kind_lists_agree_test pins COVERED ==
+// REGISTRY_KINDS).
+//
+// THE STALENESS TRAP (REQ-0354 section 3): every other check is a pure
+// function of the variant's own immutable data, so a stored verdict stays
+// true forever. This row is a function of the variant AND the live files,
+// which change without the variant changing -- a naively-stored PASS goes
+// silently false, which is the exact failure mode this REQ exists to kill.
+// Ruling (user, 2026-07-31): the row CARRIES the sha256 of every live file
+// it was computed against (live_files[]); annotateServingStaleness() re-
+// hashes them on READ and a mismatch renders as STALE -- a third state,
+// neither PASS nor FAIL (same idiom as REQ-0297's powerlevel_calibrated_from).
+//
+// RULING (REQ-0354 section 4): advisory:true, and it NEVER feeds overall. A
+// freshly adopted variant legitimately differs from the live file until its
+// export lands; feeding overall would 409 every normal adoption and teach
+// operators to always send override:true -- which also bypasses the REAL
+// checks. overallOf() below is the ONE overall rule; advisory rows are
+// skipped EXPLICITLY, never by abusing applicable:false (that field means
+// "does not apply to this kind", a different fact, shown differently).
+
+/** The ONE overall rule (REQ-0354 section 4): applicable:false and
+ * advisory:true rows never sway the verdict. Used by runChecks() and by the
+ * appended-tier recompute in routes/content.cjs. */
+function overallOf(checks) {
+  return checks.every((c) => c.advisory === true || c.applicable === false || c.ok) ? 'PASS' : 'FAIL';
+}
+
+/** The advisory `serving` row for ONE variant: does the live-file entry named
+ * `systemName` match this variant's data (authored fields only, key order
+ * aside)? DB-free: reads only the COVERED live files + REGISTRY_KINDS. */
+function servingCheck(kind, systemName, data) {
+  const advisory = true;
+  let REGISTRY_KINDS = null;
+  try { REGISTRY_KINDS = require('./core.cjs').REGISTRY_KINDS; } catch (e) { /* fall through to n/a */ }
+  if (!REGISTRY_KINDS || !REGISTRY_KINDS.includes(kind)) {
+    return { name: 'serving', advisory, ok: true, applicable: false,
+      detail: 'serving n/a: kind "' + kind + '" is not wired into serving (services/core.cjs REGISTRY_KINDS) -- adoption cannot reach the game. A KIND-level condition: surfaced as the per-kind NOT WIRED banner (REQ-0354 section 5); kind_lists_agree_test forbids this state on CI.' };
+  }
+  const parity = require(path.join(repoRoot(), 'tools', 'verify_content_registry_parity.cjs'));
+  const { CONTENT_ROOT } = require('../lib/content_files.cjs');
+  const rel = (abs) => path.relative(CONTENT_ROOT, abs);
+  const sources = parity.COVERED.filter((s) => s.kind === kind);
+  const live_files = []; // EVERY covered file of the kind: absence-from-all is also a fact of all of them
+  let hit = null;
+  for (const src of sources) {
+    let raw = null;
+    try { raw = fs.readFileSync(src.file); }
+    catch (e) { live_files.push({ file: rel(src.file), sha256: null }); continue; }
+    live_files.push({ file: rel(src.file), sha256: sha256(raw) });
+    if (hit) continue;
+    let doc = null;
+    try { doc = JSON.parse(raw.toString('utf8')); } catch (e) { continue; }
+    const excluded = new Set(src.exclude || []);
+    for (const entry of (doc.entries || [])) {
+      if (entry && entry.id === systemName && !excluded.has(entry.id)) {
+        hit = { file: rel(src.file), entry: parity.authoredView(entry, src.derived) };
+        break;
+      }
+    }
+  }
+  if (!hit) {
+    return { name: 'serving', advisory, ok: false, applicable: true, live_files,
+      detail: 'no live-file entry named "' + systemName + '" for kind ' + kind + ' (checked: ' + (live_files.map((f) => f.file).join(', ') || 'none') + ') -- LEGITIMATE for a fresh def until its export is merged into content/live. Advisory: never blocks adoption (REQ-0354 section 4).' };
+  }
+  if (parity.deepEqualUnordered(hit.entry, data)) {
+    return { name: 'serving', advisory, ok: true, applicable: true, live_files,
+      detail: 'live-file entry matches this variant (' + hit.file + '; authored fields, key order aside)' };
+  }
+  const diffs = parity.diffFields(hit.entry, data).map((d) => d.path);
+  const shown = diffs.slice(0, 8).join(', ') + (diffs.length > 8 ? ' (+' + (diffs.length - 8) + ' more)' : '');
+  return { name: 'serving', advisory, ok: false, applicable: true, live_files,
+    detail: 'DRIFT vs ' + hit.file + ' -- fields: ' + shown + '. Legitimate for a fresh adoption until its export lands; STANDING drift on an ADOPTED variant is the REQ-0353 defect class. Advisory: never blocks adoption.' };
+}
+
+/** READ-time staleness (REQ-0354 section 3, the trap closed): re-hash the
+ * live files a stored serving row was computed against; any mismatch marks
+ * the row stale:true (rendered STALE -- a stale green is worse than a red,
+ * it is the state that produced REQ-0353). Mutates the row IN THE RESPONSE
+ * object only; nothing is persisted. shaCache (Map file->sha|null) lets a
+ * caller annotating many variants hash each file once. */
+function annotateServingStaleness(mc, shaCache) {
+  if (!mc || !Array.isArray(mc.checks)) return mc;
+  const row = mc.checks.find((c) => c && c.name === 'serving');
+  if (!row || !Array.isArray(row.live_files) || row.live_files.length === 0) return mc;
+  const { CONTENT_ROOT } = require('../lib/content_files.cjs');
+  const cache = shaCache || new Map();
+  let stale = false;
+  for (const lf of row.live_files) {
+    if (!lf || typeof lf.file !== 'string') continue;
+    let cur;
+    if (cache.has(lf.file)) { cur = cache.get(lf.file); }
+    else {
+      try { cur = sha256(fs.readFileSync(path.join(CONTENT_ROOT, lf.file))); } catch (e) { cur = null; }
+      cache.set(lf.file, cur);
+    }
+    if (cur !== (lf.sha256 == null ? null : lf.sha256)) { stale = true; break; }
+  }
+  row.stale = stale;
+  return mc;
+}
+
+/** Per-KIND serving report for the list endpoint (REQ-0354 section 5): NOT
+ * WIRED is a kind-level banner (14 identical red rows would bury the real
+ * per-variant reds) and MISSING cannot be a variant tag at all -- there is no
+ * variant to hang it on. defs come from the caller (storage stays out of this
+ * module); kinds is routes/content.cjs KINDS (passed in -- requiring routes
+ * from here would be a cycle). */
+function servingReportForDefs(defs, kinds) {
+  const parity = require(path.join(repoRoot(), 'tools', 'verify_content_registry_parity.cjs'));
+  let REGISTRY_KINDS = [];
+  try { REGISTRY_KINDS = require('./core.cjs').REGISTRY_KINDS; } catch (e) { /* report wired:false */ }
+  const byName = parity.collectFileEntries();
+  const defSet = new Set((defs || []).map((d) => d.kind + '/' + d.system_name));
+  const defsByKind = {}; const adoptedByKind = {};
+  for (const d of (defs || [])) {
+    defsByKind[d.kind] = (defsByKind[d.kind] || 0) + 1;
+    if (d.adopted_variant_id != null) adoptedByKind[d.kind] = (adoptedByKind[d.kind] || 0) + 1;
+  }
+  const rows = [];
+  for (const kind of (kinds || [])) {
+    const missing = [];
+    let inFiles = 0;
+    for (const [name, info] of byName) {
+      if (info.kind !== kind) continue;
+      inFiles++;
+      if (!defSet.has(kind + '/' + name)) missing.push(name);
+    }
+    rows.push({
+      kind,
+      wired: REGISTRY_KINDS.includes(kind),
+      def_count: defsByKind[kind] || 0,
+      adopted_count: adoptedByKind[kind] || 0,
+      in_files: inFiles,
+      missing_count: missing.length,
+      missing_from_registry: missing.slice(0, 100),
+    });
+  }
+  return { generated_at: new Date().toISOString(), kinds: rows };
+}
+
 // ---- runner -------------------------------------------------------------
 
 /** Run all four machine checks on one variant's data. Pure of DB access
@@ -638,7 +860,11 @@ function runChecks(kind, schema_ref, data) {
   add('engine_types', engineTypesCheck(kind, data, root, dialect));
   add('gen_data', genDataCheck(kind, data, root));
   add('integrate', integrateCheck(kind, data, root));
-  const overall = checks.every((c) => c.applicable === false || c.ok) ? 'PASS' : 'FAIL';
+  // REQ-0300: the 30% formation-fill rule as a live admincontent warning row,
+  // ONLY for monster_pack (a different kind -- e.g. gimic -- never reaches it, so
+  // it is naturally exempt with no per-pack flag). A not-ok row lowers overall.
+  if (kind === 'monster_pack') add('formation_fill', formationFillCheck(kind, data));
+  const overall = overallOf(checks); // REQ-0354: the ONE overall rule (advisory-aware; no advisory row is added here, runChecks stays pure of the live files)
   return { checks, overall, dialect: dialect.name, schema_ref: vpath ? path.relative(root, vpath) : schema_ref, ran_at: new Date().toISOString() };
 }
 
@@ -835,6 +1061,6 @@ if (require.main === module) {
   })().catch((e) => { console.error('FATAL', (e && e.stack) || e); process.exit(1); });
 }
 
-module.exports = { runChecks, _repoRoot: repoRoot, _contentLiveManifest: contentLiveManifest, _dialectFor: dialectFor, _DIALECTS: DIALECTS,
+module.exports = { runChecks, servingCheck, annotateServingStaleness, overallOf, servingReportForDefs, formationFillCheck, _formationFillResult, _repoRoot: repoRoot, _contentLiveManifest: contentLiveManifest, _dialectFor: dialectFor, _DIALECTS: DIALECTS,
   checkArtworkGeometry, defGeometry, artworkGeometry, sweepArtworkGeometry, ART_GEOM_CORPUS,
   _normCellSet, _maskCells, _rectCells, _setEq };

@@ -1,7 +1,5 @@
 > [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
 
-> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Unit (character piece). Verbatim pre-rename user quotes may survive unchanged.
-
 # backpack_ragnarok — Architecture & Framework Design
 
 Audience: any developer (human or agent) joining this codebase. This is
@@ -28,7 +26,7 @@ browser ── Cloudflare Tunnel ──> :8801  backpack-web  (static, serves we
                                         env from server/.env)
                                           │
                                           ├─ sim/ (combat simulator, in-process)
-                                          ├─ mock-src/engine.js (game engine, in-process)
+                                          ├─ shared/engine.js (game engine, in-process)
                                           └─ storage seam (STORAGE_BACKEND)
                                                ├─ 'files' → data/*.json (dev/test default)
                                                └─ 'pg'    → Supabase Postgres via
@@ -41,7 +39,7 @@ Both ports bind 127.0.0.1 only; the tunnel is the sole ingress.
 
 ## 3. The five load-bearing design rules
 
-1. **The engine is consumed AS-IS.** `mock-src/engine.js` (hand-written
+1. **The engine is consumed AS-IS.** `shared/engine.js` (hand-written
    UMD JS) is the single source of truth for game-state math. Three
    consumers, none may fork or modify it: the client (raw-source CJS shim
    in `client/src/engine/adapter.ts`), the sim (read-only interop — never
@@ -72,7 +70,7 @@ Both ports bind 127.0.0.1 only; the tunnel is the sole ingress.
 
 | Path | What it is |
 |---|---|
-| `mock-src/engine.js` | THE game engine (rule 1). `mock-src/tests/run.cjs` = its suite. |
+| `shared/engine.js` | THE game engine (rule 1). `mock-src/tests/run.cjs` = its suite. |
 | `sim/` | Combat simulator. `combat.cjs`/`dungen.cjs` facades over `sim/lib/{core,rng,heap,geometry,formation,status,compile,entry,ray,field,replay,skills,packs,encounter,dungeon}.cjs` (acyclic). Dependency-free by invariant. |
 | `server/` | Framework-free `node:http` API. `api.cjs` (entry) → `router.cjs` (load-bearing dispatch order) → `routes/{public,me,admin,profile,schedule,warehouse,workshop,market,ragnarok,dex,dismantle,art,content}.cjs` (REQ-0145a: the combined schedule module split into schedule/warehouse/workshop, dispatched consecutively in its old slot; shared caller preamble in `lib/route_auth.cjs`) → business logic behind name-for-name facades (rule 3): `schedule.cjs` over `services/{core,rooms,squads,runs,warehouse,gacha}.cjs`, `services/market.cjs` over `services/market/{lib,listings,views,trade,furnace}.cjs`, `services/ragnarok.cjs` over `services/ragnarok/{lib,seasons,einherjar,order,snapshot,devotion}.cjs` (`deployedUidSet` lives in `services/squads.cjs`, its true domain); plumbing in `lib/{content,content_files,http_util,humanize,meta,route_auth}.cjs`; persistence behind the `storage.cjs` facade (rule 4) over `storage/{lib,profiles,rooms,runs,warehouse,gacha,dismantle,market,ragnarok}.cjs` + `storage_art`/`storage_content` subsystems + `players.cjs`/`pg_sync`; auth in `admin.cjs`; operator CLI `cli_invite.cjs`. |
 | `shared/` | Cross-package contract surface: `engine.d.ts` (engine types), `dto.ts` (30 HTTP wire-shape types), `content_validate.cjs` (admin-edit validator). Dependencies point INTO shared, never out. |
@@ -146,13 +144,19 @@ them pass. Full rationale: server/README.md, "Suite membership".
 - Deployed artifact = the repo itself on the server box. Client ships as
   committed `web/app/` (rebuild via release.sh); server code is picked up
   by `systemctl --user restart backpack-api` (no build step).
-- REQ-0278: worktree client builds now CARRY the Supabase env. `client/.env.local`
-  (gitignored, main-only) is copied into a worktree by `tools/provision_worktree_env.sh`,
-  so a worktree's `web/app` is byte-identical to a main rebuild. This RETIRES the ad-hoc
-  `42238f8` "rebuild web/app on main at deploy" step (which existed only to re-inject env):
-  a merged worktree's committed `web/app` already carries it. `release.sh`'s rebuild stays
-  the serving invariant but is now env-CONFIRMING, not env-INJECTING; `ci.sh [6.1/7]`
-  (`tools/check_bundle_env.sh`) is the machine check that a deploy-bound bundle carries env.
+- REQ-0341: the client bundle carries NO Supabase env. `client/src/auth/client.ts`
+  fetches `GET /api/config` (`server/routes/public.cjs`) at runtime, so `web/app` is a
+  pure function of `client/src` and every tree builds the same bytes. This retires the
+  whole REQ-0278/0340 apparatus — `tools/provision_worktree_env.sh`,
+  `tools/check_bundle_env.sh`, `ci.sh [6.1/7]` and `client/.env.example` are DELETED —
+  and with them the `42238f8` "rebuild web/app on main at deploy" step. The deploy
+  dependency moved from build time to server config: `server/.env` must carry
+  `SUPABASE_URL` + `SUPABASE_ANON_KEY` and `backpack-api` must be restarted for a change
+  to take effect (systemd reads `EnvironmentFile` at start). Absent => the route serves
+  nulls and sign-in degrades to "not configured" (REQ-0118c). Upside: an anon-key
+  rotation no longer needs a client rebuild. The replacement checks are
+  `check_auth.mjs`'s source-level "no client/src file reads VITE_SUPABASE_*" tripwire
+  and `client/e2e/runtime-config.spec.ts`.
 - The repo accepts direct pushes (`receive.denyCurrentBranch=
   updateInstead`) BUT refuses while any collaborator has uncommitted
   edits in the worktree (e.g. the designer working in `web/redesign/`).
@@ -172,6 +176,11 @@ them pass. Full rationale: server/README.md, "Suite membership".
 - No frameworks on the server, no runtime deps in sim, no workspace
   hoisting at the root — each is a recorded decision; revisit via REQ,
   not drive-by.
+
+- Pixi v8 (hard-won): eventMode="none" on ALL decorative nodes (empty hitTest is truthy and halts sibling search); ONE Application per board FOREVER (destroy/recreate = GL teardown race); call render() synchronously after a scene rebuild (rAF is throttled in background tabs); boundingRect-gate pointermove for multi-board input; multi-root SVG needs a synthetic-root wrap before DOMParser.
+- e2e verification runs Playwright on the server (the Chrome-extension route was retired as flaky); drags need explicit intermediate pointermoves.
+- Build artifacts get NEW filenames (sprite v4->v10 chain); never overwrite.
+- Doc hygiene: when a file is deleted/renamed, sweep the docs for mentions THE SAME DAY.
 
 ## 9. Known debt (deliberate, tracked)
 

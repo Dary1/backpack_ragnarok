@@ -34,6 +34,12 @@ class IBattleInstance {
     this._aliveFn = spec.aliveFn || (() => spec.alive !== false);
     this.fire = null;             // attached by Battle (s7.0 closure over runEncounter scope)
     this.rollCooldownTicks = null; // attached by Battle
+    // REQ-0296: the firing instance's side-agnostic target lists, attached by
+    // Battle from THIS instance's formation map (below). opponents() -> the live
+    // OPPOSING actor list a fire aims at; allies() -> the OWN-side list (heal_ally,
+    // and the retaliation dispatched inside the bp fire body). null until wired.
+    this.opponents = null;
+    this.allies = null;
   }
   get alive() { return this._aliveFn(); }
   // s7.1a / s8.5: decrement, fire, RESET -- in insertion (slot) order. THE only fire walk.
@@ -68,8 +74,11 @@ class Battle {
     this.enemyMap = enemyMap;
     this.modeConfig = modeConfig != null ? modeConfig : null; // s7.0 RESERVED; REQ-0259 populates
     this.tickIndex = 0;                                        // THE clock (s10.3)
-    for (const inst of this.playerMap.instances) { inst.fire = fire; inst.rollCooldownTicks = rollCooldownTicks; }
-    for (const inst of this.enemyMap.instances) { inst.fire = fire; inst.rollCooldownTicks = rollCooldownTicks; }
+    // REQ-0296: also propagate each map's opponents()/allies() binding onto its
+    // instances, late-bound (a map wired AFTER construction -- the monster arena --
+    // still resolves at fire time; the standard encounter wires its maps up front).
+    for (const inst of this.playerMap.instances) { inst.fire = fire; inst.rollCooldownTicks = rollCooldownTicks; inst.opponents = () => playerMap.opponents(); inst.allies = () => playerMap.allies(); }
+    for (const inst of this.enemyMap.instances) { inst.fire = fire; inst.rollCooldownTicks = rollCooldownTicks; inst.opponents = () => enemyMap.opponents(); inst.allies = () => enemyMap.allies(); }
   }
   t() { return this.tickIndex * TUNABLES.TICK_SECS; } // COMPUTED, never accumulated (s10.3)
   // s8.5: the initial roll at battle start -- replaces the heap model's initial

@@ -4,12 +4,14 @@
 export const sortieEn = {
   'sortie.pageTitle': 'Sortie',
   'sortie.pageKicker': 'MUSTER YOUR TROOP',
-  'sortie.pageLede': 'Choose a destination, muster four squads, and give the order.',
+  'sortie.pageLede': 'Set your attack level, muster four squads, and give the order — your destination is drawn at random.',
   'sortie.back': 'Back to Expeditions',
   'sortie.dest.den': 'DESTINATION',
   'sortie.dest.loading': 'Charting destinations…',
   'sortie.dest.empty': 'No dungeons are available yet.',
   'sortie.dest.retry': 'Retry',
+  'sortie.entry.den': 'ATTACK LEVEL',
+  'sortie.entry.note': 'Set your attack level and muster your troop. Your destination is drawn at random from the dungeons that level can enter — revealed once you march.',
   'sortie.dungeon.levelBand': 'Lv {min}–{max}',
   'sortie.dungeon.lockedAt': 'Unlocks at Lv {level}',
   'sortie.dossier.encounters': 'Encounters',
@@ -54,16 +56,28 @@ export const sortieEn = {
   'sortie.launch.slotFailed': 'Slot {n} could not be filled: ',
   'sortie.launch.resume': 'Resume this sortie',
   'sortie.dungeonUnknown': 'That dungeon is no longer available — pick another destination.',
+  // ---- REQ-0337: public co-op recruitment (1-3 squads seated; the empty
+  // seats are the recruitment). Copy must never promise a departure -- the
+  // Troop only marches once the fourth seat is taken (REQ-0325).
+  'sortie.launch.needAnySquad': 'Muster at least one squad.',
+  'sortie.slot.openSeat': 'Open seat — recruiting',
+  'sortie.recruit.willOpen': 'Four squads make a troop — you have mustered {n} fewer, so those seats go up publicly and anyone may take them.',
+  'sortie.recruit.button': 'Open the call',
+  'sortie.recruit.opening': 'Raising the banner…',
+  'sortie.recruit.failed': 'The call could not be raised: ',
+  'sortie.recruit.seatFailed': 'The call is open, but your squad for seat {n} was refused: ',
 } as const;
 export const sortieJa = {
   'sortie.pageTitle': '出撃準備',
   'sortie.pageKicker': 'MUSTER YOUR TROOP',
-  'sortie.pageLede': '行き先を選び、四つの部隊を編成し、下命せよ。',
+  'sortie.pageLede': '攻略レベルを定め、四つの部隊を編成し、下命せよ — 行き先はランダムに抽選される。',
   'sortie.back': '遠征の間へ戻る',
   'sortie.dest.den': 'DESTINATION',
   'sortie.dest.loading': '行き先を測量中…',
   'sortie.dest.empty': '挑める迷宮がまだありません。',
   'sortie.dest.retry': '再試行',
+  'sortie.entry.den': '攻略レベル',
+  'sortie.entry.note': '攻略レベルを定めて部隊を編成せよ。行き先はそのレベルで挑めるダンジョンからランダムに抽選され、出撃後に判明する。',
   'sortie.dungeon.levelBand': 'Lv {min}–{max}',
   'sortie.dungeon.lockedAt': 'Lv {level} で解放',
   'sortie.dossier.encounters': '遭遇',
@@ -108,4 +122,12 @@ export const sortieJa = {
   'sortie.launch.slotFailed': 'スロット{n}を配置できませんでした: ',
   'sortie.launch.resume': '続きから出撃',
   'sortie.dungeonUnknown': 'そのダンジョンは利用できません — 別の行き先を選んでください。',
+  // ---- REQ-0337: 公開募集（1〜3部隊を配置し、空席が募集枠になる）
+  'sortie.launch.needAnySquad': '部隊を最低1つ配置してください。',
+  'sortie.slot.openSeat': '空席 — 募集中',
+  'sortie.recruit.willOpen': '遠征隊は4部隊 — {n}席が空いています。この席を公開して誰でも入れるようにします。',
+  'sortie.recruit.button': '募集をかける',
+  'sortie.recruit.opening': '旗を掲げています…',
+  'sortie.recruit.failed': '募集をかけられませんでした: ',
+  'sortie.recruit.seatFailed': '募集は開始しましたが、{n}番目の部隊は配置できませんでした: ',
 } as const;

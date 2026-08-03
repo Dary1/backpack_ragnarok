@@ -1,0 +1,90 @@
+{
+ "system_name": "witch",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "039d0e497607f83f276f580c77e4b481685b54664b927db89dc923c02a5ac8eb",
+ "provenance": {
+  "model": "claude-opus-4-8",
+  "params": {},
+  "prompt": "units003 kit design S1 (REQ-0201); reviewer-amended (REQ-0201 adoption notes)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:12:21.605Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "witch",
+  "i18n": {
+   "ja": {
+    "name": "魔女"
+   }
+  },
+  "icon": "units003_witch",
+  "name": "Witch",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       2,
+       3
+      ],
+      "t": "add_on_hit_status",
+      "status": "Burn"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "s": [
+     3,
+     4
+    ],
+    "t": "every_secs"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "A hex stitched into every strike.",
+  "rarity": "Uncommon",
+  "flavor_ja": "一撃ごとに呪いを縫い込む。",
+  "connection_shape": "bishop"
+ }
+}

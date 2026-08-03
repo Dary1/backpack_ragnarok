@@ -1,24 +1,6 @@
-
-> ## ART: SUPERSEDED by `art_pipeline.md` (REQ-0150, 2026-07-13)
->
-> Everything in this file about **image generation** — checkpoints, LoRAs, samplers,
-> steps, prompts, negative prompts, tiling, generation sizes, tool names — is
-> **out of date and must not be followed**. It describes the retired SDXL route
-> and/or the retired Norse dark-fantasy painterly art direction.
->
-> The current route, style and tools are in **`art_pipeline.md`**. Two user
-> decisions (2026-07-13) supersede this file's art content:
-> **(1) one route: flux2** — SDXL is retired and its code is deleted;
-> **(2) a new art direction** (InvokeAI Anime / Concept Art (Fantasy) templates,
-> euler / 30 steps / cfg 1.0 / no LoRAs / no negative), which supersedes the Norse
-> painterly direction **including REQ-0127's ratified unit roster style**.
->
-> > REQ-0127's roster (S7 ALL GREEN) is **superseded**: it is Norse painterly and
-> the direction is now anime. It is regenerated, not reused. Framing note: gear
-> nouns ("dagger", "belts", "leather armor") widen the shot out of a bust even
-> with `portrait` present — name the character, not the kit (`art_pipeline.md` §5).
->
-> The NON-art content of this file (schema, data model, review flow) still stands.
+> ART SUPERSEDED (REQ-0150, 2026-07-13): every image-generation detail below is dead --
+> route / style / tools live in `art_pipeline.md`. NON-art content (schema, data model,
+> review flow) still stands. The full original banner and text: git history.
 
 # Unit Icon Generation Pipeline — v1 (RATIFIED by user, 2026-07-12)
 
@@ -246,65 +228,6 @@ validator is a **code REQ**, now unblocked by REQ-0128b/0129. Until it lands:
   kits: **12 units** (not the 13 REQ-0130's gate text claimed — necromancer was cut,
   Watcher and Squire added), served by **11 S7-accepted icons**.
 
-### RATIFIED GENERATION ROUTE (REQ-0136, user verdict 2026-07-12)
+### Ratified generation route (REQ-0136, SDXL era) -- removed
 
-**Default route: `flux2` — FLUX.2 klein 4B distilled, GGUF Q8_0.**
-
-    unet    flux-2-klein-4b-Q8_0.gguf     (Apache 2.0, unsloth GGUF)
-    clip    qwen_3_4b.safetensors         (type: flux2)
-    vae     flux2-vae.safetensors
-    4 steps / cfg 1.0 / euler + Flux2Scheduler / SamplerCustomAdvanced
-
-Selected on merit over JuggernautXL V9 (incumbent) and DreamShaperXL Turbo v2.1
-in a 48-candidate bakeoff (2 items + 2 unit busts x 4 seeds x 3 checkpoints):
-
-| axis | flux2 | dsxl | v9 |
-|---|---|---|---|
-| near-white background (the brief) | **16/16** | 1/16 | 5/16 |
-| warm s/image (RTX 2080, 1024px) | **10 s** | 20 s | 40 s |
-| 48-candidate roster batch | **14.8 min** | 21.3 min | 35.5 min |
-| VRAM peak | 6842 MiB | 6388 MiB | 6516 MiB |
-| licence | **Apache 2.0** | OpenRAIL++-M | incumbent terms |
-
-The "NOT photorealistic" prompting tax is gone: FLUX obeys the painterly brief
-directly instead of being argued into it. Switching to a *different SDXL*
-checkpoint did NOT fix it -- DreamShaperXL, the nominally stylized contender,
-was the most photoreal of the three. The whole SDXL family fights this brief.
-
-**Three things that are NOT optional on this route:**
-
-1. **The negative prompt is INACTIVE.** Distilled klein samples at cfg 1.0,
-   where the guider applies no classifier-free guidance, and the official graph
-   feeds a ConditioningZeroOut of the positive in as the negative. Defs keep
-   their `gen_negative` (the sdxl route still uses it), but on flux2 it is
-   accepted and DISCARDED. **Steer style from the POSITIVE prompt.** The tool
-   prints a warning once per run so this cannot rot silently.
-
-2. **Lower seed variety.** Near-deterministic sampling means 4 seeds yield 4
-   close variants, not 4 alternatives (measured pairwise pixel delta 14.6 vs
-   41.1 for v9). The flip side: all 4 are usable, whereas v9's "variety" was
-   substantially multiple-object and cropped brief violations. Budget re-rolls
-   by changing the PROMPT, not the seed.
-
-3. **RESTART ComfyUI between routes/legs -- the problem is HOST RSS, not VRAM.**
-   Corrected 2026-07-14 (REQ-0158): the earlier wording "`/free` is not enough"
-   was wrong about VRAM. `POST /free {"unload_models":true,"free_memory":true}`
-   DOES release VRAM, even while idle -- `set_flag()` notifies the prompt worker
-   (`execution.py:1387`), which runs `unload_all_models()` + `gc.collect()` +
-   `soft_empty_cache()` (`torch.cuda.empty_cache()`) within ~10 s (`main.py:383`).
-   What `/free` does NOT do is shrink host RSS: freed weights return to the Python
-   allocator, not to the OS. A long-lived process that has served SDXL and then
-   FLUX reaches ~19 GB RSS, fills swap, and the box stops responding (observed
-   2026-07-12) -- THAT is why crossing model families needs a process restart. Generation
-   and matting must also be separate phases (`--phase gen|matte`) with ComfyUI
-   DOWN during matte: rembg `alpha_matting` peaks at 12-13 GB RSS, which does
-   not fit alongside a resident model on the 23 GB box. Eight global OOM kills
-   on 2026-07-12 came from exactly that overlap.
-
-The `sdxl` route (JuggernautXL V9, 30 steps, cfg 6.5, dpmpp_2m/karras) is
-**FROZEN — NOT a fallback, NOT a production route.** User decision 2026-07-13
-(REQ-0150, "Flux2化"): one route for all image generation. It is kept runnable
-for exactly one purpose — **reproducing historical SDXL-era batches**:
-`gen_item_icons.py --route sdxl`. Reaching for it because flux2 is inconvenient
-is a regression, not a fallback; if flux2 cannot do something, that is a finding
-for the user, not a reason to go back.
+Superseded by REQ-0150 flux2; removed by REQ-0358. Text: git history. Current route: `art_pipeline.md`.

@@ -62,6 +62,8 @@ const ragnarok = require('./storage/ragnarok.cjs');
 const seals = require('./storage/seals.cjs');
 // REQ-0060: pack biography (per-BP-instance ledger).
 const bioStore = require('./storage/bio.cjs');
+// REQ-0327: per-player notification feed (device + bot, one mechanism).
+const notificationsStore = require('./storage/notifications.cjs');
 const bpskinStore = require('./storage/bpskin_slot.cjs'); // REQ-0126: per-BP-instance cosmetic skin slot
 const skinPrefsStore = require('./storage/skin_prefs.cjs'); // REQ-0266: per-PLAYER unit_skin selection
 // REQ-0151: artwork registry lives in a sibling storage-subsystem file
@@ -109,6 +111,12 @@ module.exports = {
   readBio: bioStore.readBio,
   writeBio: bioStore.writeBio,
   listBios: bioStore.listBios,
+  // REQ-0327: per-player notification feed (storage.cjs stays THE sole
+  // persistence chokepoint -- from storage/notifications.cjs).
+  NOTIFICATIONS_DIR: notificationsStore.NOTIFICATIONS_DIR,
+  notificationsPath: notificationsStore.notificationsPath,
+  readNotifications: notificationsStore.readNotifications,
+  writeNotifications: notificationsStore.writeNotifications,
   // REQ-0126: per-BP-instance cosmetic skin slot (storage.cjs stays THE sole
   // persistence chokepoint -- from storage/bpskin_slot.cjs).
   SKIN_DIR: bpskinStore.SKIN_DIR,

@@ -1,0 +1,95 @@
+{
+ "system_name": "valkyrie",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "e5a7673c1f637892738eb213a9664820d0ce04f0ebde3e0e9b9425f48bfa581d",
+ "provenance": {
+  "model": "claude-opus-4-8",
+  "params": {},
+  "prompt": "units003 kit design S1 (REQ-0201); reviewer-amended (REQ-0201 adoption notes)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:12:21.427Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "valkyrie",
+  "i18n": {
+   "ja": {
+    "name": "ヴァルキュリア"
+   }
+  },
+  "icon": "units003_valkyrie",
+  "name": "Valkyrie",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       10,
+       15
+      ],
+      "t": "grant_shield"
+     },
+     "target": "bp_connected"
+    },
+    {
+     "verb": {
+      "n": [
+       5,
+       8
+      ],
+      "t": "heal_bp"
+     },
+     "target": "bp_connected"
+    }
+   ],
+   "trigger": {
+    "t": "on_connected_unit_bp_been_hit"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "She lifts the fallen mid-battle.",
+  "rarity": "Rare",
+  "flavor_ja": "戦場のただ中で倒れし者を掬い上げる。",
+  "connection_shape": "chess_knight_move"
+ }
+}

@@ -8,7 +8,7 @@
       "name": "Kraken",
       "hp": [600, 800],
       "footprint": [10, 10],
-      "skills": ["crushing_tentacles", "abyssal_grip"],
+      "skills": ["crushing_tentacles", "abyssal_grip", "kraken_regrowing_tendrils"],
       "i18n": { "en": { "name": "Kraken" }, "ja": { "name": "クラーケン" } },
       "rarity": "relic",
       "pack_role": "boss"
@@ -18,7 +18,7 @@
       "name": "Sea Serpent",
       "hp": [180, 240],
       "footprint": [6, 6],
-      "skills": ["tidal_fang", "coil_crush"],
+      "skills": ["tidal_fang", "coil_crush", "seaserpent_cold_native"],
       "i18n": { "en": { "name": "Sea Serpent" }, "ja": { "name": "シーサーペント" } },
       "rarity": "rare",
       "pack_role": "anchor"
@@ -28,7 +28,7 @@
       "name": "Sahuagin",
       "hp": [55, 75],
       "footprint": [4, 3],
-      "skills": ["coral_spear", "cold_current"],
+      "skills": ["coral_spear", "cold_current", "sahuagin_blood_frenzy"],
       "i18n": { "en": { "name": "Sahuagin" }, "ja": { "name": "サハギン" } },
       "rarity": "common",
       "pack_role": "line"
@@ -38,7 +38,7 @@
       "name": "Giant Crab",
       "hp": [80, 105],
       "footprint": [3, 4],
-      "skills": ["pincer_slam", "barnacle_grip"],
+      "skills": ["pincer_slam", "barnacle_grip", "crab_hard_shell"],
       "i18n": { "en": { "name": "Giant Crab" }, "ja": { "name": "ジャイアントクラブ" } },
       "rarity": "common",
       "pack_role": "line"
@@ -48,7 +48,7 @@
       "name": "Medusa",
       "hp": [120, 155],
       "footprint": [4, 4],
-      "skills": ["petrifying_glare", "serpent_lash"],
+      "skills": ["petrifying_glare", "serpent_lash", "medusa_stone_gaze"],
       "i18n": { "en": { "name": "Medusa" }, "ja": { "name": "メデューサ" } },
       "rarity": "rare",
       "pack_role": "anchor"
@@ -58,7 +58,7 @@
       "name": "Cockatrice",
       "hp": [65, 85],
       "footprint": [4, 3],
-      "skills": ["petri_peck", "talon_rake"],
+      "skills": ["petri_peck", "talon_rake", "cockatrice_bristling_plumage"],
       "i18n": { "en": { "name": "Cockatrice" }, "ja": { "name": "コカトリス" } },
       "rarity": "uncommon",
       "pack_role": "line"
@@ -68,7 +68,7 @@
       "name": "Lamia",
       "hp": [90, 115],
       "footprint": [4, 4],
-      "skills": ["serpents_kiss", "beguiling_song"],
+      "skills": ["serpents_kiss", "beguiling_song", "lamia_shedding_skin"],
       "i18n": { "en": { "name": "Lamia" }, "ja": { "name": "ラミア" } },
       "rarity": "uncommon",
       "pack_role": "line"
@@ -78,7 +78,7 @@
       "name": "Stone Golem",
       "hp": [160, 210],
       "footprint": [5, 4],
-      "skills": ["seismic_fist", "granite_slam"],
+      "skills": ["seismic_fist", "granite_slam", "golem_immovable"],
       "i18n": { "en": { "name": "Stone Golem" }, "ja": { "name": "ストーンゴーレム" } },
       "rarity": "rare",
       "pack_role": "anchor"
@@ -88,7 +88,7 @@
       "name": "Goblin",
       "hp": [40, 55],
       "footprint": [4, 3],
-      "skills": ["rusty_shiv", "goblin_jeer"],
+      "skills": ["rusty_shiv", "goblin_jeer", "goblin_cornered_stab"],
       "i18n": { "en": { "name": "Goblin" }, "ja": { "name": "ゴブリン" } },
       "rarity": "common",
       "pack_role": "line"
@@ -98,7 +98,7 @@
       "name": "Goblin Shaman",
       "hp": [45, 60],
       "footprint": [4, 3],
-      "skills": ["crude_mending", "hex_bolt"],
+      "skills": ["crude_mending", "hex_bolt", "shaman_totemic_mending"],
       "i18n": { "en": { "name": "Goblin Shaman" }, "ja": { "name": "ゴブリンシャーマン" } },
       "rarity": "common",
       "pack_role": "support"
@@ -108,7 +108,7 @@
       "name": "Kobold",
       "hp": [45, 60],
       "footprint": [4, 3],
-      "skills": ["pack_spear"],
+      "skills": ["pack_spear", "kobold_caltrops"],
       "i18n": { "en": { "name": "Kobold" }, "ja": { "name": "コボルト" } },
       "rarity": "common",
       "pack_role": "line"
@@ -118,7 +118,7 @@
       "name": "Orc Warrior",
       "hp": [85, 110],
       "footprint": [4, 3],
-      "skills": ["brutal_cleave"],
+      "skills": ["brutal_cleave", "orc_cleaving_riposte"],
       "i18n": { "en": { "name": "Orc Warrior" }, "ja": { "name": "オークウォーリア" } },
       "rarity": "uncommon",
       "pack_role": "line"
@@ -128,7 +128,7 @@
       "name": "Ogre",
       "hp": [150, 195],
       "footprint": [4, 4],
-      "skills": ["clubbing_blow"],
+      "skills": ["clubbing_blow", "ogre_thick_hide"],
       "i18n": { "en": { "name": "Ogre" }, "ja": { "name": "オーガ" } },
       "rarity": "rare",
       "pack_role": "anchor"
@@ -138,7 +138,7 @@
       "name": "Behemoth",
       "hp": [520, 720],
       "footprint": [8, 8],
-      "skills": ["cataclysm_horns", "earthshatter"],
+      "skills": ["cataclysm_horns", "earthshatter", "behemoth_last_stand"],
       "i18n": { "en": { "name": "Behemoth" }, "ja": { "name": "ベヒーモス" } },
       "rarity": "relic",
       "pack_role": "boss"
@@ -148,7 +148,7 @@
       "name": "Frost Giant",
       "hp": [200, 260],
       "footprint": [6, 5],
-      "skills": ["glacial_axe", "winters_call"],
+      "skills": ["glacial_axe", "winters_call", "giant_ice_born"],
       "i18n": { "en": { "name": "Frost Giant" }, "ja": { "name": "フロストジャイアント" } },
       "rarity": "rare",
       "pack_role": "anchor"
@@ -158,7 +158,7 @@
       "name": "Cyclops",
       "hp": [190, 250],
       "footprint": [6, 5],
-      "skills": ["log_swing", "hurl_boulder"],
+      "skills": ["log_swing", "hurl_boulder", "cyclops_mighty_thews"],
       "i18n": { "en": { "name": "Cyclops" }, "ja": { "name": "サイクロプス" } },
       "rarity": "rare",
       "pack_role": "anchor"
@@ -168,7 +168,7 @@
       "name": "Troll",
       "hp": [120, 160],
       "footprint": [5, 4],
-      "skills": ["rending_claw", "trollish_vigor"],
+      "skills": ["rending_claw", "trollish_vigor", "troll_regeneration"],
       "i18n": { "en": { "name": "Troll" }, "ja": { "name": "トロール" } },
       "rarity": "uncommon",
       "pack_role": "line"

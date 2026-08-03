@@ -70,6 +70,7 @@ import { SquadStatusBoard } from './SquadStatusBoard'; // REQ-0239
 import { Monitor } from './Monitor';
 import { MonitorErrorBoundary } from './MonitorErrorBoundary'; // REQ-0285
 import { RoomCard } from './RoomCard';
+import { isRecruiting, isTroopRoom } from './seats'; // REQ-0337
 import { SealPanel } from './SealPanel'; // REQ-0058
 import { SlotsPanel } from './SlotsPanel';
 import { SpoilsRail } from './SpoilsRail';
@@ -170,6 +171,10 @@ export function SchedulePage({ locale }: SchedulePageProps) {
     const entry = dungeons?.dungeons.find((d) => d.id === dungeonId);
     return entry ? localizedName(locale, entry) : t(locale, 'schedule.dungeonUnknown');
   }
+  // REQ-0304: the DRAWN dungeon's theme (種類), resolved for the post-entry reveal.
+  function dungeonThemeFor(dungeonId: string): string | undefined {
+    return dungeons?.dungeons.find((d) => d.id === dungeonId)?.theme;
+  }
 
   const hasRooms = rooms !== null && rooms.length > 0;
   const canceledCount = rooms ? rooms.filter((r) => r.status === 'canceled').length : 0;
@@ -189,6 +194,12 @@ export function SchedulePage({ locale }: SchedulePageProps) {
   // (running = status 'active'; total = every non-canceled room).
   const runningCount = rooms ? rooms.filter((r) => r.status === 'active').length : 0;
   const liveRoomCount = rooms ? rooms.filter((r) => r.status !== 'canceled').length : 0;
+  // REQ-0337: co-op Troops the player is HOSTING and that are still gathering
+  // squads. GET /api/schedule/rooms filters by ownerId only (not visibility), so
+  // these already arrive in `rooms` -- this is a count over data we hold, not a
+  // new fetch. Surfaced as one line so an open call for recruits is visible from
+  // the top of the screen instead of only on its card.
+  const recruitingCount = rooms ? rooms.filter((r) => isTroopRoom(r) && isRecruiting(r)).length : 0;
   // REQ-0097: the room whose detail (slots + shared monitor) fills the center pane.
   const selectedRoom = expandedRoomId ? rooms?.find((r) => r.id === expandedRoomId) ?? null : null;
 
@@ -221,6 +232,15 @@ export function SchedulePage({ locale }: SchedulePageProps) {
       </div>
 
       <SquadStatusBoard locale={locale} rooms={rooms} dungeonNameFor={dungeonNameFor} onWatch={(roomId) => setExpandedRoomId(roomId)} />
+
+      {/* REQ-0337: a standing call for recruits is the one room state that is
+          waiting on OTHER PEOPLE rather than on a clock, so it gets a line of its
+          own. The 4s rooms poll already refreshes it; no separate loop. */}
+      {recruitingCount > 0 ? (
+        <div className="schedule-recruiting-note t-micro" data-testid="schedule-recruiting-note">
+          {t(locale, 'schedule.recruitingNote', { count: recruitingCount })}
+        </div>
+      ) : null}
 
       <div className="schedule-master-detail">
         <div className="schedule-rooms-col" data-testid="schedule-rooms-col">
@@ -295,7 +315,7 @@ export function SchedulePage({ locale }: SchedulePageProps) {
                   in the client") but did not close. Keyed on the room id so
                   switching rooms both remounts the Monitor and clears a prior error. */}
               <MonitorErrorBoundary key={selectedRoom.id} locale={locale}>
-                <Monitor room={selectedRoom} locale={locale} dungeonName={dungeonNameFor(selectedRoom.dungeonId)} isAdmin={isAdmin} onRunSettled={() => setSpoilsRefresh((n) => n + 1)} />
+                <Monitor room={selectedRoom} locale={locale} dungeonName={dungeonNameFor(selectedRoom.dungeonId)} dungeonTheme={dungeonThemeFor(selectedRoom.dungeonId)} isAdmin={isAdmin} onRunSettled={() => setSpoilsRefresh((n) => n + 1)} />
               </MonitorErrorBoundary>
             </>
           ) : (

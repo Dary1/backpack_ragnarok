@@ -8,10 +8,8 @@
 // This REPLACES sim/dungen.cjs's runtime generation on the serving path:
 // the dive is now a cheap weighted SELECT, not a graph build.
 //
-// ONE roller, shared by the sim serving path (server/services/runs.cjs) AND
-// the forecast fold (server/lib/forecast.cjs), so the forecast can never
-// forecast a composition the sim would not run -- the parity contract
-// sim/tests/forecast_parity.cjs exists to protect.
+// ONE roller for the sim serving path (server/services/runs.cjs). It used to
+// be shared with the REQ-0057 forecast fold, which REQ-0308 retired.
 //
 // The concrete shape produced here is the EXACT shape sim/dungen.cjs already
 // emitted (encounters with enemyPack:{packId} + REQ-0049 attachments), so

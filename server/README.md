@@ -14,7 +14,7 @@ on `127.0.0.1:8802` only.
   combined schedule module into schedule/warehouse/workshop, dispatched
   consecutively in its old slot, with the shared caller-resolution
   preamble (token -> resolveAuth -> 401 + dev-fallback flag) in
-  `lib/route_auth.cjs`; content payload/cache, HTTP plumbing, event
+  `lib/route_kit.cjs` (REQ-0349; replaced `lib/route_auth.cjs`); content payload/cache, HTTP plumbing, event
   humanizer and HOST/PORT/VERSION in `lib/`.
 - `storage.cjs` — THE persistence chokepoint (design rule 4). REQ-0145a
   (sb): now a pure FACADE re-exporting `storage/{lib,profiles,rooms,
@@ -378,7 +378,7 @@ paced to real time," not "the sim runs in real time," for two reasons:
   their own warehouse.
 - Claim (`POST /api/warehouse/claim`) is FIRST-FIT only: it scans the
   caller's 5 inventory pages in order and places the claimed item at the
-  first legal `[row,col]` cell found (via `mock-src/engine.js`'s
+  first legal `[row,col]` cell found (via `shared/engine.js`'s
   exported `invCanPlacePO`/`invMovePO` — `engine.js`'s own internal
   `firstFitCell` isn't exported, so this is a documented push-scan-
   rollback re-implementation using only the exported API). No space

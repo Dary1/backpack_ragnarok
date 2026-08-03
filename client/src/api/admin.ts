@@ -169,7 +169,11 @@ export interface ContentDefDto {
   adopted_variant_no?: number | null; variant_count?: number; ok_count?: number;
   failed_check_count?: number; last_variant_at?: string | null; has_artwork_facet?: boolean;
 }
-export interface MachineCheckItem { name: string; ok: boolean; applicable: boolean; detail: string; extra?: { content_live_unchanged?: boolean } }
+// REQ-0354: the `serving` row is advisory (never feeds overall) and carries
+// the sha256 of every live file it was computed against; the server re-hashes
+// them on read and sets stale:true on a mismatch (rendered STALE -- a third
+// state, neither PASS nor FAIL).
+export interface MachineCheckItem { name: string; ok: boolean; applicable: boolean; detail: string; advisory?: boolean; stale?: boolean; live_files?: Array<{ file: string; sha256: string | null }>; extra?: { content_live_unchanged?: boolean } }
 export interface MachineCheck { overall: 'PASS' | 'FAIL'; checks: MachineCheckItem[]; schema_ref?: string; ran_at?: string }
 export interface AgentReview { agent: string | null; model: string | null; verdict: 'recommend' | 'neutral' | 'concern'; rationale: string; reviewed_at?: string }
 export interface VariantProvenance { source: 'llm' | 'human_edit'; model: string | null; model_version: string | null; prompt: string | null; params: unknown; seed_if_any: unknown; parent_variant_id: number | null }
@@ -184,7 +188,11 @@ function contentJson<T = Record<string, unknown>>(path: string, opts: RequestIni
   return artJson<T>(path, opts);
 }
 
-export function listContentDefs(): Promise<{ ok: true; defs: ContentDefDto[] }> {
+// REQ-0354 section 5: KIND-level serving report on the list response (NOT
+// WIRED banner data + MISSING-from-registry report rows).
+export interface ServingKindReport { kind: string; wired: boolean; def_count: number; adopted_count: number; in_files: number; missing_count: number; missing_from_registry: string[] }
+export interface ServingReport { generated_at?: string; error?: string; kinds: ServingKindReport[] }
+export function listContentDefs(): Promise<{ ok: true; defs: ContentDefDto[]; serving_report?: ServingReport | null }> {
   return contentJson('/api/content/defs', { method: 'GET' });
 }
 export function createContentDef(b: Record<string, unknown>): Promise<{ ok: true; def: ContentDefDto }> {

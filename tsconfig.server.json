@@ -30,8 +30,10 @@
     "sim/combat.cjs",
     "sim/dungen.cjs"
   ],
+  "// exclude doc": "REQ-0310: shared/tests is excluded for the same reason server/tests and sim/tests were never in  -- no test suite in this repo is typechecked. Test fixtures are deliberately partial (a 3-key ApiContentPayload stand-in, a plain number[][] shape) and checkJs would demand they be widened into full wire payloads, which would make the goldens harder to read and prove nothing. The MODULES they exercise are typechecked; the harness is not.",
   "exclude": [
     "mock-src",
+    "shared/tests",
     "server/node_modules",
     "node_modules"
   ]

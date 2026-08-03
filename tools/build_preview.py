@@ -61,7 +61,7 @@ def entries_of(data):
 
 
 def shape_bbox_cells(shape):
-    """shape: [[row,col],...] -- REQ-0029: matches mock-src/engine.js's own
+    """shape: [[row,col],...] -- REQ-0029: matches shared/engine.js's own
     convention (shapeInfo/cellsOf/bpCells all destructure offset tuples as
     ([r,c]) => ..., first=row second=col; cross-checked against
     scenario.json's blade/hilt vertical stacking). Previously this function
@@ -87,7 +87,7 @@ def conn_notch_polygon(cx, cy, half=4.48):
 def render_shapegrid(shape, port_tiles):
     """Build the <svg class="shapegrid">...</svg> markup for one item's shape.
     port_tiles: list of absolute [row,col] external-neighbor coordinates (REQ-0029:
-    same [row,col] convention as shape and as mock-src/engine.js's portTargets(),
+    same [row,col] convention as shape and as shared/engine.js's portTargets(),
     same coordinate frame as shape, before normalization) -- the union of every
     Connection Port's `tiles` on this entry (REQ-0023; ports replaced the old
     flat `conn` list with ports:[{tiles,tag},...], but notch rendering is
@@ -115,7 +115,7 @@ def render_shapegrid(shape, port_tiles):
         for i, (nrow, ncol) in enumerate(port_tiles):
             # neighbor cell in normalized (0-based) coords -- port tiles are
             # [row,col] pairs (REQ-0029, same convention as shape; see
-            # mock-src/engine.js portTargets(): port.tiles destructured as
+            # shared/engine.js portTargets(): port.tiles destructured as
             # ([r,c]) => ...)
             ncc, nrr = ncol - c0, nrow - r0
             cx = ncc * CELL_PX + CELL_PX / 2

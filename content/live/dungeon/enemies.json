@@ -7,7 +7,7 @@
       "name": "Frost Gnoll",
       "hp": [30, 45],
       "footprint": [1, 1],
-      "skills": ["gnoll_claw"],
+      "skills": ["gnoll_claw", "gnoll_snap"],
       "i18n": { "en": { "name": "Frost Gnoll" }, "ja": { "name": "フロストノール" } },
       "rarity": "common",
       "pack_role": "line"
@@ -17,7 +17,7 @@
       "name": "Ice Archer",
       "hp": [22, 34],
       "footprint": [1, 1],
-      "skills": ["ice_arrow"],
+      "skills": ["ice_arrow", "archer_steady_aim"],
       "i18n": { "en": { "name": "Ice Archer" }, "ja": { "name": "氷の弓兵" } },
       "rarity": "common",
       "pack_role": "line"
@@ -27,7 +27,7 @@
       "name": "Rime Shaman",
       "hp": [26, 38],
       "footprint": [1, 1],
-      "skills": ["chilling_word", "frost_ward"],
+      "skills": ["chilling_word", "frost_ward", "rime_mantle"],
       "i18n": { "en": { "name": "Rime Shaman" }, "ja": { "name": "霧氷の呪術師" } },
       "rarity": "common",
       "pack_role": "support"
@@ -37,7 +37,7 @@
       "name": "Frostback Bear",
       "hp": [70, 95],
       "footprint": [2, 2],
-      "skills": ["bear_slam", "frost_roar"],
+      "skills": ["bear_slam", "frost_roar", "bear_frost_hide"],
       "i18n": { "en": { "name": "Frostback Bear" }, "ja": { "name": "フロストバック・ベア" } },
       "rarity": "common",
       "pack_role": "anchor"
@@ -47,7 +47,7 @@
       "name": "Glacier Wisp",
       "hp": [15, 24],
       "footprint": [1, 1],
-      "skills": ["wisp_bolt"],
+      "skills": ["wisp_bolt", "wisp_freezing_touch"],
       "i18n": { "en": { "name": "Glacier Wisp" }, "ja": { "name": "氷河の鬼火" } },
       "rarity": "common",
       "pack_role": "line"
@@ -57,7 +57,7 @@
       "name": "Niflheim Stalker",
       "hp": [50, 65],
       "footprint": [1, 1],
-      "skills": ["stalker_pounce", "stalker_bleed_bite"],
+      "skills": ["stalker_pounce", "stalker_bleed_bite", "stalker_cornered_fury"],
       "i18n": { "en": { "name": "Niflheim Stalker" }, "ja": { "name": "ニヴルヘイムの追跡者" } },
       "rarity": "common",
       "pack_role": "line"
@@ -67,7 +67,7 @@
       "name": "Hrimgrimnir, the Frost-Masked",
       "hp": [400, 400],
       "footprint": [3, 3],
-      "skills": ["hrim_cleave", "hrim_blizzard_volley", "hrim_deep_freeze"],
+      "skills": ["hrim_cleave", "hrim_blizzard_volley", "hrim_deep_freeze", "hrim_frost_masked"],
       "i18n": { "en": { "name": "Hrimgrimnir, the Frost-Masked" }, "ja": { "name": "フロストマスクのフリムグリムニル" } },
       "rarity": "rare",
       "pack_role": "boss"
@@ -85,7 +85,8 @@
       ],
       "skills": [
         "rotting_claw",
-        "festering_grasp"
+        "festering_grasp",
+        "zombie_already_rotten"
       ],
       "i18n": {
         "en": {
@@ -111,7 +112,8 @@
       ],
       "skills": [
         "spectral_touch",
-        "haunting_chill"
+        "haunting_chill",
+        "ghost_incorporeal"
       ],
       "i18n": {
         "en": {
@@ -137,7 +139,8 @@
       ],
       "skills": [
         "bandage_lash",
-        "mummys_curse"
+        "mummys_curse",
+        "mummy_death_curse"
       ],
       "i18n": {
         "en": {
@@ -163,7 +166,8 @@
       ],
       "skills": [
         "bone_cleaver",
-        "shield_jab"
+        "shield_jab",
+        "skel_no_flesh"
       ],
       "i18n": {
         "en": {
@@ -189,7 +193,8 @@
       ],
       "skills": [
         "grave_blade",
-        "life_drain"
+        "life_drain",
+        "wight_undying"
       ],
       "i18n": {
         "en": {
@@ -215,7 +220,8 @@
       ],
       "skills": [
         "dark_mending",
-        "enfeebling_bolt"
+        "enfeebling_bolt",
+        "necro_deathly_ward"
       ],
       "i18n": {
         "en": {
@@ -241,7 +247,8 @@
       ],
       "skills": [
         "soul_blast",
-        "paralyzing_dread"
+        "paralyzing_dread",
+        "lich_undying_will"
       ],
       "i18n": {
         "en": {
@@ -267,7 +274,8 @@
       ],
       "skills": [
         "bone_breath",
-        "necrotic_roar"
+        "necrotic_roar",
+        "bonedrag_death_collapse"
       ],
       "i18n": {
         "en": {
@@ -293,7 +301,8 @@
       ],
       "skills": [
         "rending_claws",
-        "feral_bite"
+        "feral_bite",
+        "werewolf_lunar_regen"
       ],
       "i18n": {
         "en": {
@@ -319,7 +328,8 @@
       ],
       "skills": [
         "savage_bite",
-        "harrying_snap"
+        "harrying_snap",
+        "direwolf_harrier_retort"
       ],
       "i18n": {
         "en": {
@@ -344,7 +354,8 @@
         4
       ],
       "skills": [
-        "tusk_charge"
+        "tusk_charge",
+        "boar_wounded_fury"
       ],
       "i18n": {
         "en": {
@@ -369,7 +380,8 @@
         4
       ],
       "skills": [
-        "blood_drain"
+        "blood_drain",
+        "bat_erratic_flight"
       ],
       "i18n": {
         "en": {
@@ -394,7 +406,8 @@
         4
       ],
       "skills": [
-        "venom_bite"
+        "venom_bite",
+        "spider_clinging_web"
       ],
       "i18n": {
         "en": {
@@ -420,7 +433,8 @@
       ],
       "skills": [
         "stinger",
-        "pincer_grip"
+        "pincer_grip",
+        "scorpion_barbed_carapace"
       ],
       "i18n": {
         "en": {
@@ -446,7 +460,8 @@
       ],
       "skills": [
         "constrict",
-        "venom_spit"
+        "venom_spit",
+        "snake_retaliatory_venom"
       ],
       "i18n": {
         "en": {
@@ -472,7 +487,8 @@
       ],
       "skills": [
         "petrifying_gaze",
-        "toxic_maw"
+        "toxic_maw",
+        "basilisk_venom_blooded"
       ],
       "i18n": {
         "en": {
@@ -498,7 +514,8 @@
       ],
       "skills": [
         "fire_dart",
-        "impish_drain"
+        "impish_drain",
+        "imp_death_pop"
       ],
       "i18n": {
         "en": {
@@ -523,7 +540,8 @@
         4
       ],
       "skills": [
-        "molten_talons"
+        "molten_talons",
+        "gargoyle_stone_skin"
       ],
       "i18n": {
         "en": {
@@ -549,7 +567,8 @@
       ],
       "skills": [
         "headless_charge",
-        "doom_toll"
+        "doom_toll",
+        "dullahan_headless"
       ],
       "i18n": {
         "en": {
@@ -575,7 +594,8 @@
       ],
       "skills": [
         "hellfire_wave",
-        "dominion_of_flame"
+        "dominion_of_flame",
+        "demonlord_wrath"
       ],
       "i18n": {
         "en": {
@@ -601,7 +621,8 @@
       ],
       "skills": [
         "crushing_tentacles",
-        "abyssal_grip"
+        "abyssal_grip",
+        "kraken_regrowing_tendrils"
       ],
       "i18n": {
         "en": {
@@ -627,7 +648,8 @@
       ],
       "skills": [
         "tidal_fang",
-        "coil_crush"
+        "coil_crush",
+        "seaserpent_cold_native"
       ],
       "i18n": {
         "en": {
@@ -653,7 +675,8 @@
       ],
       "skills": [
         "coral_spear",
-        "cold_current"
+        "cold_current",
+        "sahuagin_blood_frenzy"
       ],
       "i18n": {
         "en": {
@@ -679,7 +702,8 @@
       ],
       "skills": [
         "pincer_slam",
-        "barnacle_grip"
+        "barnacle_grip",
+        "crab_hard_shell"
       ],
       "i18n": {
         "en": {
@@ -705,7 +729,8 @@
       ],
       "skills": [
         "petrifying_glare",
-        "serpent_lash"
+        "serpent_lash",
+        "medusa_stone_gaze"
       ],
       "i18n": {
         "en": {
@@ -731,7 +756,8 @@
       ],
       "skills": [
         "petri_peck",
-        "talon_rake"
+        "talon_rake",
+        "cockatrice_bristling_plumage"
       ],
       "i18n": {
         "en": {
@@ -757,7 +783,8 @@
       ],
       "skills": [
         "serpents_kiss",
-        "beguiling_song"
+        "beguiling_song",
+        "lamia_shedding_skin"
       ],
       "i18n": {
         "en": {
@@ -783,7 +810,8 @@
       ],
       "skills": [
         "seismic_fist",
-        "granite_slam"
+        "granite_slam",
+        "golem_immovable"
       ],
       "i18n": {
         "en": {
@@ -809,7 +837,8 @@
       ],
       "skills": [
         "rusty_shiv",
-        "goblin_jeer"
+        "goblin_jeer",
+        "goblin_cornered_stab"
       ],
       "i18n": {
         "en": {
@@ -835,7 +864,8 @@
       ],
       "skills": [
         "crude_mending",
-        "hex_bolt"
+        "hex_bolt",
+        "shaman_totemic_mending"
       ],
       "i18n": {
         "en": {
@@ -860,7 +890,8 @@
         3
       ],
       "skills": [
-        "pack_spear"
+        "pack_spear",
+        "kobold_caltrops"
       ],
       "i18n": {
         "en": {
@@ -885,7 +916,8 @@
         3
       ],
       "skills": [
-        "brutal_cleave"
+        "brutal_cleave",
+        "orc_cleaving_riposte"
       ],
       "i18n": {
         "en": {
@@ -910,7 +942,8 @@
         4
       ],
       "skills": [
-        "clubbing_blow"
+        "clubbing_blow",
+        "ogre_thick_hide"
       ],
       "i18n": {
         "en": {
@@ -936,7 +969,8 @@
       ],
       "skills": [
         "cataclysm_horns",
-        "earthshatter"
+        "earthshatter",
+        "behemoth_last_stand"
       ],
       "i18n": {
         "en": {
@@ -962,7 +996,8 @@
       ],
       "skills": [
         "glacial_axe",
-        "winters_call"
+        "winters_call",
+        "giant_ice_born"
       ],
       "i18n": {
         "en": {
@@ -988,7 +1023,8 @@
       ],
       "skills": [
         "log_swing",
-        "hurl_boulder"
+        "hurl_boulder",
+        "cyclops_mighty_thews"
       ],
       "i18n": {
         "en": {
@@ -1014,7 +1050,8 @@
       ],
       "skills": [
         "rending_claw",
-        "trollish_vigor"
+        "trollish_vigor",
+        "troll_regeneration"
       ],
       "i18n": {
         "en": {

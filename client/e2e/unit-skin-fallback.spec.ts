@@ -10,7 +10,7 @@
 // routed <img>: the attribute carries WHICH RUNG WON, so these tests assert the
 // chain fell through for the right reason instead of merely that something was
 // drawn. Ports: none. This spec runs on the standard fleet and hard-codes no
-// port, so tools/check_e2e_ports.cjs (ci.sh [0/8]) is unaffected.
+// port, so it needs nothing from the port desk (tools/port_desk.sh).
 //
 // (4) is a PIXEL test, and deliberately so. Nothing in the suite looked at the
 // board's appearance, which is exactly how REQ-0266's first BoardRenderer

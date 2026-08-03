@@ -432,6 +432,14 @@ export interface ApiCancelPolicy {
  * squad indices (0-based), or null if unfilled. */
 export interface ApiRoomSlot {
   squadIndex: number | null;
+  /** REQ-0324/0337: a co-op TROOP seat also records WHO took it. Absent on a
+   * solo room's slot (which is `{squadIndex}` and nothing else -- its owner is
+   * the room's ownerId by definition). Present on every seat of a
+   * `visibility:'public'` Troop, where `squadIndex` indexes THAT owner's own
+   * canvas, NOT the reader's -- never resolve it against your own squad names
+   * unless `ownerId` is you. */
+  ownerId?: string;
+  joinedAt?: string;
 }
 
 /** A queued swap (golden j) -- present once `PUT .../swap` is queued
@@ -472,17 +480,34 @@ export interface ApiRoom {
    * only a dev/item_admin caller may have CHOSEN this value explicitly at
    * create-room time (see ApiCreateRoomBody.genSeed). */
   genSeed?: string;
-  visibility: 'self';
+  /** REQ-0324/0337: 'public' marks a co-operative TROOP. GET /api/schedule/rooms
+   * filters by ownerId ONLY (services/rooms.cjs listOwnRooms) -- it does NOT
+   * filter on visibility -- so a Troop the caller HOSTS is returned by that list
+   * alongside their solo rooms, and every consumer of ApiRoom must tolerate it. */
+  visibility: 'self' | 'public';
   formationId: string;
   cancelPolicy: ApiCancelPolicy;
   slots: ApiRoomSlot[];
-  status: 'open' | 'active' | 'canceled';
+  /** REQ-0324 keeps a Troop's `status` OFF the solo 'open'/'active' lanes while it
+   * recruits, so the lazy run-scheduler + the market Law-of-Possession gate treat
+   * it inertly. It rejoins the normal lanes ('active', then 'canceled') once the
+   * fourth seat fills and it departs. */
+  status: 'open' | 'active' | 'canceled' | 'recruiting';
+  /** REQ-0324: the Troop-level lifecycle, present only when visibility is
+   * 'public'. Distinct from `status` above (which the run engine owns). */
+  state?: 'recruiting' | 'active' | 'canceled';
+  /** REQ-0324: the hosting player (== ownerId; kept as an alias). Troops only. */
+  hostId?: string;
   cancelRequested: boolean;
   pendingSwap: ApiPendingSwap | null;
   cooldownUntil: string | null;
   createdAt: string;
   updatedAt: string;
   lastRunId: string | null;
+  /** REQ-0304: the seed the dungeon was DRAWN with (uniform among
+   * levelMin <= attackLv). Always present on a post-REQ-0304 room; only a
+   * dev/item_admin caller may have CHOSEN it (see ApiCreateRoomBody.drawSeed). */
+  drawSeed?: string;
   /** REQ-0239 (B1): the active/last run's compact window, present on rooms LIST
    * and single-room GET responses when lastRunId is set; null/absent otherwise. */
   lastRun?: ApiRoomLastRun | null;
@@ -503,10 +528,18 @@ export interface ApiRoom {
  * as the dev/backdate route), so the client only ever renders the seed
  * input when `/api/me`'s roles include item_admin (see CreateRoomForm.tsx). */
 export interface ApiCreateRoomBody {
-  dungeonId: string;
+  /** REQ-0304: OPTIONAL now. Absent -> the server RANDOM-DRAWS a dungeon among
+   * those whose levelMin <= level (attackLv). Present -> a validated,
+   * privileged/test OVERRIDE of the draw (back-compat: legacy rooms, seals,
+   * tools); a normal player UI no longer sends it. */
+  dungeonId?: string;
   dungeonType?: 'default' | 'test_fixed';
   level?: number;
   genSeed?: string;
+  /** REQ-0304: pin WHICH dungeon the random draw selects (reproducible).
+   * Server-side GATED to a dev/item_admin caller, EXACTLY like genSeed (403 for
+   * anyone else who sends a non-empty drawSeed). */
+  drawSeed?: string;
   formationId?: string;
   cancelPolicy?: ApiCancelPolicy;
   /** REQ-0058: join a sealed run. When present, dungeonId/dungeonType/
@@ -519,11 +552,15 @@ export interface ApiCreateRoomBody {
  * creates a room, fills all four squad slots, and launches. cancelPolicy
  * defaults to the deferred {immediate:false} (golden g) when omitted. */
 export interface ApiSortieBody {
-  dungeonId: string;
+  /** REQ-0304: OPTIONAL -- absent triggers the server's levelMin-gated random
+   * draw (the player sets only attackLv = level). Present is a privileged override. */
+  dungeonId?: string;
   level?: number;
   formationId?: string;
   cancelPolicy?: ApiCancelPolicy;
   genSeed?: string;
+  /** REQ-0304: privileged draw-seed override (gated like genSeed). */
+  drawSeed?: string;
   /** the four squad indices, one per troop slot (order = slot 0..3). */
   squadIndices: number[];
 }
@@ -559,8 +596,21 @@ export interface ApiRunEvent {
    * art/badge binding; the class glyph (from `kind`) is the fallback. */
   gimicId?: string;
   /** REQ-0276 A2(iv): on unit_charge_* events, the squad slot index (0..3) of
-   * the charging BP, so dock/stage charge pips can light. */
+   * the charging BP, so dock/stage charge pips can light. REQ-0292: ALSO present
+   * on a player CADENCE `ray_fire` (the firing BP's 0..3 squad index) so the HUD
+   * places the item-cooldown overlay on the right squad board, paired with the
+   * item id already in `src`. Absent on enemy ray_fire (which use `srcInst`). */
   slot?: number;
+  /** REQ-0355: on a player-target ray_hit / apply_status / status_tick (and on
+   * each ray_aoe / ray_hit_all hits[] member), the struck BP's index within its
+   * squad's bps -- with `slot` this joins back to ApiRunRosterSlot.bps[bpIdx],
+   * so the dock can drain per-seat HP mid-run (previously full bars until
+   * run_end). Absent on enemy-target events and on pre-REQ-0355 runs. */
+  bpIdx?: number;
+  /** REQ-0355: serve-time stamp (decorateVisible) of the owning ray's target
+   * field onto ray_hit / ray_aoe / ray_hit_all copies -- 'player' | 'enemy'.
+   * The stored sim log carries `field` only on ray_fire. */
+  field?: string;
   /** REQ-0280 / REQ-0264 s9.2: on a `ray_fire`, the skills.json skill-def id of
    * the firing skill. Present ONLY where one honestly exists -- enemy / trap /
    * door skills (threaded through sim compilation). ABSENT on player-item rays
@@ -569,15 +619,69 @@ export interface ApiRunEvent {
    * falls back to vfx_ray_<src> / vfx_ray_default. Additive: no consumer
    * requires it, and it draws no RNG. */
   skill?: string;
+  /** REQ-0292 (cooldown ramp wire): on a CADENCE `ray_fire` (a fire that starts a
+   * cooldown), the freshly rolled reset cooldown in TICKS. The client evaluates the
+   * item-cooldown overlay / skill-badge sweep as a pure function of the pt clock:
+   * frac_remaining(pt) = clamp01(1 - (pt - pt_fire)/(cooldownTicks*TICK_SECS)),
+   * pt_fire = THIS event's pt (the fire IS the arm; REQ-0263 s6.4). Sent ONCE per
+   * fire -- NO per-tick stream (~300k events avoided). ABSENT on reactive/pulse/
+   * charge fires and one-shot trap volleys (they never re-arm); its PRESENCE is the
+   * cadence discriminator (draw the cooldown overlay iff cooldownTicks is present). */
+  cooldownTicks?: number;
+  /** REQ-0292: on an ENEMY/GIMIC cadence `ray_fire`, the firing IBattleInstance id
+   * (e.g. "hrimgrimnir#0"). `src` is the DEF id, ambiguous when a pack holds
+   * duplicate defs, so a skill badge keys by srcInst+skill. Absent on player fires
+   * (they key by slot+src) and on one-shot trap volleys. */
+  srcInst?: string;
+  /** REQ-0292 (charge ramp wire): on a unit_charge_spend/stack/transform event, the
+   * instance charge counter at emit (0 right after a fire_on_full/transform spend;
+   * the live counter on a passive_per_stack tick). */
+  value?: number;
+  /** REQ-0292: on a unit_charge_* event, the per-instance ROLLED capacity (full
+   * mark). The client CANNOT derive it from content (per-instance roll -- midpoint
+   * today, a true roll under REQ-0190), so it rides the wire; wedge frac = value/capacity. */
+  capacity?: number;
+  /** REQ-0292: on a unit_charge_* event for an every_secs charge, the fill rate in
+   * counts/sec (1/period) the client interpolates the charge wedge against the pt
+   * clock (value(pt) = value0 + rate*(pt - pt_emit); frac = value/capacity). OMITTED
+   * for event-driven triggers (the counter jumps on combat events, not time -- and
+   * no mid-ramp rate modifier exists in the runtime, so no rate-change event is sent). */
+  rate?: number;
   [key: string]: unknown;
 }
 
 /** REQ-0240 M1: one squad slot's BP pool (exact hpMax) the monitor dock +
  * stage plates read. */
+/** REQ-0355: the lean, frozen view of one seat's squad canvas as snapshotted
+ * at startRun -- just what the Monitor needs to DRAW the seat (BP cells /
+ * colour / unit disc + placed PO icons). Served for EVERY seat so a troop
+ * member finally sees all four squads, not only their own. Null on legacy
+ * runs stored before REQ-0355 and on empty seats. */
+export interface ApiSeatCanvasBp {
+  id: string;
+  name: string | null;
+  color: string | null;
+  shape: [number, number][];
+  origin: [number, number];
+  unit: { id: string; off: [number, number] | null } | null;
+}
+export interface ApiSeatCanvasPo {
+  id: string;
+  loc: 'grid';
+  cell: [number, number];
+  rot: number;
+}
+export interface ApiSeatCanvas {
+  bps: ApiSeatCanvasBp[];
+  pos: ApiSeatCanvasPo[];
+}
 export interface ApiRunRosterSlot {
   slot: string; // 'unit1'..'unit4'
   index: number; // 0..3
-  bps: { id: string; hpMax: number }[];
+  /** REQ-0355: bpIdx = index within this squad's own bps -- the join key
+   * slot/bpIdx-attributed events (ray_hit / status_tick / aoe hits) carry. */
+  bps: { id: string; hpMax: number; bpIdx?: number }[];
+  canvas?: ApiSeatCanvas | null; // REQ-0355
 }
 
 /** REQ-0240 M1: one enemy the run will field -- a leak-safe HINT (the client
@@ -782,61 +886,6 @@ export interface ApiFormationEntry {
   i18n?: ApiI18nMap;
   canvases: Record<string, string>;
 }
-/** REQ-0057: ONE (enemy, skill) attack profile the Ray Forecast Overlay
- * walks. Everything the client needs to fire that skill's ray at the player
- * field itself -- entry projection base (the attacker's centroid on the enemy
- * plane), the attack profile's edge/penetration/aoe, the expected damage of
- * one firing, and how often it fires. Derived from enemy DEFs only; it can
- * never carry a specific run's hidden placements (REQ-0057: "forecast !=
- * spoiler"). See server/lib/forecast.cjs for the fold that produces it and
- * shared/forecast.mjs for the walk that consumes it. */
-export interface ApiForecastProfile {
-  /** Stable id: "<enemyId>#<skillId>@<row>,<col>". */
-  key: string;
-  enemyId: string;
-  skillId: string;
-  /** The SKILL's display name. */
-  i18n?: ApiI18nMap;
-  /** The ENEMY's display name. */
-  enemyI18n?: ApiI18nMap;
-  /** Attacker centroid on the ENEMY plane (the entry projection's base). */
-  centroid: [number, number];
-  /** Expected number of THIS attacker present in a randomly drawn battle. */
-  weight: number;
-  /** attack_profile.edge -- which side(s) of the player field the ray enters from. */
-  edges: string[];
-  penetration: number;
-  aoe: number;
-  aoeStatuses?: boolean;
-  /** Expected damage of one firing at bounce multiplier 1.0 (0 for a status ray). */
-  damage: number;
-  /** Expected firings per second (1 / midpoint of the every_secs range). */
-  rate: number;
-  /** True when the verb deals no damage (apply_status / add_on_hit_status). */
-  statusOnly?: boolean;
-}
-
-/** REQ-0057: GET /api/schedule/forecast?dungeonType=&level=. */
-export interface ApiForecastPayload {
-  ok: true;
-  /** REQ-0185: the authored dungeon DEF id this forecast folds. */
-  dungeonId: string;
-  /** Back-compat: retained field name, now carrying the def id (was the
-   * retired sim/dungen.cjs generator type). */
-  dungeonType: string;
-  level: number;
-  /** How many dungen seeds the profiles were marginalised over. */
-  sampleSeeds: number;
-  /** How many battle encounters that sampling produced (the weight denominator). */
-  battlesSampled: number;
-  /** The shared A1:Z18 field the rays are fired ONTO. */
-  bounds: { ROWS: number; COLS: number };
-  /** sim TUNABLES.ENTRY_JITTER_HALF_WIDTH -- the entry-jitter half-width J. */
-  jitterHalfWidth: number;
-  formations: ApiFormationEntry[];
-  profiles: ApiForecastProfile[];
-}
-
 export interface ApiDungeonsPayload {
   ok: true;
   /** REQ-0185: authored dungeon DEFS (each carrying theme, level band + an
@@ -1006,6 +1055,18 @@ export interface ApiMarketCreateListingRequest {
   itemId?: string;
   /** kind:'tm': the integer amount to sell, [1,999]. */
   tmQty?: number;
+  price: ApiMarketPrice;
+}
+
+/** REQ-0328: POST /api/market/listings/from-warehouse request body -- the
+ * DIRECT warehouse->market sell. Consumes the CLAIMABLE warehouse row named
+ * by `warehouseRowId` and creates an active listing WITHOUT routing through
+ * the seller's canvas/inventory (the item is escrowed on the listing;
+ * withdraw/expiry returns it to the warehouse, settlement delivers it to the
+ * buyer). `price.tm` must be a live TM id; qty an integer in [1,999].
+ * Optional Idempotency-Key HEADER dedupes retries (replayed:true on replay). */
+export interface ApiMarketSellFromWarehouseRequest {
+  warehouseRowId: string;
   price: ApiMarketPrice;
 }
 
@@ -1318,4 +1379,125 @@ export interface ApiDismantleLedgerEntry {
 export interface ApiDismantleLedgerResponse {
   ok: true;
   entries: ApiDismantleLedgerEntry[];
+}
+
+// ---- REQ-0327: Notification feed ----
+// Wire shapes for GET /api/notifications[?since=<id>] and
+// POST /api/notifications/ack (server/routes/notifications.cjs). ONE
+// mechanism a human device and a bot program consume identically; one
+// kind today ('troop_disbanded').
+export interface ApiNotification {
+  id: number;
+  ts: string;
+  /** REQ-0357: 'room_halted' = a solo room's wipe-streak circuit breaker
+   * canceled its lane (a troop's breaker rides 'troop_disbanded' with
+   * payload.reason 'wipe_streak'). */
+  kind: 'troop_disbanded' | 'room_halted';
+  roomId: string;
+  attackLv: number | null;
+  seenAt: string | null;
+  payload: { reason?: string; disbandedAt?: string; streak?: number; haltedAt?: string };
+}
+export interface ApiNotificationsResponse {
+  ok: true;
+  notifications: ApiNotification[];
+  cursor: number;
+}
+export interface ApiNotificationAckResponse {
+  ok: true;
+  acked: number;
+}
+
+// ---- REQ-0324/0325/0326/0337: co-operative Troop wire shapes ----
+// A Troop is a room with visibility:'public': the HOST opens it seated in slot
+// 0, the other three seats stay null (open) until other players -- human or bot,
+// indistinguishably -- join. Filling the LAST seat auto-departs it (REQ-0325).
+// Server: server/services/troops.cjs + the /api/schedule/troops* routes in
+// server/routes/schedule.cjs. These mirror those shapes field-for-field.
+
+/** One SEATED seat of a Troop. `squadIndex` indexes `ownerId`'s OWN canvas --
+ * resolving it against your own squad names is only correct when ownerId is
+ * you. A FREE seat is `null`, not an object. */
+export interface ApiTroopSlot {
+  ownerId: string;
+  squadIndex: number;
+  joinedAt: string;
+}
+
+/** REQ-0326: the discrete disband record written onto a Troop when any seated
+ * member cancels. `releasedOwners` is the roster REQ-0327 notifies. */
+export interface ApiTroopDisbandEvent {
+  roomId: string;
+  reason: string;
+  releasedOwners: string[];
+  disbandedAt: string;
+}
+
+/** Full Troop state -- the body of every /api/schedule/troops* response's
+ * `troop` field. Deliberately NOT declared as an extension of ApiRoom: a
+ * Troop's free seats are `null` where a solo room's are `{squadIndex:null}`,
+ * so the two slot arrays are not assignable to one another. */
+export interface ApiTroop {
+  id: string;
+  ownerId: string;
+  /** == ownerId; kept as an explicit alias by the server, never removed. */
+  hostId: string;
+  dungeonId: string;
+  dungeonType?: 'default' | 'test_fixed';
+  level: number;
+  genSeed?: string;
+  drawSeed?: string;
+  visibility: 'public';
+  formationId: string;
+  cancelPolicy: ApiCancelPolicy;
+  /** four entries; `null` = a free seat still open to recruits. */
+  slots: (ApiTroopSlot | null)[];
+  /** troop-level lifecycle. 'active' == departed (a run is in flight). */
+  state: 'recruiting' | 'active' | 'canceled';
+  status: 'recruiting' | 'active' | 'canceled';
+  cancelRequested: boolean;
+  pendingSwap: ApiPendingSwap | null;
+  cooldownUntil: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastRunId: string | null;
+  lastRun?: ApiRoomLastRun | null;
+  /** REQ-0326: present once disbanded (or once a disband is pending on return). */
+  disbandEvent?: ApiTroopDisbandEvent;
+  disbandRequested?: boolean;
+}
+
+/** POST /api/schedule/troops body -- opens a Troop and seats the host in slot 0.
+ * `squadIndex` is REQUIRED (one of the host's own squads); `level` is the
+ * troop-level attackLv and is IMMUTABLE for the Troop's whole life (REQ-0325
+ * relies on exactly one). `dungeonId` omitted -> the same levelMin-gated random
+ * draw the solo path uses (REQ-0304). genSeed/drawSeed are dev-only (403 for a
+ * normal caller), identical to the /rooms + /sorties gate. */
+export interface ApiHostTroopBody {
+  dungeonId?: string;
+  level?: number;
+  formationId?: string;
+  cancelPolicy?: ApiCancelPolicy;
+  genSeed?: string;
+  drawSeed?: string;
+  squadIndex: number;
+}
+
+/** One row of GET /api/schedule/troops?state=recruiting -- the compact BROWSE
+ * projection (not a full ApiTroop). `seats` is a pre-rendered "k/4" string. */
+export interface ApiTroopBrowseRow {
+  roomId: string;
+  seats: string;
+  attackLv: number;
+  hostId: string;
+  ageSec: number;
+}
+
+export interface ApiTroopResponse {
+  ok: true;
+  troop: ApiTroop;
+}
+export interface ApiTroopsBrowseResponse {
+  ok: true;
+  troops: ApiTroopBrowseRow[];
 }

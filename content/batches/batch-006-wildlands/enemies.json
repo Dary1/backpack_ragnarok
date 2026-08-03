@@ -16,7 +16,8 @@
       ],
       "skills": [
         "rending_claws",
-        "feral_bite"
+        "feral_bite",
+        "werewolf_lunar_regen"
       ],
       "i18n": {
         "en": {
@@ -42,7 +43,8 @@
       ],
       "skills": [
         "savage_bite",
-        "harrying_snap"
+        "harrying_snap",
+        "direwolf_harrier_retort"
       ],
       "i18n": {
         "en": {
@@ -67,7 +69,8 @@
         4
       ],
       "skills": [
-        "tusk_charge"
+        "tusk_charge",
+        "boar_wounded_fury"
       ],
       "i18n": {
         "en": {
@@ -92,7 +95,8 @@
         4
       ],
       "skills": [
-        "blood_drain"
+        "blood_drain",
+        "bat_erratic_flight"
       ],
       "i18n": {
         "en": {
@@ -117,7 +121,8 @@
         4
       ],
       "skills": [
-        "venom_bite"
+        "venom_bite",
+        "spider_clinging_web"
       ],
       "i18n": {
         "en": {
@@ -143,7 +148,8 @@
       ],
       "skills": [
         "stinger",
-        "pincer_grip"
+        "pincer_grip",
+        "scorpion_barbed_carapace"
       ],
       "i18n": {
         "en": {
@@ -169,7 +175,8 @@
       ],
       "skills": [
         "constrict",
-        "venom_spit"
+        "venom_spit",
+        "snake_retaliatory_venom"
       ],
       "i18n": {
         "en": {
@@ -195,7 +202,8 @@
       ],
       "skills": [
         "petrifying_gaze",
-        "toxic_maw"
+        "toxic_maw",
+        "basilisk_venom_blooded"
       ],
       "i18n": {
         "en": {
@@ -221,7 +229,8 @@
       ],
       "skills": [
         "fire_dart",
-        "impish_drain"
+        "impish_drain",
+        "imp_death_pop"
       ],
       "i18n": {
         "en": {
@@ -246,7 +255,8 @@
         4
       ],
       "skills": [
-        "molten_talons"
+        "molten_talons",
+        "gargoyle_stone_skin"
       ],
       "i18n": {
         "en": {
@@ -272,7 +282,8 @@
       ],
       "skills": [
         "headless_charge",
-        "doom_toll"
+        "doom_toll",
+        "dullahan_headless"
       ],
       "i18n": {
         "en": {
@@ -298,7 +309,8 @@
       ],
       "skills": [
         "hellfire_wave",
-        "dominion_of_flame"
+        "dominion_of_flame",
+        "demonlord_wrath"
       ],
       "i18n": {
         "en": {

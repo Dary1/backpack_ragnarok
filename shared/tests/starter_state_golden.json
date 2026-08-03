@@ -1,0 +1,2100 @@
+{
+ "en": {
+  "linked": true,
+  "bps": [
+   {
+    "id": "bp_starter_guard",
+    "name": "Starter: Guard",
+    "color": "#5b6b7a",
+    "shape": [
+     [
+      0,
+      0
+     ],
+     [
+      0,
+      1
+     ],
+     [
+      0,
+      2
+     ],
+     [
+      0,
+      3
+     ],
+     [
+      0,
+      4
+     ],
+     [
+      1,
+      0
+     ],
+     [
+      1,
+      1
+     ],
+     [
+      1,
+      2
+     ],
+     [
+      1,
+      3
+     ],
+     [
+      1,
+      4
+     ],
+     [
+      2,
+      0
+     ],
+     [
+      2,
+      1
+     ],
+     [
+      2,
+      2
+     ],
+     [
+      2,
+      3
+     ],
+     [
+      2,
+      4
+     ],
+     [
+      3,
+      0
+     ],
+     [
+      3,
+      1
+     ],
+     [
+      3,
+      2
+     ],
+     [
+      3,
+      3
+     ],
+     [
+      3,
+      4
+     ],
+     [
+      4,
+      0
+     ],
+     [
+      4,
+      1
+     ],
+     [
+      4,
+      2
+     ],
+     [
+      4,
+      3
+     ],
+     [
+      4,
+      4
+     ]
+    ],
+    "origin": [
+     2,
+     2
+    ],
+    "unit": {
+     "id": "berserker",
+     "off": [
+      0,
+      0
+     ]
+    },
+    "hpMax": 120,
+    "locked": true
+   }
+  ],
+  "pos": [
+   {
+    "uid": "po_starter_guard_0",
+    "id": "tower_shield",
+    "loc": "grid",
+    "cell": [
+     2,
+     3
+    ],
+    "rot": 0,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_1",
+    "id": "bulwark",
+    "loc": "grid",
+    "cell": [
+     2,
+     5
+    ],
+    "rot": 0,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_2",
+    "id": "iron_thorns",
+    "loc": "grid",
+    "cell": [
+     3,
+     2
+    ],
+    "rot": 0,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_3",
+    "id": "hide_wrap",
+    "loc": "grid",
+    "cell": [
+     4,
+     3
+    ],
+    "rot": 0,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_4",
+    "id": "iron_thorns",
+    "loc": "grid",
+    "cell": [
+     4,
+     4
+    ],
+    "rot": 0,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_5",
+    "id": "hide_wrap",
+    "loc": "grid",
+    "cell": [
+     4,
+     5
+    ],
+    "rot": 0,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_6",
+    "id": "iron_thorns",
+    "loc": "grid",
+    "cell": [
+     4,
+     6
+    ],
+    "rot": 0,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_7",
+    "id": "hide_wrap",
+    "loc": "grid",
+    "cell": [
+     5,
+     2
+    ],
+    "rot": 0,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_8",
+    "id": "iron_thorns",
+    "loc": "grid",
+    "cell": [
+     6,
+     3
+    ],
+    "rot": 1,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_9",
+    "id": "hide_wrap",
+    "loc": "grid",
+    "cell": [
+     6,
+     5
+    ],
+    "rot": 1,
+    "fixed": true
+   }
+  ],
+  "sis": [],
+  "presets": {
+   "active": 0,
+   "names": [
+    "Starter: Guard",
+    "Starter: Arms",
+    "Starter: Mend",
+    "Starter: Scout",
+    "Squad 5"
+   ],
+   "store": [
+    null,
+    {
+     "linked": true,
+     "bps": [
+      {
+       "id": "bp_starter_arms",
+       "name": "Starter: Arms",
+       "color": "#7a5b5b",
+       "shape": [
+        [
+         0,
+         0
+        ],
+        [
+         0,
+         1
+        ],
+        [
+         0,
+         2
+        ],
+        [
+         0,
+         3
+        ],
+        [
+         0,
+         4
+        ],
+        [
+         1,
+         0
+        ],
+        [
+         1,
+         1
+        ],
+        [
+         1,
+         2
+        ],
+        [
+         1,
+         3
+        ],
+        [
+         1,
+         4
+        ],
+        [
+         2,
+         0
+        ],
+        [
+         2,
+         1
+        ],
+        [
+         2,
+         2
+        ],
+        [
+         2,
+         3
+        ],
+        [
+         2,
+         4
+        ],
+        [
+         3,
+         0
+        ],
+        [
+         3,
+         1
+        ],
+        [
+         3,
+         2
+        ],
+        [
+         3,
+         3
+        ],
+        [
+         3,
+         4
+        ],
+        [
+         4,
+         0
+        ],
+        [
+         4,
+         1
+        ],
+        [
+         4,
+         2
+        ],
+        [
+         4,
+         3
+        ],
+        [
+         4,
+         4
+        ]
+       ],
+       "origin": [
+        2,
+        2
+       ],
+       "unit": {
+        "id": "berserker",
+        "off": [
+         0,
+         0
+        ]
+       },
+       "hpMax": 120,
+       "locked": true
+      }
+     ],
+     "pos": [
+      {
+       "uid": "po_starter_arms_0",
+       "id": "training_blade",
+       "loc": "grid",
+       "cell": [
+        2,
+        3
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_1",
+       "id": "hand_axe",
+       "loc": "grid",
+       "cell": [
+        2,
+        4
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_2",
+       "id": "war_pick",
+       "loc": "grid",
+       "cell": [
+        2,
+        5
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_3",
+       "id": "sling_stone",
+       "loc": "grid",
+       "cell": [
+        2,
+        6
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_4",
+       "id": "training_blade",
+       "loc": "grid",
+       "cell": [
+        3,
+        2
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_5",
+       "id": "hand_axe",
+       "loc": "grid",
+       "cell": [
+        4,
+        3
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_6",
+       "id": "war_pick",
+       "loc": "grid",
+       "cell": [
+        4,
+        4
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_7",
+       "id": "sling_stone",
+       "loc": "grid",
+       "cell": [
+        4,
+        5
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_8",
+       "id": "training_blade",
+       "loc": "grid",
+       "cell": [
+        4,
+        6
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_9",
+       "id": "hand_axe",
+       "loc": "grid",
+       "cell": [
+        5,
+        2
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_10",
+       "id": "war_pick",
+       "loc": "grid",
+       "cell": [
+        6,
+        3
+       ],
+       "rot": 1,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_11",
+       "id": "sling_stone",
+       "loc": "grid",
+       "cell": [
+        6,
+        5
+       ],
+       "rot": 1,
+       "fixed": true
+      }
+     ],
+     "sis": []
+    },
+    {
+     "linked": true,
+     "bps": [
+      {
+       "id": "bp_starter_mend",
+       "name": "Starter: Mend",
+       "color": "#5b7a63",
+       "shape": [
+        [
+         0,
+         0
+        ],
+        [
+         0,
+         1
+        ],
+        [
+         0,
+         2
+        ],
+        [
+         0,
+         3
+        ],
+        [
+         0,
+         4
+        ],
+        [
+         1,
+         0
+        ],
+        [
+         1,
+         1
+        ],
+        [
+         1,
+         2
+        ],
+        [
+         1,
+         3
+        ],
+        [
+         1,
+         4
+        ],
+        [
+         2,
+         0
+        ],
+        [
+         2,
+         1
+        ],
+        [
+         2,
+         2
+        ],
+        [
+         2,
+         3
+        ],
+        [
+         2,
+         4
+        ],
+        [
+         3,
+         0
+        ],
+        [
+         3,
+         1
+        ],
+        [
+         3,
+         2
+        ],
+        [
+         3,
+         3
+        ],
+        [
+         3,
+         4
+        ],
+        [
+         4,
+         0
+        ],
+        [
+         4,
+         1
+        ],
+        [
+         4,
+         2
+        ],
+        [
+         4,
+         3
+        ],
+        [
+         4,
+         4
+        ]
+       ],
+       "origin": [
+        2,
+        2
+       ],
+       "unit": {
+        "id": "berserker",
+        "off": [
+         0,
+         0
+        ]
+       },
+       "hpMax": 120,
+       "locked": true
+      }
+     ],
+     "pos": [
+      {
+       "uid": "po_starter_mend_0",
+       "id": "herb_pouch",
+       "loc": "grid",
+       "cell": [
+        2,
+        3
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_1",
+       "id": "poultice",
+       "loc": "grid",
+       "cell": [
+        2,
+        4
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_2",
+       "id": "regen_salve",
+       "loc": "grid",
+       "cell": [
+        2,
+        5
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_3",
+       "id": "cleansing_tonic",
+       "loc": "grid",
+       "cell": [
+        2,
+        6
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_4",
+       "id": "poultice",
+       "loc": "grid",
+       "cell": [
+        3,
+        2
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_5",
+       "id": "regen_salve",
+       "loc": "grid",
+       "cell": [
+        4,
+        3
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_6",
+       "id": "cleansing_tonic",
+       "loc": "grid",
+       "cell": [
+        4,
+        4
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_7",
+       "id": "herb_pouch",
+       "loc": "grid",
+       "cell": [
+        4,
+        5
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_8",
+       "id": "poultice",
+       "loc": "grid",
+       "cell": [
+        4,
+        6
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_9",
+       "id": "regen_salve",
+       "loc": "grid",
+       "cell": [
+        5,
+        2
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_10",
+       "id": "cleansing_tonic",
+       "loc": "grid",
+       "cell": [
+        6,
+        3
+       ],
+       "rot": 1,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_11",
+       "id": "herb_pouch",
+       "loc": "grid",
+       "cell": [
+        6,
+        5
+       ],
+       "rot": 1,
+       "fixed": true
+      }
+     ],
+     "sis": []
+    },
+    {
+     "linked": true,
+     "bps": [
+      {
+       "id": "bp_starter_scout",
+       "name": "Starter: Scout",
+       "color": "#6b5b7a",
+       "shape": [
+        [
+         0,
+         0
+        ],
+        [
+         0,
+         1
+        ],
+        [
+         0,
+         2
+        ],
+        [
+         0,
+         3
+        ],
+        [
+         0,
+         4
+        ],
+        [
+         1,
+         0
+        ],
+        [
+         1,
+         1
+        ],
+        [
+         1,
+         2
+        ],
+        [
+         1,
+         3
+        ],
+        [
+         1,
+         4
+        ],
+        [
+         2,
+         0
+        ],
+        [
+         2,
+         1
+        ],
+        [
+         2,
+         2
+        ],
+        [
+         2,
+         3
+        ],
+        [
+         2,
+         4
+        ],
+        [
+         3,
+         0
+        ],
+        [
+         3,
+         1
+        ],
+        [
+         3,
+         2
+        ],
+        [
+         3,
+         3
+        ],
+        [
+         3,
+         4
+        ],
+        [
+         4,
+         0
+        ],
+        [
+         4,
+         1
+        ],
+        [
+         4,
+         2
+        ],
+        [
+         4,
+         3
+        ],
+        [
+         4,
+         4
+        ]
+       ],
+       "origin": [
+        2,
+        2
+       ],
+       "unit": {
+        "id": "berserker",
+        "off": [
+         0,
+         0
+        ]
+       },
+       "hpMax": 120,
+       "locked": true
+      }
+     ],
+     "pos": [
+      {
+       "uid": "po_starter_scout_0",
+       "id": "lockpick",
+       "loc": "grid",
+       "cell": [
+        2,
+        3
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_1",
+       "id": "spyglass",
+       "loc": "grid",
+       "cell": [
+        2,
+        4
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_2",
+       "id": "probe_lens",
+       "loc": "grid",
+       "cell": [
+        2,
+        6
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_3",
+       "id": "skeleton_key",
+       "loc": "grid",
+       "cell": [
+        3,
+        2
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_4",
+       "id": "probe_lens",
+       "loc": "grid",
+       "cell": [
+        3,
+        3
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_5",
+       "id": "skeleton_key",
+       "loc": "grid",
+       "cell": [
+        3,
+        4
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_6",
+       "id": "probe_lens",
+       "loc": "grid",
+       "cell": [
+        3,
+        5
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_7",
+       "id": "skeleton_key",
+       "loc": "grid",
+       "cell": [
+        4,
+        6
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_8",
+       "id": "spyglass",
+       "loc": "grid",
+       "cell": [
+        5,
+        2
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_9",
+       "id": "spyglass",
+       "loc": "grid",
+       "cell": [
+        5,
+        4
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_10",
+       "id": "lockpick",
+       "loc": "grid",
+       "cell": [
+        6,
+        2
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_11",
+       "id": "spyglass",
+       "loc": "grid",
+       "cell": [
+        6,
+        3
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_12",
+       "id": "spyglass",
+       "loc": "grid",
+       "cell": [
+        6,
+        5
+       ],
+       "rot": 0,
+       "fixed": true
+      }
+     ],
+     "sis": []
+    },
+    {
+     "linked": true,
+     "bps": [],
+     "pos": [],
+     "sis": []
+    }
+   ]
+  }
+ },
+ "ja": {
+  "linked": true,
+  "bps": [
+   {
+    "id": "bp_starter_guard",
+    "name": "Starter: Guard",
+    "color": "#5b6b7a",
+    "shape": [
+     [
+      0,
+      0
+     ],
+     [
+      0,
+      1
+     ],
+     [
+      0,
+      2
+     ],
+     [
+      0,
+      3
+     ],
+     [
+      0,
+      4
+     ],
+     [
+      1,
+      0
+     ],
+     [
+      1,
+      1
+     ],
+     [
+      1,
+      2
+     ],
+     [
+      1,
+      3
+     ],
+     [
+      1,
+      4
+     ],
+     [
+      2,
+      0
+     ],
+     [
+      2,
+      1
+     ],
+     [
+      2,
+      2
+     ],
+     [
+      2,
+      3
+     ],
+     [
+      2,
+      4
+     ],
+     [
+      3,
+      0
+     ],
+     [
+      3,
+      1
+     ],
+     [
+      3,
+      2
+     ],
+     [
+      3,
+      3
+     ],
+     [
+      3,
+      4
+     ],
+     [
+      4,
+      0
+     ],
+     [
+      4,
+      1
+     ],
+     [
+      4,
+      2
+     ],
+     [
+      4,
+      3
+     ],
+     [
+      4,
+      4
+     ]
+    ],
+    "origin": [
+     2,
+     2
+    ],
+    "unit": {
+     "id": "berserker",
+     "off": [
+      0,
+      0
+     ]
+    },
+    "hpMax": 120,
+    "locked": true
+   }
+  ],
+  "pos": [
+   {
+    "uid": "po_starter_guard_0",
+    "id": "tower_shield",
+    "loc": "grid",
+    "cell": [
+     2,
+     3
+    ],
+    "rot": 0,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_1",
+    "id": "bulwark",
+    "loc": "grid",
+    "cell": [
+     2,
+     5
+    ],
+    "rot": 0,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_2",
+    "id": "iron_thorns",
+    "loc": "grid",
+    "cell": [
+     3,
+     2
+    ],
+    "rot": 0,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_3",
+    "id": "hide_wrap",
+    "loc": "grid",
+    "cell": [
+     4,
+     3
+    ],
+    "rot": 0,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_4",
+    "id": "iron_thorns",
+    "loc": "grid",
+    "cell": [
+     4,
+     4
+    ],
+    "rot": 0,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_5",
+    "id": "hide_wrap",
+    "loc": "grid",
+    "cell": [
+     4,
+     5
+    ],
+    "rot": 0,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_6",
+    "id": "iron_thorns",
+    "loc": "grid",
+    "cell": [
+     4,
+     6
+    ],
+    "rot": 0,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_7",
+    "id": "hide_wrap",
+    "loc": "grid",
+    "cell": [
+     5,
+     2
+    ],
+    "rot": 0,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_8",
+    "id": "iron_thorns",
+    "loc": "grid",
+    "cell": [
+     6,
+     3
+    ],
+    "rot": 1,
+    "fixed": true
+   },
+   {
+    "uid": "po_starter_guard_9",
+    "id": "hide_wrap",
+    "loc": "grid",
+    "cell": [
+     6,
+     5
+    ],
+    "rot": 1,
+    "fixed": true
+   }
+  ],
+  "sis": [],
+  "presets": {
+   "active": 0,
+   "names": [
+    "スターター：ガード",
+    "スターター：アームズ",
+    "スターター：メンド",
+    "スターター：スカウト",
+    "Squad 5"
+   ],
+   "store": [
+    null,
+    {
+     "linked": true,
+     "bps": [
+      {
+       "id": "bp_starter_arms",
+       "name": "Starter: Arms",
+       "color": "#7a5b5b",
+       "shape": [
+        [
+         0,
+         0
+        ],
+        [
+         0,
+         1
+        ],
+        [
+         0,
+         2
+        ],
+        [
+         0,
+         3
+        ],
+        [
+         0,
+         4
+        ],
+        [
+         1,
+         0
+        ],
+        [
+         1,
+         1
+        ],
+        [
+         1,
+         2
+        ],
+        [
+         1,
+         3
+        ],
+        [
+         1,
+         4
+        ],
+        [
+         2,
+         0
+        ],
+        [
+         2,
+         1
+        ],
+        [
+         2,
+         2
+        ],
+        [
+         2,
+         3
+        ],
+        [
+         2,
+         4
+        ],
+        [
+         3,
+         0
+        ],
+        [
+         3,
+         1
+        ],
+        [
+         3,
+         2
+        ],
+        [
+         3,
+         3
+        ],
+        [
+         3,
+         4
+        ],
+        [
+         4,
+         0
+        ],
+        [
+         4,
+         1
+        ],
+        [
+         4,
+         2
+        ],
+        [
+         4,
+         3
+        ],
+        [
+         4,
+         4
+        ]
+       ],
+       "origin": [
+        2,
+        2
+       ],
+       "unit": {
+        "id": "berserker",
+        "off": [
+         0,
+         0
+        ]
+       },
+       "hpMax": 120,
+       "locked": true
+      }
+     ],
+     "pos": [
+      {
+       "uid": "po_starter_arms_0",
+       "id": "training_blade",
+       "loc": "grid",
+       "cell": [
+        2,
+        3
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_1",
+       "id": "hand_axe",
+       "loc": "grid",
+       "cell": [
+        2,
+        4
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_2",
+       "id": "war_pick",
+       "loc": "grid",
+       "cell": [
+        2,
+        5
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_3",
+       "id": "sling_stone",
+       "loc": "grid",
+       "cell": [
+        2,
+        6
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_4",
+       "id": "training_blade",
+       "loc": "grid",
+       "cell": [
+        3,
+        2
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_5",
+       "id": "hand_axe",
+       "loc": "grid",
+       "cell": [
+        4,
+        3
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_6",
+       "id": "war_pick",
+       "loc": "grid",
+       "cell": [
+        4,
+        4
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_7",
+       "id": "sling_stone",
+       "loc": "grid",
+       "cell": [
+        4,
+        5
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_8",
+       "id": "training_blade",
+       "loc": "grid",
+       "cell": [
+        4,
+        6
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_9",
+       "id": "hand_axe",
+       "loc": "grid",
+       "cell": [
+        5,
+        2
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_10",
+       "id": "war_pick",
+       "loc": "grid",
+       "cell": [
+        6,
+        3
+       ],
+       "rot": 1,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_arms_11",
+       "id": "sling_stone",
+       "loc": "grid",
+       "cell": [
+        6,
+        5
+       ],
+       "rot": 1,
+       "fixed": true
+      }
+     ],
+     "sis": []
+    },
+    {
+     "linked": true,
+     "bps": [
+      {
+       "id": "bp_starter_mend",
+       "name": "Starter: Mend",
+       "color": "#5b7a63",
+       "shape": [
+        [
+         0,
+         0
+        ],
+        [
+         0,
+         1
+        ],
+        [
+         0,
+         2
+        ],
+        [
+         0,
+         3
+        ],
+        [
+         0,
+         4
+        ],
+        [
+         1,
+         0
+        ],
+        [
+         1,
+         1
+        ],
+        [
+         1,
+         2
+        ],
+        [
+         1,
+         3
+        ],
+        [
+         1,
+         4
+        ],
+        [
+         2,
+         0
+        ],
+        [
+         2,
+         1
+        ],
+        [
+         2,
+         2
+        ],
+        [
+         2,
+         3
+        ],
+        [
+         2,
+         4
+        ],
+        [
+         3,
+         0
+        ],
+        [
+         3,
+         1
+        ],
+        [
+         3,
+         2
+        ],
+        [
+         3,
+         3
+        ],
+        [
+         3,
+         4
+        ],
+        [
+         4,
+         0
+        ],
+        [
+         4,
+         1
+        ],
+        [
+         4,
+         2
+        ],
+        [
+         4,
+         3
+        ],
+        [
+         4,
+         4
+        ]
+       ],
+       "origin": [
+        2,
+        2
+       ],
+       "unit": {
+        "id": "berserker",
+        "off": [
+         0,
+         0
+        ]
+       },
+       "hpMax": 120,
+       "locked": true
+      }
+     ],
+     "pos": [
+      {
+       "uid": "po_starter_mend_0",
+       "id": "herb_pouch",
+       "loc": "grid",
+       "cell": [
+        2,
+        3
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_1",
+       "id": "poultice",
+       "loc": "grid",
+       "cell": [
+        2,
+        4
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_2",
+       "id": "regen_salve",
+       "loc": "grid",
+       "cell": [
+        2,
+        5
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_3",
+       "id": "cleansing_tonic",
+       "loc": "grid",
+       "cell": [
+        2,
+        6
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_4",
+       "id": "poultice",
+       "loc": "grid",
+       "cell": [
+        3,
+        2
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_5",
+       "id": "regen_salve",
+       "loc": "grid",
+       "cell": [
+        4,
+        3
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_6",
+       "id": "cleansing_tonic",
+       "loc": "grid",
+       "cell": [
+        4,
+        4
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_7",
+       "id": "herb_pouch",
+       "loc": "grid",
+       "cell": [
+        4,
+        5
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_8",
+       "id": "poultice",
+       "loc": "grid",
+       "cell": [
+        4,
+        6
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_9",
+       "id": "regen_salve",
+       "loc": "grid",
+       "cell": [
+        5,
+        2
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_10",
+       "id": "cleansing_tonic",
+       "loc": "grid",
+       "cell": [
+        6,
+        3
+       ],
+       "rot": 1,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_mend_11",
+       "id": "herb_pouch",
+       "loc": "grid",
+       "cell": [
+        6,
+        5
+       ],
+       "rot": 1,
+       "fixed": true
+      }
+     ],
+     "sis": []
+    },
+    {
+     "linked": true,
+     "bps": [
+      {
+       "id": "bp_starter_scout",
+       "name": "Starter: Scout",
+       "color": "#6b5b7a",
+       "shape": [
+        [
+         0,
+         0
+        ],
+        [
+         0,
+         1
+        ],
+        [
+         0,
+         2
+        ],
+        [
+         0,
+         3
+        ],
+        [
+         0,
+         4
+        ],
+        [
+         1,
+         0
+        ],
+        [
+         1,
+         1
+        ],
+        [
+         1,
+         2
+        ],
+        [
+         1,
+         3
+        ],
+        [
+         1,
+         4
+        ],
+        [
+         2,
+         0
+        ],
+        [
+         2,
+         1
+        ],
+        [
+         2,
+         2
+        ],
+        [
+         2,
+         3
+        ],
+        [
+         2,
+         4
+        ],
+        [
+         3,
+         0
+        ],
+        [
+         3,
+         1
+        ],
+        [
+         3,
+         2
+        ],
+        [
+         3,
+         3
+        ],
+        [
+         3,
+         4
+        ],
+        [
+         4,
+         0
+        ],
+        [
+         4,
+         1
+        ],
+        [
+         4,
+         2
+        ],
+        [
+         4,
+         3
+        ],
+        [
+         4,
+         4
+        ]
+       ],
+       "origin": [
+        2,
+        2
+       ],
+       "unit": {
+        "id": "berserker",
+        "off": [
+         0,
+         0
+        ]
+       },
+       "hpMax": 120,
+       "locked": true
+      }
+     ],
+     "pos": [
+      {
+       "uid": "po_starter_scout_0",
+       "id": "lockpick",
+       "loc": "grid",
+       "cell": [
+        2,
+        3
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_1",
+       "id": "spyglass",
+       "loc": "grid",
+       "cell": [
+        2,
+        4
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_2",
+       "id": "probe_lens",
+       "loc": "grid",
+       "cell": [
+        2,
+        6
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_3",
+       "id": "skeleton_key",
+       "loc": "grid",
+       "cell": [
+        3,
+        2
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_4",
+       "id": "probe_lens",
+       "loc": "grid",
+       "cell": [
+        3,
+        3
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_5",
+       "id": "skeleton_key",
+       "loc": "grid",
+       "cell": [
+        3,
+        4
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_6",
+       "id": "probe_lens",
+       "loc": "grid",
+       "cell": [
+        3,
+        5
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_7",
+       "id": "skeleton_key",
+       "loc": "grid",
+       "cell": [
+        4,
+        6
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_8",
+       "id": "spyglass",
+       "loc": "grid",
+       "cell": [
+        5,
+        2
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_9",
+       "id": "spyglass",
+       "loc": "grid",
+       "cell": [
+        5,
+        4
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_10",
+       "id": "lockpick",
+       "loc": "grid",
+       "cell": [
+        6,
+        2
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_11",
+       "id": "spyglass",
+       "loc": "grid",
+       "cell": [
+        6,
+        3
+       ],
+       "rot": 0,
+       "fixed": true
+      },
+      {
+       "uid": "po_starter_scout_12",
+       "id": "spyglass",
+       "loc": "grid",
+       "cell": [
+        6,
+        5
+       ],
+       "rot": 0,
+       "fixed": true
+      }
+     ],
+     "sis": []
+    },
+    {
+     "linked": true,
+     "bps": [],
+     "pos": [],
+     "sis": []
+    }
+   ]
+  }
+ },
+ "none": null,
+ "empty": null
+}

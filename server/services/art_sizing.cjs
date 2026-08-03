@@ -21,7 +21,7 @@
 //   goblin 3x4 -> 384x512               chimera 6x4 -> 768x512
 //   ancient dragon 10x10 -> 1280x1280   any si -> 256x256
 
-const KINDS = ['po', 'si', 'unit', 'monster', 'bpskin', 'custom', 'gimic', 'vfx']; // REQ-0211: gimic == monster; REQ-0280/0264: vfx (ray/hit VFX)
+const KINDS = ['po', 'si', 'unit', 'monster', 'bpskin', 'custom', 'gimic', 'vfx', 'skill_icon']; // REQ-0211: gimic == monster; REQ-0280/0264: vfx (ray/hit VFX); REQ-0292: skill_icon (256x256 still, no shape)
 
 // REQ-0179: ComfyUI's flux2 latent (EmptyFlux2LatentImage) bounds -- width/height
 // min 16, max nodes.MAX_RESOLUTION, step 16 (latent = [.., height//16, width//16]).
@@ -80,6 +80,10 @@ function deriveSize(kind, shape) {
       return genSize(bb.w, bb.h, 256);
     }
     case 'si':
+      return { width: 256, height: 256 };
+    // REQ-0292: a skill_icon is a LOCKED 256x256 still (an ability icon, sized
+    // exactly like si -- no shape, no role). One kind, one size.
+    case 'skill_icon':
       return { width: 256, height: 256 };
     // REQ-0211: a gimic artwork is sized IDENTICALLY to a monster (user directive):
     // a w x h cell grid (each 1..12) at 128 px/cell. Stacked case label, one body.

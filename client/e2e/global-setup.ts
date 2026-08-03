@@ -22,6 +22,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { E2E_DATA_ROOT, E2E_FLEET_ROOT } from './e2e-env';
+import { assertGpuRenderer } from './gpu';
 
 // Guest-auth ledger: guest-creating specs mint fresh players via
 // server/cli_invite.cjs INTO THEIR WORKER'S HOME (e2e-env.ts) and register
@@ -66,6 +67,13 @@ function probeBoxLock(): void {
 }
 
 
+// REQ-0344: the GPU flag list and the renderer probe that used to live here
+// moved to e2e/gpu.ts, unchanged in behaviour. They were duplicated between
+// this file and playwright.config.ts and absent from the four standalone
+// admin/registry configs, which is the whole reason REQ-0342's default never
+// reached [6.5/8]. One definition, six consumers.
+
+
 export default async function globalSetup(): Promise<void> {
   // REQ-0225 (ratified via REQ-0234): a NON-local baseURL from a linked
   // worktree tests the DEPLOYED code, not this branch -- the mistake is
@@ -95,6 +103,8 @@ export default async function globalSetup(): Promise<void> {
     throw new Error('[global-setup] E2E_PARALLEL=' + parallelWorkers + ' exceeds the 6 fleet slots a REQ decade holds (indexes 4-9, PROJECT.md port rule) -- lower it.');
   }
   execFileSync('node', [join(process.cwd(), '..', 'tools', 'e2e_fleet.cjs'), 'start', String(parallelWorkers)], { stdio: 'inherit' });
+  // REQ-0331 (F1): prove the GPU path is real before 190+ tests rely on it.
+  await assertGpuRenderer();
   // REQ-0037: reset the tracked-files ledger for guest-creating specs at
   // the START of every run (each spec appends the worker-HOME files it
   // creates; teardown sweeps whatever is registered).

@@ -34,7 +34,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const Engine = require('../../mock-src/engine.js');
+const Engine = require('../../shared/engine.js');
 
 const REPO = path.join(__dirname, '..', '..');
 const CONTENT = process.env.CONTENT_ROOT || path.join(REPO, 'content');

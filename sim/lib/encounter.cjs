@@ -14,8 +14,9 @@ const { freshStatusBag, tickStatuses, foldBattleStartStatusVerbs, applyStatus, c
 const { registerHpBelowWatchers, foldFlatBonusInPlace } = require('./hpbelow.cjs'); // REQ-0121
 const { FIELD_ROWS, FIELD_COLS } = require('./field.cjs');
 const { maskLabel } = require('./replay.cjs');
-const { effectStreamName, makeBPActor, makeEnemyActor, fireSkillRay, defaultAttackProfileFor, applyReactiveVerbToTarget, selectHealAllyTarget } = require('./skills.cjs');
+const { effectStreamName, makeBPActor, makeEnemyActor, fireSkillRay, defaultAttackProfileFor, applyReactiveVerbToTarget, selectHealAllyTarget, targetIdent } = require('./skills.cjs'); // REQ-0355: targetIdent
 const { compileEnemyPack } = require('./packs.cjs');
+const { effLevelForPack } = require('./level_scale.cjs'); // REQ-0297: per-pack effLevel = attackLv - pack.powerLevel (+ boss bonus)
 const { createEncounterChargeManager } = require('./unit_charge_encounter.cjs'); // REQ-0200
 
 function runEncounter(opts) {
@@ -28,6 +29,12 @@ function runEncounter(opts) {
     // called `packDefsById` in one opts bag is a bug waiting for a careless
     // destructure to feed emission pools to the monster placer.
     monsterPackDefsById,
+    // REQ-0293/0297: enemy level scaling. `scaling` is the profile; `attackLv`
+    // (= room.level) drives the PER-PACK effLevel derived below, where the pack
+    // def (its powerLevel) and the boss-slot signal are both known. Both optional
+    // -- absent (every current sim/test caller) means no scaling, so
+    // compileEnemyPack stays byte-identical.
+    scaling, attackLv,
   } = opts;
   const events = [];
   const seq = new SeqCounter(); // REQ-0256: seq is now an emission-order OUTPUT, not an ordering input (s3.3)
@@ -195,7 +202,15 @@ function runEncounter(opts) {
       if (!resolved) throw new Error('runEncounter: encounter ' + encounterDef.id + ' names monster_pack "' + packDef.packId + '", which has no def');
       packDef = resolved;
     }
-    enemyActors = compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyFieldBox).map(en => ({ raw: en, actor: makeEnemyActor(en) }));
+    // REQ-0297: PER-PACK effLevel. The resolved pack def (hence its powerLevel)
+    // and the boss-slot signal (encounterDef.type === 'boss' -- the encounter
+    // dungeon_roll.cjs built from the dungeon's bossPool) are both known HERE, so
+    // each pack scales by its OWN g^effLevel. Only computed when a scaling profile
+    // is present; absent (goldens, every direct test caller) => effLevel 0 => no
+    // scaling => byte-identical. A pack with no powerLevel also yields 0 (see
+    // effLevelForPack), so today's live/fixture packs are unchanged either way.
+    const effLevel = scaling ? effLevelForPack(attackLv, packDef.powerLevel, encounterDef.type === 'boss') : 0;
+    enemyActors = compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyFieldBox, { scaling, effLevel }).map(en => ({ raw: en, actor: makeEnemyActor(en) })); // REQ-0297: per-pack effLevel
   }
   let entity = null; // trap/door/chest "?" entity
   if (encounterDef.entityDef) {
@@ -582,11 +597,43 @@ function runEncounter(opts) {
   // Charge-less player slots and all enemy slots keep the hard-coded 1.0 the
   // heap driver passed; a chargeMgr switches the player mult to the real
   // Haste/Chill net cadence (REQ-0200), exactly as before.
+  // REQ-0292 (cooldown ramp wire): the just-fired slot's CADENCE ray_fire refs,
+  // captured by fireInstanceSlot so rollCooldownTicksFor can BACK-PATCH the freshly
+  // rolled `cooldownTicks` onto them AFTER the roll -- never hoisting the roll before
+  // the fire (that would reorder the RNG and move every golden; REQ-0263 s6.4
+  // caveat 4). Cleared after each stamp.
+  let pendingCadenceFire = [];
+  const SQUAD_SLOT_INDEX = { unit1: 0, unit2: 1, unit3: 2, unit4: 3 };
   function rollCooldownTicksFor(inst, cd) {
     const sRange = cd.effect.trigger.s; // [lo,hi] SECONDS -- authoring stays seconds (s3.2)
     const stream = rng.stream(effectStreamName(cd.ownerUid, cd.effIdx) + '/timing');
     const mult = (inst.kind === 'bp' && chargeMgr) ? playerCadenceMult(cd.ownerUid) : 1.0;
-    return secsToTicks(stream.range(sRange[0], sRange[1]) * mult);
+    const ticks = secsToTicks(stream.range(sRange[0], sRange[1]) * mult);
+    // Back-patch the ramp param onto the fire that just re-armed to it: a pure
+    // post-facto write on an already-emitted event -- no RNG draw, no reorder.
+    for (const e of pendingCadenceFire) e.cooldownTicks = ticks;
+    pendingCadenceFire = [];
+    return ticks;
+  }
+  // REQ-0292: push a fire's ray events, capturing the ray_fire(s) as THIS tick's
+  // cadence fire so cooldownTicks back-patches at the RESET roll. Player fires gain
+  // `slot` (the 0..3 squad index the client draws the cooldown overlay on, paired
+  // with the item id already in `src`); enemy/gimic fires gain `srcInst` (the firing
+  // IBattleInstance id, e.g. "hrimgrimnir#0") so a skill badge keys unambiguously by
+  // instanceId+skill even with duplicate defs (`skill` is already on it -- REQ-0280).
+  function pushCadenceFire(inst, rayEvents, t) {
+    const fires = [];
+    for (const re of rayEvents) {
+      const ev = Object.assign({ t, seq: seq.nextSeq() }, re);
+      events.push(ev);
+      if (ev.ev === 'ray_fire') fires.push(ev);
+    }
+    for (const ev of fires) {
+      if (inst.kind === 'bp') { const si = SQUAD_SLOT_INDEX[inst.squadSlot]; if (si != null) ev.slot = si; }
+      else ev.srcInst = inst.id;
+    }
+    pendingCadenceFire = fires;
+    return fires;
   }
 
   // s7.1a: the fire step a slot reaching 0 runs -- the heap driver's skill_fire
@@ -596,6 +643,7 @@ function runEncounter(opts) {
   // stays continuous while not matching -- S6.2 pause semantics).
   function fireInstanceSlot(inst, cd) {
     const t = simNow;
+    pendingCadenceFire = []; // REQ-0292: cleared each fire; the cadence-fire paths below set it
     if (inst.kind === 'bp') {
       const s = cd;
       if (s.modes.includes(encounterDef.mode) && s.effect.verb && s.effect.verb.t === 'pulse') {
@@ -613,10 +661,13 @@ function runEncounter(opts) {
         const rayEvents = [];
         const fr = fireSkillRay({
           attacker, attackProfile: s.attackProfile, verbEff: s.effect, mode: encounterDef.mode,
-          targetActors: enemyActorList(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
+          // REQ-0296: was enemyActorList() -- now the firing instance's opponents
+          // (bp-map instance -> enemyActorList(), same list/order). The machinery
+          // below (charge feeds, PO offensive dispatch) stays bp-gated; only the LIST moved.
+          targetActors: inst.opponents(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
           rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + t, events: rayEvents, aoeStatuses: !!s.attackProfile.aoe_statuses,
         });
-        for (const re of rayEvents) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+        pushCadenceFire(inst, rayEvents, t); // REQ-0292: +slot (player squad) + back-patched cooldownTicks
         if (encounterDef.mode === 'detection' && rayEvents.some(r => r.ev === 'ray_hit' && r.dst !== '?')) {
           discoveredEntity = true;
         }
@@ -635,7 +686,11 @@ function runEncounter(opts) {
             fireSkillRay({
               attacker: { fieldCells: ent.raw.fieldCells, ownerId: ent.raw.ownerId + '#react', bonusVsStatus: ent.raw.bonusVsStatus || [] },
               attackProfile: ap, verbEff: sk, mode: 'battle', skill: ent.raw.skillIds && ent.raw.skillIds[ent.raw.skills.indexOf(sk)], // REQ-0280
-              targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
+              // REQ-0296: the struck opponent's retaliation aims at the FIRING
+              // instance's allies (bp-map -> playerActors, same ref). LIMITATION: this
+              // OnSquadBeenHit dispatch still lives ONLY in the bp body, so pure enemy-
+              // vs-enemy won't retaliate until phase-2 generalises the dispatch itself.
+              targetActors: inst.allies(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
               rng, streamPrefix: 'reactive/OnSquadBeenHit/' + ent.raw.ownerId + '/' + t,
               events: reactDef, aoeStatuses: !!ap.aoe_statuses,
             });
@@ -664,65 +719,36 @@ function runEncounter(opts) {
           }
         }
       } else if (hasAtt && s.modes.includes('detection')) {
+        // REQ-0292: detection/unlock rays re-arm too (REQ-0263 s6.4 caveat 3) --
+        // capture their ray_fire so slot + cooldownTicks land like any cadence fire.
+        const preLen = events.length;
         resolveDetection(s, t);
+        pendingCadenceFire = events.slice(preLen).filter((e) => e.ev === 'ray_fire');
+        for (const ev of pendingCadenceFire) { const si = SQUAD_SLOT_INDEX[inst.squadSlot]; if (si != null) ev.slot = si; }
       } else if (hasAtt && s.modes.includes('unlock')) {
+        const preLen = events.length;
         resolveUnlock(s, t);
+        pendingCadenceFire = events.slice(preLen).filter((e) => e.ev === 'ray_fire');
+        for (const ev of pendingCadenceFire) { const si = SQUAD_SLOT_INDEX[inst.squadSlot]; if (si != null) ev.slot = si; }
       }
       // NOTE: no reschedule call here -- the RESET is the instance walk's
       // (battle.cjs IBattleInstance.tick(), s8.5), and it happens regardless of
       // the mode match above, preserving the heap driver's "reschedule
       // regardless" cadence.
     } else {
-      // ---- enemy / entity side (the heap driver's enemy skill_fire branch) ----
-      const s = cd;
-      const raw = inst.raw;
-      const attackProfile = s.effect.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
-      const attacker = { fieldCells: raw.fieldCells, ownerId: s.ownerId, bonusVsStatus: raw.bonusVsStatus || [], selfActor: inst.actor };
-      if (s.effect.verb && s.effect.verb.t === 'heal_ally') {
-        // REQ-0203: enemy SUPPORT skill -- NO ray at the player field. Heal the
-        // lowest-HP living pack ally (self only if alone); target is deterministic
-        // (selectHealAllyTarget), the amount rolls from an isolated named stream.
-        const target = selectHealAllyTarget(inst.actor, enemyActors.map(e => e.actor));
-        if (target) {
-          const healN = rng.stream(effectStreamName(s.ownerUid, s.effIdx) + '/' + t + '/heal_ally').range(s.effect.verb.n[0], s.effect.verb.n[1]);
-          const hpBefore = target.hp();
-          target.heal(healN);
-          events.push({ t, seq: seq.nextSeq(), ev: 'heal_ally', src: s.ownerId, dst: target.id, amount: healN, hp_before: hpBefore, hp_after: target.hp() });
-        }
-      } else {
-        events.push({ t: tickT(Math.max(0, simTick - LEAD_TICKS)), seq: seq.nextSeq(), ev: 'telegraph', src: s.ownerId, skill: s.effect.verb.t, edge: (attackProfile.edge || ['top'])[0], fires_at: t });
-        const rayEvents = [];
-        const fr = fireSkillRay({
-          attacker, attackProfile, verbEff: s.effect, mode: 'battle', skill: raw && raw.skillIds && raw.skillIds[s.effIdx], // REQ-0280
-          targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
-          rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + t, events: rayEvents, aoeStatuses: !!attackProfile.aoe_statuses,
-        });
-        for (const re of rayEvents) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
-        // REQ-0078 reactive (offensive rider): this monster's OnHit/OnSquadHit
-        // skills fire on each player actor its attack just directly hit
-        // (OnHit == OnSquadHit for a flat monster squad); isolated RNG.
-        const reactOff = [];
-        for (const sk of (raw.skills || [])) {
-          if (!sk.trigger || (sk.trigger.t !== 'OnHit' && sk.trigger.t !== 'OnSquadHit')) continue;
-          (fr.landedHits || []).forEach((lh, li) => {
-            const rs = rng.stream('reactive/' + sk.trigger.t + '/' + s.ownerUid + '/' + t + '/' + li);
-            applyReactiveVerbToTarget(sk.verb, inst.actor, lh.actor, rs, reactOff, sk.trigger.t);
-          });
-        }
-        for (const re of reactOff) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
-        const playerDef = [];
-        dispatchPlayerDefensive((fr.landedHits || []).map(lh => lh.actor), t, playerDef);
-        for (const re of playerDef) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
-        if (chargeMgr) {
-          // REQ-0200: a player BP taking a direct enemy hit feeds OnBPBeenHit on that
-          // BP + on_connected_unit_bp_been_hit on its linked BPs.
-          for (const lh of (fr.landedHits || [])) {
-            if (lh.actor && lh.actor.kind === 'bp') feedCharge({ type: 'bp_damaged', bpId: lh.actor.id, amount: lh.amount }, t);
-          }
-          // REQ-0200 real-actor: reflect_damage pct of each hit onto the attacker.
-          chargeMgr.onDefensiveLanded(inst.actor, fr.landedHits || [], t);
-        }
-      }
+      // ---- enemy / entity side. REQ-0296 extracted the timed-fire body to the
+      // module-level fireEnemyInstanceSlot (shared with the headless monster
+      // arena). REQ-0292: tag the emitted cadence ray_fire with srcInst and
+      // register them for the cooldownTicks back-patch, mirroring the player
+      // side above -- at the CALL SITE, so the shared function (and the arena)
+      // stay untouched.
+      const preLen = events.length;
+      fireEnemyInstanceSlot(inst, cd, {
+        rng, events, seq, t, simTick, LEAD_TICKS, tickT,
+        dispatchDefensive: dispatchPlayerDefensive, chargeMgr, feedCharge,
+      });
+      pendingCadenceFire = events.slice(preLen).filter((ev) => ev.ev === 'ray_fire');
+      for (const ev of pendingCadenceFire) ev.srcInst = inst.id;
     }
   }
 
@@ -731,8 +757,13 @@ function runEncounter(opts) {
   // attachments, pulses, the fire bodies and the result stay here (s14 Out
   // records the not-moved scaffolding).
   const battle = createBattle({
-    playerMap: createFormationMap({ instances: playerInstances }),
-    enemyMap: createFormationMap({ instances: enemyInstances }),
+    // REQ-0296: side-agnostic target binding. The standard encounter is
+    // player-vs-enemy: a player-map instance's opponents ARE the enemy actor list
+    // (entity included, exactly what the bp fire body read) and its allies are the
+    // player actors; an enemy-map instance mirrors that. SAME lists, SAME order as
+    // the hardcoded args they replace below -> byte-identical goldens.
+    playerMap: createFormationMap({ instances: playerInstances, opponents: () => enemyActorList(), allies: () => playerActors }),
+    enemyMap: createFormationMap({ instances: enemyInstances, opponents: () => playerActors, allies: () => enemyActors.map(e => e.actor) }),
     modeConfig: null, // s7.0: RESERVED. REQ-0259 populates it; nothing here reads it.
     fire: fireInstanceSlot,
     rollCooldownTicks: rollCooldownTicksFor,
@@ -780,6 +811,36 @@ function runEncounter(opts) {
     return playerActors.every(a => !a.alive);
   }
 
+  // REQ-0299: on_death dying-blast drain. After a tick chain resolves, any enemy
+  // that is now dead and carries an on_death skill fires it ONCE as a one-shot ray
+  // at the player field, before the termination check so a boss last hurrah still
+  // lands. Path-independent (catches deaths from any source). Deterministic:
+  // enemyActors order + isolated stream; deduped via raw._deathFired. No content
+  // uses on_death today, so this emits nothing and goldens stay byte-identical.
+  function fireDeathThroes(t) {
+    const out = [];
+    for (const e of enemyActors) {
+      const raw = e.raw;
+      if (e.actor.alive || raw._deathFired) continue;
+      const deaths = (raw.skills || []).map((sk, i) => [sk, i]).filter((p) => p[0].trigger && p[0].trigger.t === "on_death");
+      if (!deaths.length) continue;
+      raw._deathFired = true;
+      for (const p of deaths) {
+        const sk = p[0], ski = p[1];
+        const ap = sk.attack_profile || { edge: ["top"], penetration: 0, aoe: 0 };
+        out.push({ ev: "reactive_proc", trigger: "on_death", verb: sk.verb.t, src: raw.ownerId });
+        fireSkillRay({
+          attacker: { fieldCells: raw.fieldCells, ownerId: raw.ownerId + "#death", bonusVsStatus: raw.bonusVsStatus || [] },
+          attackProfile: ap, verbEff: sk, mode: "battle", skill: raw.skillIds && raw.skillIds[ski],
+          targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: "player" },
+          rng, streamPrefix: "death_throes/" + raw.ownerId + "/" + t,
+          events: out, aoeStatuses: !!ap.aoe_statuses,
+        });
+      }
+    }
+    for (const re of out) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+  }
+
   // ---- THE TICK LOOP (s7.1) -- replaces the event-heap driver. Per tick:
   // attachment timeouts -> status cadence (every STATUS_TICK_TICKS boundary,
   // passing P verbatim, NOT dt=TICK -- s7.2's two silent breakages) -> THE
@@ -804,6 +865,8 @@ function runEncounter(opts) {
     battle.tick(); // spec c: THE CHAIN -- the whole of the fire step (s7.1a)
 
     drainPulseArrivals(battle.tickIndex, t); // REQ-0048 pulse arrivals scheduled for THIS tick
+
+    fireDeathThroes(t); // REQ-0299: on_death dying-blast drain (before termination check)
 
     if (encounterDef.type === 'pack' || encounterDef.type === 'boss') {
       if (allEnemiesDead()) { if (hasAtt) settleAttachmentsAtEnd(t); result = 'clear'; break; }
@@ -863,11 +926,104 @@ function runEncounter(opts) {
   return { events, result, discoveredEntity, entity, attachments: attachments.map(a => ({ id: a.id, kind: a.kind, discovered: a.discovered, opened: (a.settled && a.kind !== 'trap' && a.hp <= 0), settled: a.settled })), attachmentRewards, doorShortcut, chargeState: chargeMgr ? chargeMgr.summary() : undefined };
 }
 
+// REQ-0296: the enemy/entity timed-fire body, lifted VERBATIM out of
+// fireInstanceSlot's else-branch so BOTH the standard encounter (runEncounter)
+// AND the headless monster arena drive the SAME logic -- side-agnostic by
+// construction (targets are inst.opponents()/inst.allies(), never provenance).
+// ctx = the runEncounter-local seam the body reads. dispatchDefensive, chargeMgr
+// and feedCharge are player-side machinery: inert for monster-vs-monster (no
+// troopPos, null chargeMgr), so the arena passes a no-op dispatchDefensive and
+// null chargeMgr. KNOWN LIMITATION (REQ-0296): the struck group's OnSquadBeenHit
+// reactive retaliation is dispatched ONLY in the bp fire body, so pure enemy-vs-
+// enemy does not retaliate -- generalising that dispatch is phase-2.
+function fireEnemyInstanceSlot(inst, cd, ctx) {
+  const { rng, events, seq, t, simTick, LEAD_TICKS, tickT, dispatchDefensive, chargeMgr, feedCharge } = ctx;
+  const s = cd;
+  const raw = inst.raw;
+  const attackProfile = s.effect.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
+  const attacker = { fieldCells: raw.fieldCells, ownerId: s.ownerId, bonusVsStatus: raw.bonusVsStatus || [], selfActor: inst.actor };
+  if (s.effect.verb && s.effect.verb.t === 'heal_ally') {
+    // REQ-0203: enemy SUPPORT skill -- NO ray at the opposing field. Heal the
+    // lowest-HP living pack ally (self only if alone); target is deterministic
+    // (selectHealAllyTarget), the amount rolls from an isolated named stream.
+    const target = selectHealAllyTarget(inst.actor, inst.allies()); // REQ-0296: own-side list (enemy-map -> enemyActors' actors, same order)
+    if (target) {
+      const healN = rng.stream(effectStreamName(s.ownerUid, s.effIdx) + '/' + t + '/heal_ally').range(s.effect.verb.n[0], s.effect.verb.n[1]);
+      const hpBefore = target.hp();
+      target.heal(healN);
+      events.push({ t, seq: seq.nextSeq(), ev: 'heal_ally', src: s.ownerId, dst: target.id, amount: healN, hp_before: hpBefore, hp_after: target.hp() });
+    }
+  } else {
+    events.push({ t: tickT(Math.max(0, simTick - LEAD_TICKS)), seq: seq.nextSeq(), ev: 'telegraph', src: s.ownerId, skill: s.effect.verb.t, edge: (attackProfile.edge || ['top'])[0], fires_at: t });
+    const rayEvents = [];
+    const fr = fireSkillRay({
+      attacker, attackProfile, verbEff: s.effect, mode: 'battle', skill: raw && raw.skillIds && raw.skillIds[s.effIdx], // REQ-0280
+      targetActors: inst.opponents(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' }, // REQ-0296: enemy-map instance's opponents (standard -> playerActors; label kept 'player' for golden parity)
+      rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + t, events: rayEvents, aoeStatuses: !!attackProfile.aoe_statuses,
+    });
+    for (const re of rayEvents) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+    // REQ-0078 reactive (offensive rider): this monster's OnHit/OnSquadHit
+    // skills fire on each opposing actor its attack just directly hit
+    // (OnHit == OnSquadHit for a flat monster squad); isolated RNG.
+    const reactOff = [];
+    for (const sk of (raw.skills || [])) {
+      if (!sk.trigger || (sk.trigger.t !== 'OnHit' && sk.trigger.t !== 'OnSquadHit')) continue;
+      (fr.landedHits || []).forEach((lh, li) => {
+        const rs = rng.stream('reactive/' + sk.trigger.t + '/' + s.ownerUid + '/' + t + '/' + li);
+        applyReactiveVerbToTarget(sk.verb, inst.actor, lh.actor, rs, reactOff, sk.trigger.t);
+      });
+    }
+    for (const re of reactOff) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+    const playerDef = [];
+    dispatchDefensive((fr.landedHits || []).map(lh => lh.actor), t, playerDef);
+    for (const re of playerDef) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+    // REQ-0297: faction-neutral struck-group defensive dispatch. dispatchDefensive
+    // (above) fires the struck PLAYER side's OnBPBeenHit/OnSquadBeenHit; it is inert
+    // for a struck MONSTER group (no troopPos / no-op in the arena). So when this
+    // enemy fire lands on OTHER ENEMIES (pure monster-vs-monster), fire each struck
+    // monster's OWN OnSquadBeenHit retaliation at the FIRING instance's allies (the
+    // attacker's group -- inst.allies(), driven by map membership, never a hardcoded
+    // side). MIRRORS the bp fire body's struck-enemy retaliation exactly (same event
+    // shape, same 'reactive/OnSquadBeenHit/<ownerId>/<t>' stream). GATED on
+    // kind==='enemy': in the standard enemy->player path every struck actor is a BP,
+    // so this loop body never runs and emits ZERO events -> goldens byte-identical.
+    const structDef = [];
+    for (const lh of (fr.landedHits || [])) {
+      const struck = lh.actor;
+      if (!struck || struck.kind !== 'enemy' || !struck.alive) continue;
+      const draw = struck.ref || {};
+      (draw.skills || []).forEach((sk, ski) => {
+        if (!sk.trigger || sk.trigger.t !== 'OnSquadBeenHit') return;
+        const ap = sk.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
+        structDef.push({ ev: 'reactive_proc', trigger: 'OnSquadBeenHit', verb: sk.verb.t, src: draw.ownerId });
+        fireSkillRay({
+          attacker: { fieldCells: draw.fieldCells, ownerId: draw.ownerId + '#react', bonusVsStatus: draw.bonusVsStatus || [] },
+          attackProfile: ap, verbEff: sk, mode: 'battle', skill: draw.skillIds && draw.skillIds[ski],
+          targetActors: inst.allies(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
+          rng, streamPrefix: 'reactive/OnSquadBeenHit/' + draw.ownerId + '/' + t,
+          events: structDef, aoeStatuses: !!ap.aoe_statuses,
+        });
+      });
+    }
+    for (const re of structDef) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+    if (chargeMgr) {
+      // REQ-0200: an opposing BP taking a direct enemy hit feeds OnBPBeenHit on that
+      // BP + on_connected_unit_bp_been_hit on its linked BPs.
+      for (const lh of (fr.landedHits || [])) {
+        if (lh.actor && lh.actor.kind === 'bp') feedCharge({ type: 'bp_damaged', bpId: lh.actor.id, amount: lh.amount }, t);
+      }
+      // REQ-0200 real-actor: reflect_damage pct of each hit onto the attacker.
+      chargeMgr.onDefensiveLanded(inst.actor, fr.landedHits || [], t);
+    }
+  }
+}
+
 function tickAndEmit(actor, t, events, onHeal) {
   const ticks = tickStatuses(actor.statusBag, TUNABLES.STATUS_TICK_PERIOD_SECS);
+  const ident = targetIdent(actor) || {}; // REQ-0355: slot/bpIdx on player targets (status ticks are the main killer to attribute)
   for (const tk of ticks) {
-    if (tk.kind === 'damage') { actor.applyDamage(tk.amount); events.push({ t, ev: 'status_tick', dst: maskLabel(actor.ref), status: tk.name, amount: tk.amount, hp_after: actor.hp() }); }
-    else if (tk.kind === 'heal') { actor.heal(tk.amount); events.push({ t, ev: 'status_tick', dst: maskLabel(actor.ref), status: tk.name, amount: tk.amount, hp_after: actor.hp() }); if (onHeal) onHeal(actor.id); } // REQ-0200: on_heal_done
+    if (tk.kind === 'damage') { actor.applyDamage(tk.amount); events.push(Object.assign({ t, ev: 'status_tick', dst: maskLabel(actor.ref), status: tk.name, amount: tk.amount, hp_after: actor.hp() }, ident)); }
+    else if (tk.kind === 'heal') { actor.heal(tk.amount); events.push(Object.assign({ t, ev: 'status_tick', dst: maskLabel(actor.ref), status: tk.name, amount: tk.amount, hp_after: actor.hp() }, ident)); if (onHeal) onHeal(actor.id); } // REQ-0200: on_heal_done
   }
 }
 
@@ -899,6 +1055,7 @@ function bonusVsStatusForOwnerUid(ownerUid, troopPos, troopBps) {
 
 module.exports = {
   runEncounter,
+  fireEnemyInstanceSlot, // REQ-0296: shared enemy timed-fire body (also drives the monster arena)
   tickAndEmit,
   unionCells,
   playerActorsInSameBpAs,

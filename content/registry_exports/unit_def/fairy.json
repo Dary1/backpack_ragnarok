@@ -1,0 +1,89 @@
+{
+ "system_name": "fairy",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "ba3de827ecfa76b2bafbdcbcd841792700687ffbfcb94d02c96e2dc03e70070d",
+ "provenance": {
+  "model": "claude-opus-4-8",
+  "params": {},
+  "prompt": "units003 kit design S1 (REQ-0201); reviewer-amended (REQ-0201 adoption notes)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:10:50.763Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "fairy",
+  "i18n": {
+   "ja": {
+    "name": "妖精"
+   }
+  },
+  "icon": "units003_fairy",
+  "name": "Fairy",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       3,
+       5
+      ],
+      "t": "heal_bp"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "s": [
+     2,
+     3
+    ],
+    "t": "every_secs"
+   },
+   "capacity": [
+    1,
+    2
+   ]
+  },
+  "flavor": "A flit, a giggle, a little mending.",
+  "rarity": "Common",
+  "flavor_ja": "ひらり、くすくす、ちょっとの手当て。",
+  "connection_shape": "queen_2"
+ }
+}

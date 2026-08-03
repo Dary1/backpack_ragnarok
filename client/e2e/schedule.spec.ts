@@ -143,6 +143,31 @@ async function apiClaim(page: Page, token: string, itemUid: string): Promise<any
 let player: CreatedPlayer;
 let fixture: unknown;
 
+// REQ-0307: a squad that CLEARS niflheim_depths L1 under the shipped REQ-0293/0297 per-pack
+// enemy scaling (berserker + 12 war_picks on a 7x7 BP, hpMax 1000; measured 80/80 clears vs
+// the authored 8-encounter dive via sim/combat.cjs). Used ONLY by test 325 below, on its own
+// default-profile canvas -- the shared schedule-fixture.json (and every test that inspects
+// squads 0-3 / the warehouse board) is untouched.
+function winningSquad(tag: string) {
+  const shape: number[][] = [];
+  for (let r = 0; r < 7; r++) for (let c = 0; c < 7; c++) shape.push([r, c]);
+  const cells: number[][] = [];
+  for (const c of [2, 3, 4, 5]) for (const r of [2, 4, 6]) cells.push([r, c]);
+  return {
+    linked: false,
+    bps: [{ id: `bp_win_${tag}`, name: `Win ${tag}`, color: '#7a5b5b', shape, origin: [2, 2], unit: { id: 'berserker', off: [0, 0] }, hpMax: 1000 }],
+    pos: cells.map((cell, i) => ({ uid: `po_win_${tag}_${i}`, id: 'war_pick', loc: 'grid', cell, rot: 0 })),
+    sis: [],
+  };
+}
+function winningCanvas(tag: string) {
+  return {
+    ...winningSquad(`${tag}0`),
+    inv: { pages: [0, 1, 2, 3, 4].map(() => ({ bps: [], pos: [], sis: [], tms: [] })), names: ['1', '2', '3', '4', '5'] },
+    presets: { active: 0, names: ['P1', 'P2', 'P3', 'P4', 'P5'], store: [null, winningSquad(`${tag}1`), winningSquad(`${tag}2`), winningSquad(`${tag}3`), null] },
+  };
+}
+
 test.beforeAll(() => {
   player = createGuestPlayer('E2E ScheduleGuest');
   fixture = JSON.parse(readFileSync(SCHEDULE_FIXTURE_PATH, 'utf8'));
@@ -351,7 +376,13 @@ test.describe('warehouse receives rewards + claim moves item to inventory', () =
     const devProfileBackup = devProfileExisted ? fs.readFileSync(devProfilePath, 'utf8') : null;
 
     try {
-      await page.request.put('/api/profile/default/canvas', { data: fixture });
+      // REQ-0307: PUT a dedicated WINNING canvas instead of the shared fixture. Post
+      // REQ-0293/0297 scaling the fixture's starter squads WIPE niflheim_depths L1, so this
+      // gate always hit the victory-skip guard below AND -- because that skip `return`s
+      // before the room-cancel cleanup -- LEAKED an active room whose deployed squads 0-3
+      // then 409'd the later REQ-0099 settled-transport test. This squad wins reliably, so
+      // the gate again EXERCISES its reward-deposit + claim assertions rather than skipping.
+      await page.request.put('/api/profile/default/canvas', { data: winningCanvas('r307a') });
 
       const created = await apiCreateRoom(page, '', { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
       const roomId = created.body.room.id;
@@ -1432,28 +1463,36 @@ test.describe('REQ-0049: monitor renders layered-encounter attachment badges (in
 test.describe('REQ-0239: sortie page + squad status board', () => {
   // Drive the sortie page UI to launch a room (select dungeon, assign 4 squads,
   // launch). Lands on #/schedule (the sortie IS the launch).
-  async function sortieLaunch(page: Page, opts: { dungeonId: string; level?: number; seed?: string }): Promise<void> {
+  async function sortieLaunch(page: Page, opts: { level?: number; seed?: string }): Promise<void> {
     await page.goto('/app/#/sortie');
     await expect(page.locator('[data-testid="sortie-page"]')).toBeVisible({ timeout: 10000 });
-    await page.locator(`[data-testid="sortie-dungeon-card-${opts.dungeonId}"]`).click();
-    await expect(page.locator('[data-testid="sortie-dossier"]')).toBeVisible({ timeout: 10000 });
+    // REQ-0304: the player no longer PICKS a dungeon -- the attackLv-entry panel is
+    // always present. Set attackLv (+ optional dev seed), muster four squads, launch;
+    // the server draws the dungeon from those whose levelMin <= attackLv.
+    await expect(page.locator('[data-testid="sortie-entry"]')).toBeVisible({ timeout: 10000 });
     if (opts.level != null) await page.locator('[data-testid="sortie-level-input"]').fill(String(opts.level));
     if (opts.seed) {
       await page.locator('[data-testid="sortie-advanced-toggle"]').click();
       await page.locator('[data-testid="sortie-seed-input"]').fill(opts.seed);
     }
-    for (let i = 0; i < 4; i++) await page.locator(`[data-testid="sortie-squad-card-${i}"]`).click();
+    // REQ-0307: select DEDICATED squads 11-14 (schedule-fixture.json tail) rather than 0-3.
+    // This sortie DEFAULTS to a deferred cancel policy (bug #6, asserted in the test below),
+    // so its room -- which a plain guest cannot force-settle -- stays ACTIVE and keeps its
+    // deployed squadIndices locked for the rest of the suite. Locking the shared 0-3 (as the
+    // old first-four selection did) 409'd whichever later guest test redeployed 0-3 during
+    // that window; squads 11-14 are used ONLY here, so the lingering lock is inert.
+    for (const idx of [11, 12, 13, 14]) await page.locator(`[data-testid="sortie-squad-card-${idx}"]`).click();
     await expect(page.locator('[data-testid="sortie-launch-btn"]')).toBeEnabled({ timeout: 10000 });
     await page.locator('[data-testid="sortie-launch-btn"]').click();
     await expect(page).toHaveURL(/#\/schedule$/, { timeout: 10000 });
   }
 
-  test('the sortie page launches a room atomically (dungeon + 4 squads), records the def id + level, DEFAULTS cancel to deferred (bug #6), and carries lastRun (D1/B1)', async ({ page }) => {
+  test('REQ-0304: the sortie page launches a room atomically (attackLv-only DRAW + 4 squads), records the DRAWN def id + level, DEFAULTS cancel to deferred (bug #6), and carries lastRun (D1/B1)', async ({ page }) => {
     await page.request.put(`/api/profile/${player.playerId}/canvas`, { headers: { 'X-Auth-Token': player.token }, data: fixture });
     const beforeIds = new Set((await apiListRooms(page, player.token)).body.rooms.map((r: { id: string }) => r.id));
     await page.goto(`/app/#/invite/${player.token}`);
     await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
-    await sortieLaunch(page, { dungeonId: 'niflheim_depths', level: 3 });
+    await sortieLaunch(page, { level: 3 });
 
     let roomId = '';
     await expect(async () => {
@@ -1465,7 +1504,13 @@ test.describe('REQ-0239: sortie page + squad status board', () => {
     createdRoomIds.push(roomId);
 
     const view = await apiGetRoom(page, player.token, roomId);
+    // REQ-0304: no dungeon was picked -- the server DREW one from { levelMin <= 3 }.
+    // At attackLv 3 only niflheim_depths (levelMin 1) is eligible (grave_hollows
+    // levelMin 4 / beastreach_wilds levelMin 8 are gated OUT), so the draw is
+    // deterministic; the room carries the drawSeed it was drawn with.
     expect(view.body.room.dungeonId).toBe('niflheim_depths');
+    expect(typeof view.body.room.drawSeed).toBe('string');
+    expect((view.body.room.drawSeed as string).length).toBeGreaterThan(0);
     expect(view.body.room.level).toBe(3);
     expect(view.body.room.status).toBe('active');
     // bug #6 / golden g: the sortie default cancel policy is DEFERRED.
@@ -1503,7 +1548,8 @@ test.describe('REQ-0239: sortie page + squad status board', () => {
     await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
     await page.goto('/app/#/sortie');
     await expect(page.locator('[data-testid="sortie-page"]')).toBeVisible({ timeout: 10000 });
-    await page.locator('[data-testid="sortie-dungeon-card-niflheim_depths"]').click();
+    // REQ-0304: the AdvancedFold lives in the always-present attackLv-entry panel
+    // (no dungeon pick needed to reveal it).
     await page.locator('[data-testid="sortie-advanced-toggle"]').click();
     await expect(page.locator('[data-testid="sortie-seed-input"]')).toHaveCount(0);
 
@@ -1514,7 +1560,6 @@ test.describe('REQ-0239: sortie page + squad status board', () => {
     await page.evaluate(() => window.localStorage.clear());
     await page.reload();
     await expect(page.locator('[data-testid="sortie-page"]')).toBeVisible({ timeout: 15000 });
-    await page.locator('[data-testid="sortie-dungeon-card-niflheim_depths"]').click();
     await page.locator('[data-testid="sortie-advanced-toggle"]').click();
     await expect(page.locator('[data-testid="sortie-seed-input"]')).toBeVisible({ timeout: 10000 });
   });
@@ -1648,5 +1693,106 @@ test.describe('REQ-0285: a malformed run roster never tears down the Watch view 
     await expect(page.locator('[data-testid="schedule-monitor-error"]')).toHaveCount(0);
 
     await apiCancelRoom(page, player.token, roomId);
+  });
+});
+
+test.describe('REQ-0292: instance-HUD ramps (cooldown overlay / charge wedge / skill-badge sweeps)', () => {
+  // The ramp STORE is STATE (not transient VFX), so it is tracked even under
+  // webdriver='off' (no drawing at all) and read back through the __monitorDebug
+  // ramps() seam -- the sanctioned STRUCTURAL assertion (never pixels, per the P2
+  // contract). setPlayhead drives the SAME pt clock the live release cursor uses;
+  // cooldown/charge fractions must MOVE with it, and the overlay objects (badge
+  // keys) must EXIST once their arming event lands.
+  async function openMonitor(page: Page): Promise<string> {
+    const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) { const r = await apiAssignSlot(page, player.token, roomId, i, i); expect(r.status).toBe(200); }
+    await expect(async () => { const view = await apiGetRoom(page, player.token, roomId); expect(view.body.room.status).toBe('active'); }).toPass({ timeout: 10000 });
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    const card = page.locator(`[data-room-id="${roomId}"]`);
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-canvas"]')).toBeVisible({ timeout: 10000 });
+    await expect(async () => {
+      const ready = await page.evaluate((rid) => {
+        const w = window as unknown as { __monitorDebug?: Record<string, { ramps?: unknown; setPlayhead?: unknown; applyTestEvents?: unknown }> };
+        const d = w.__monitorDebug?.[rid];
+        return typeof d?.ramps === 'function' && typeof d?.setPlayhead === 'function' && typeof d?.applyTestEvents === 'function';
+      }, roomId);
+      expect(ready).toBe(true);
+    }).toPass({ timeout: 10000 });
+    return roomId;
+  }
+
+  type Snap = { pt: number; cooldowns: Array<{ key: string; frac: number }>; charges: Array<{ key: string; value: number; capacity: number; frac: number }>; badges: string[] };
+
+  test('cooldown + charge fractions track the pt playhead; skill-badge object exists', async ({ page }) => {
+    const roomId = await openMonitor(page);
+    const snaps = await page.evaluate((rid) => {
+      const w = window as unknown as { __monitorDebug: Record<string, { applyTestEvents: (e: unknown[]) => void; setPlayhead: (ms: number) => void; ramps: () => unknown }> };
+      const d = w.__monitorDebug[rid];
+      d.setPlayhead(1000);
+      d.applyTestEvents([
+        // player CADENCE fire: (slot, src) + cooldownTicks -> item overlay ramp. 300 ticks * TICK_SECS(0.01) * 1000 = 3000ms span.
+        { t: 1, pt: 1000, seq: 1, ev: 'ray_fire', field: 'enemy', src: 'frost_blade', slot: 0, cooldownTicks: 300, entry: [1, 1] },
+        // enemy CADENCE fire: (srcInst, skill) + cooldownTicks -> skill-badge ramp. 400 ticks -> 4000ms span.
+        { t: 1, pt: 1000, seq: 2, ev: 'ray_fire', field: 'player', srcInst: 'hrimgrimnir#0', skill: 'hrim_cleave', cooldownTicks: 400 },
+        // event-driven charge (no rate): STATIC frac value/capacity = 2/4 = 0.5.
+        { t: 1, pt: 1000, seq: 3, ev: 'unit_charge_stack', slot: 1, stacks: 2, value: 2, capacity: 4 },
+        // every_secs charge: value(pt) = 0 + rate(2)*(pt-1000)/1000, capacity 10 -> fills with the clock.
+        { t: 1, pt: 1000, seq: 4, ev: 'unit_charge_spend', slot: 2, value: 0, capacity: 10, rate: 2 },
+      ]);
+      const at = (ms: number): unknown => { d.setPlayhead(ms); return d.ramps(); };
+      return { r0: at(1000), r1: at(2500), r2: at(5000), r6: at(7000) };
+    }, roomId) as { r0: Snap; r1: Snap; r2: Snap; r6: Snap };
+
+    const cd = (r: Snap, key: string): number => r.cooldowns.find((c) => c.key === key)?.frac ?? -1;
+    const ch = (r: Snap, key: string): number => r.charges.find((c) => c.key === key)?.frac ?? -1;
+
+    // item cooldown: FULL at the fire, HALF at +1500ms, READY (0) past the span.
+    expect(cd(snaps.r0, 'item|0|frost_blade')).toBeCloseTo(1, 2);
+    expect(cd(snaps.r1, 'item|0|frost_blade')).toBeCloseTo(0.5, 1);
+    expect(cd(snaps.r2, 'item|0|frost_blade')).toBeCloseTo(0, 2);
+    expect(cd(snaps.r1, 'item|0|frost_blade')).toBeLessThan(cd(snaps.r0, 'item|0|frost_blade'));
+    // skill-badge cooldown (4000ms span): full -> 0.625 @ +1500 -> ready.
+    expect(cd(snaps.r0, 'skill|hrimgrimnir#0|hrim_cleave')).toBeCloseTo(1, 2);
+    expect(cd(snaps.r1, 'skill|hrimgrimnir#0|hrim_cleave')).toBeCloseTo(0.625, 2);
+    expect(cd(snaps.r2, 'skill|hrimgrimnir#0|hrim_cleave')).toBeCloseTo(0, 2);
+    // the badge OBJECT exists (structural: seam-asserted, no pixels needed under off).
+    expect(snaps.r0.badges).toContain('skill|hrimgrimnir#0|hrim_cleave');
+    // event-driven charge stays STATIC; the every_secs charge FILLS with the playhead.
+    expect(ch(snaps.r0, '1')).toBeCloseTo(0.5, 2);
+    expect(ch(snaps.r6, '1')).toBeCloseTo(0.5, 2);
+    expect(ch(snaps.r0, '2')).toBeCloseTo(0, 2);
+    expect(ch(snaps.r1, '2')).toBeCloseTo(0.3, 1);
+    expect(ch(snaps.r6, '2')).toBeCloseTo(1, 2); // clamped to capacity
+    expect(ch(snaps.r1, '2')).toBeGreaterThan(ch(snaps.r0, '2'));
+
+    await apiCancelRoom(page, player.token, roomId);
+  });
+
+  test('enemy HP bar starts full until the first attributed hp_after, then tracks hp_after/hpMax', async ({ page }) => {
+    const roomId = await openMonitor(page);
+    type Actor = { instanceId: string; hp: number; hpMax: number };
+    const res = await page.evaluate((rid) => {
+      const w = window as unknown as { __monitorDebug: Record<string, { setTestRoster: (r: unknown) => number; applyTestEvents: (e: unknown[]) => void; enemyActors: () => unknown[] }> };
+      const d = w.__monitorDebug[rid];
+      const built = d.setTestRoster({ slots: [], enemies: [ { id: 'ogre', name: 'Ogre', nameJa: 'O', hpMax: 100, masked: false, footprint: [1, 1], fieldCells: [[2, 2]], instanceId: 'ogre#0' } ] });
+      const before = d.enemyActors();
+      d.applyTestEvents([ { t: 1, pt: 1000, seq: 1, ev: 'ray_hit', dst: 'ogre#0', enemyIdx: 0, amount: 40, hp_after: 60 } ]);
+      const after = d.enemyActors();
+      return { built, before, after };
+    }, roomId) as { built: number; before: Actor[]; after: Actor[] };
+
+    expect(res.built).toBe(1);
+    const beforeOgre = res.before.find((a) => a.instanceId === 'ogre#0');
+    const afterOgre = res.after.find((a) => a.instanceId === 'ogre#0');
+    expect(beforeOgre?.hp).toBe(100); // full (100%) until the first hp_after names it
+    expect(beforeOgre?.hpMax).toBe(100); // hp[1] wire max (P1 ruling, no fabricated per-instance roll)
+    expect(afterOgre?.hp).toBe(60); // then tracks hp_after
+    expect(afterOgre?.hpMax).toBe(100);
   });
 });

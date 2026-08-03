@@ -255,7 +255,7 @@ function applyAdminEdit(id, body) {
 // REQ-0118c: request-level auth resolution that adds the Supabase JWT path
 // on TOP of REQ-0037's resolveAuth(). This is the single chokepoint every
 // authenticated route now calls (see routes/me.cjs, routes/profile.cjs,
-// lib/route_auth.cjs). Precedence:
+// lib/route_kit.cjs, REQ-0349; formerly lib/route_auth.cjs). Precedence:
 //   1. A VALID `Authorization: Bearer <supabase jwt>` -> the player mapped
 //      to its auth.users.id (auto-provisioned on first sight).
 //   2. Otherwise the REQ-0037 X-Auth-Token path (+ dev_mode fallback).

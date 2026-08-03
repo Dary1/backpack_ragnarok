@@ -28,7 +28,7 @@ const { runChecks } = require(path.join(__dirname, '..', '..', 'server', 'servic
 const { promoteAdditive } = require(path.join(__dirname, '..', '..', 'tools', 'promote_dungeon_batch.cjs'));
 
 let pass = 0, fail = 0;
-function T(name, fn) { try { fn(); console.log('PASS  ' + name); pass++; } catch (e) { console.log('FAIL  ' + name + ' -- ' + e.message); fail++; } }
+function T(name, fn) { const __t0 = Date.now(); try { fn(); console.log('PASS  ' + name + clk(name, __t0)); pass++; } catch (e) { console.log('FAIL  ' + name + ' -- ' + e.message); fail++; } }
 function eq(a, b, msg) { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error((msg || '') + ' expected ' + JSON.stringify(b) + ' got ' + JSON.stringify(a)); }
 function ok(v, msg) { if (!v) throw new Error(msg || 'expected truthy'); }
 
@@ -175,8 +175,8 @@ T('G3: non-square pins -- dire_wolf 5x4->[4,5], basilisk 6x4->[4,6], a 3x4->[3,4
 // ---- G2: packs -- shared validator + derived cells ----
 T('G2: each authored layout PASSes shared/content_validate + derives the spec cells', () => {
   const expected = {
-    pack_wild_hunt: ['B6:E9', 'G2:K5', 'G12:J14', 'M7:P9'],
-    pack_venom_nest: ['B7:G10', 'I3:L5', 'I12:L14', 'N7:Q10'],
+    pack_wild_hunt: ['B2:F5', 'G2:K5', 'L2:O5', 'P2:S5', 'T2:W4', 'T5:W7', 'B6:E8', 'F6:I8'],
+    pack_venom_nest: ['B2:G5', 'H2:M5', 'N2:Q5', 'R2:U4', 'V2:Y4', 'R5:U7', 'V5:Y7', 'B6:E8'],
     pack_demon_gate: ['B5:I12', 'K3:N6', 'K12:N15', 'P6:R9', 'P11:R14'],
   };
   for (const p of packs.entries) {
@@ -291,3 +291,15 @@ T('additive promotion: batch-006 re-merges onto the batch-free live baseline -- 
 console.log('----------------------------------');
 console.log('REQ-0207 wildlands: ' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
+
+
+// ---- REQ-0334: per-test timing ----------------------------------------
+// Hoisted on purpose: these suites call their T()/AT() at module scope, so a
+// `const` binding declared down here would be in the temporal dead zone when
+// the first tests run. `var` + `function` hoist to the top of the module, and
+// the require is deferred to the first call so it never runs ahead of a
+// harness's own os.homedir()/env setup. See tools/lib/test_clock.cjs.
+var __clock;
+function clk(name, t0) {
+  return (__clock || (__clock = require('../../tools/lib/test_clock.cjs')(__filename))).clk(name, t0);
+}

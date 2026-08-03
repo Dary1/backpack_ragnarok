@@ -16,20 +16,44 @@
       },
       "members": [
         {
-          "enemy": "zombie",
+          "enemy": "lich",
           "at": "B2"
         },
         {
           "enemy": "zombie",
-          "at": "B7"
+          "at": "F2"
+        },
+        {
+          "enemy": "zombie",
+          "at": "I2"
+        },
+        {
+          "enemy": "zombie",
+          "at": "L2"
+        },
+        {
+          "enemy": "zombie",
+          "at": "O2"
+        },
+        {
+          "enemy": "zombie",
+          "at": "R2"
         },
         {
           "enemy": "mummy",
-          "at": "B12"
+          "at": "U2"
+        },
+        {
+          "enemy": "mummy",
+          "at": "F6"
         },
         {
           "enemy": "ghost",
-          "at": "F4"
+          "at": "I6"
+        },
+        {
+          "enemy": "ghost",
+          "at": "L6"
         }
       ],
       "note": "Weakness appliers (festering grasp, mummy's curse) soften the squad while a lifesteal ghost sustains the shambling front."
@@ -47,24 +71,44 @@
       },
       "members": [
         {
+          "enemy": "lich",
+          "at": "B2"
+        },
+        {
           "enemy": "skeleton_warrior",
-          "at": "B3"
+          "at": "F2"
+        },
+        {
+          "enemy": "skeleton_warrior",
+          "at": "I2"
+        },
+        {
+          "enemy": "skeleton_warrior",
+          "at": "L2"
         },
         {
           "enemy": "wight",
-          "at": "B9"
+          "at": "O2"
+        },
+        {
+          "enemy": "wight",
+          "at": "R2"
         },
         {
           "enemy": "zombie",
-          "at": "B13"
+          "at": "U2"
+        },
+        {
+          "enemy": "zombie",
+          "at": "F6"
         },
         {
           "enemy": "necromancer",
-          "at": "G6"
+          "at": "I6"
         },
         {
           "enemy": "ghost",
-          "at": "G11"
+          "at": "L6"
         }
       ],
       "note": "The full Weakness engine: zombie/necromancer APPLY Weakness, skeleton & wight CONVERT it x1.5 (bone_cleaver/grave_blade), while life_drain + dark_mending SUSTAIN the line."

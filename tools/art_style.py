@@ -233,3 +233,53 @@ def gen_size(cells_w, cells_h, px_per_cell=256):
     """
     r16 = lambda v: max(16, int(round(v / 16.0)) * 16)
     return r16(cells_w * px_per_cell), r16(cells_h * px_per_cell)
+
+
+# =============================================================================
+# SKILL ICON (REQ-0292 P3 -- FINAL art direction; supersedes the P1 provisional
+# KIND_TO_STYLE skill_icon->item routing). A skill_icon is a 256x256 EMBLEM the
+# monitor's skill badge draws at ~18-22 px inside a circle over MJOLNIR panel
+# ground -- an icon consumed twelve times smaller than it is generated. Five
+# rulings, each inheriting a measured REQ-0280/REQ-0150 failure class:
+#   1. EMBLEM, not illustration: ONE centered symbolic object filling most of
+#      the frame. At 22 px a scene is mud; a silhouette survives. Thin
+#      filigree, chain links, small floating debris die at that scale and are
+#      banned from the grammar.
+#   2. PURE BLACK ground, never white (vfx ruling 1, same mechanism): the
+#      cutout runs the border-key matte, so black IS the alpha channel, and a
+#      white ground fringes into a sticker over the night-iron board. Corollary
+#      for icons: the SUBJECT must be brighter than the ground -- interior
+#      luminance carries the shape, so bone/gold/ember/frost bodies, no
+#      near-black subjects.
+#   3. NO text, letters, runes, glyphs, sigil lettering. Styleguide s5: the 12
+#      sanctioned Elder Futhark runes are UI VOCABULARY, single glyphs, audited
+#      -- generated art must not counterfeit or collide with them (transcription
+#      taboo), and at 22 px lettering is noise anyway. Zero glyph contamination.
+#   4. NO bold cartoon outline (the Anime template stays banned, vfx ruling 2):
+#      on a black ground the silhouette comes from massing + a bright rim
+#      light, not a stroke that turns the emblem into a bordered object.
+#   5. NO baked outer glow (V2-as-amended, REQ-0280 P4): rim light and inner
+#      luminance are the icon's material; wide halo lobes duplicate the
+#      client's glow budget and read as blur once downscaled to 22 px.
+# Element semantics ride in the SUBJECT clause (one dominant hue per icon,
+# styleguide s2 "1yousou 1shoku"), night-iron compatible: frost skills the
+# frost family, fire ember, bleed/drain blood-tinged, holy/curse dull gold,
+# neutral steel-and-bone. The subject stays a plain concrete object (whole
+# object, never a PART-OF noun -- the "sword hilt" trap).
+# =============================================================================
+
+SKILL_ICON_STYLE = (
+    "bold game skill icon++, one single centered emblem, massive simple "
+    "silhouette readable when tiny, thick heavy shapes, painterly shading with "
+    "a bright rim light, (pure black background)++, high contrast, high "
+    "detail, sharp focus, no text, no letters, no runes, no glyphs, no "
+    "watermark, no border, no frame, no thin filigree, no outer glow, "
+    "no lens flare")
+
+
+def skill_icon_prompt(subject_clause):
+    """REQ-0292 P3: the skill_icon prompt. `subject_clause` follows
+    fill_prompt's contract -- '' or a clause ending in ', ' (e.g.
+    "a colossal ice-crusted bearded axe, pale frost blue, "). The style
+    carries InvokeAI emphasis, so convert here (same as vfx_prompt)."""
+    return subject_clause + to_comfy(SKILL_ICON_STYLE)

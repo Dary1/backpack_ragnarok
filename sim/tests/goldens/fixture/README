@@ -1,0 +1,18 @@
+FROZEN engine-determinism fixture (REQ-0301). Owned by sim/tests/goldens.cjs.
+NEVER edit to track live content; edit only to deliberately re-freeze the
+replay contract (then regenerate replay_hashes.json).
+
+This is a verbatim byte-snapshot of exactly the content sim/tests/goldens.cjs
+consumed when it was frozen:
+  content/live/scenario.json      -- copied from content/live/scenario.json
+  content/live/live_items.json    -- copied from content/live/live_items.json
+  content/live/dungeon/*.json     -- copied from content/batches/batch-002-dungeon-pilot/*.json
+                                     (dungeon, dungeons, enemies, formations,
+                                      gimics, items, packs, skills)
+
+The determinism goldens read scenario/live_items and the dungeon domain
+(enemies/skills/dungeon/packs) directly from here, and goldens.cjs seeds the
+os.homedir() fake -- through which dungen.cjs resolves content/live/dungeon --
+from content/live/dungeon/ below. Because this snapshot is self-owned, editing
+live or batch content can never drift a stored replay hash. Supersedes
+REQ-0207's pin of the goldens to the batch-002 roster.

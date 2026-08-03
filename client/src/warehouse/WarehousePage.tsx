@@ -96,7 +96,8 @@ import { useEffect, useRef, useState } from 'react';
 import { setInventorySlot } from '../board/inventorySlot';
 import { iconDataUrl } from '../dex/dexIcons';
 import { rarThemeClass } from '../render/uiBits';
-import { contentEntryFor, itemKindOf, localizedItemName } from '../lib/itemContent';
+import { contentEntryFor, localizedItemName } from '../lib/itemContent';
+import { itemKindOf } from '../../../shared/player_actions.mjs'; // REQ-0310
 import { formatWarehouseCountdown } from '../lib/time';
 import { localizedName } from '../lib/contentName'; // REQ-0239: relocated
 import { t } from '../i18n';
@@ -138,8 +139,10 @@ export function WarehousePage({ locale }: WarehousePageProps) {
     claimingAll,
     claimFx,
     claimErrors,
+    sellingUid,
     handleClaim,
     handleClaimAll,
+    handleSell,
   } = useWarehouseData(locale);
   const [now, setNow] = useState(() => Date.now());
   // REQ-0072: kind-based display filter (mock filter chips). The mock's
@@ -243,6 +246,7 @@ export function WarehousePage({ locale }: WarehousePageProps) {
     const qty = item.qty ?? 1;
     const src = provenanceFor(item);
     const isClaiming = claimingUid === item.itemUid;
+    const isSelling = sellingUid === item.itemUid; // REQ-0328
     // REQ-0091: press-feedback class on the row's OWN frame -- 'flash'
     // while the claim POST is in flight, 'fadeout' once the response is
     // back (see handleClaim/beginClaimFadeOut); absent otherwise.
@@ -306,6 +310,20 @@ export function WarehousePage({ locale }: WarehousePageProps) {
           >
             {isClaiming ? t(locale, 'schedule.warehouse.claiming') : t(locale, 'schedule.warehouse.claimButton')}
           </button>
+          {/* REQ-0328: sell a drop DIRECTLY from the warehouse to the
+              market (no claim-to-canvas first). Hidden for currency (tm)
+              rows, which have no direct-sell path server-side. */}
+          {item.kind !== 'tm' ? (
+            <button
+              type="button"
+              className="btn schedule-sell-btn"
+              disabled={isSelling}
+              onClick={() => void handleSell(item.itemUid)}
+              data-testid={`schedule-sell-btn-${item.itemUid}`}
+            >
+              {isSelling ? t(locale, 'schedule.warehouse.selling') : t(locale, 'schedule.warehouse.sellButton')}
+            </button>
+          ) : null}
         </div>
       </article>
     );

@@ -1,0 +1,85 @@
+{
+ "system_name": "paladin",
+ "kind": "unit_def",
+ "variant_no": 1,
+ "schema_ref": "content/vocab.json",
+ "data_sha256": "9ea5b894f1af1b2560dfce9b7b07f2e6d28fcc39f271c2ca76f2cb1bc40fd376",
+ "provenance": {
+  "model": "claude-opus-4-8",
+  "params": {},
+  "prompt": "units003 kit design S1 (REQ-0201); reviewer-amended (REQ-0201 adoption notes)",
+  "source": "llm",
+  "seed_if_any": null,
+  "model_version": null,
+  "parent_variant_id": null
+ },
+ "machine_check": {
+  "checks": [
+   {
+    "ok": true,
+    "name": "schema_vocab",
+    "detail": "schema/vocab valid (default dialect)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "engine_types",
+    "detail": "engine-type conformance OK (default dialect; engine type surface OK)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "gen_data",
+    "detail": "generation-path convention OK (serialize + eff_render)",
+    "applicable": true
+   },
+   {
+    "ok": true,
+    "name": "integrate",
+    "detail": "integrate dry-run not applicable for unit_def (no canvas placement)",
+    "applicable": false
+   }
+  ],
+  "ran_at": "2026-07-16T19:10:51.384Z",
+  "dialect": "default",
+  "overall": "PASS",
+  "schema_ref": "content/vocab.json"
+ },
+ "data": {
+  "id": "paladin",
+  "i18n": {
+   "ja": {
+    "name": "聖騎士"
+   }
+  },
+  "icon": "units003_paladin",
+  "name": "Paladin",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       8,
+       12
+      ],
+      "t": "grant_shield"
+     },
+     "target": "bp_connected_lowest_hp"
+    }
+   ],
+   "trigger": {
+    "t": "on_heal_done"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Faith made a wall.",
+  "rarity": "Rare",
+  "flavor_ja": "信仰が壁となる。",
+  "connection_shape": "queen_2"
+ }
+}

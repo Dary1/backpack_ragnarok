@@ -84,7 +84,7 @@ export function CreatePanel({ existing, onCreated, onClose, report }: {
           <span className="t-micro">shape</span>
           {kind === 'po' && <PoMaskEditor mask={mask} onToggle={(r, c) => setMask((m) => m.map((row, ri) => row.map((v, ci) => (ri === r && ci === c ? !v : v))))} />}
           {(kind === 'monster' || kind === 'gimic') && <MonsterShapeEditor w={mw} h={mh} onW={setMw} onH={setMh} />}
-          {kind === 'si' && <span className="t-micro">locked 256x256 (no shape)</span>}
+          {(kind === 'si' || kind === 'skill_icon') && <span className="t-micro">locked 256x256 (no shape)</span>}
           {kind === 'vfx' && (
             <select data-testid="art-vfx-role" className="aa-input" value={role} onChange={(e) => setRole(e.target.value as 'ray' | 'hit')}>
               <option value="ray">ray (256x64 strip, tiled along the path)</option>

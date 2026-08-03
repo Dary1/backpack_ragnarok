@@ -1,5 +1,8 @@
 # 2026-07-16 — llmlocal OOM lockout: a matte run outside the job queue
 
+Premise: art jobs serialize ONLY via art_jobs.cjs pump(); llmlocal has 23 GB shared with the live stack.
+Expires-when: never while models load on llmlocal (rule promoted to PROJECT.md standing rules).
+
 **Impact.** llmlocal became fully unreachable for ~20 minutes: SSH refused at
 banner exchange, physical console login unusable. Recovered only by SysRq
 `s`-`u`-`b` at the keyboard. `journalctl -b -1` records **55 oom-kill events**.

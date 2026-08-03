@@ -100,7 +100,14 @@ async function start(N) {
     const port = BASE_PORT + i;
     const logFd = fs.openSync(path.join(ROOT, 'w' + i, 'api.log'), 'w');
     const child = spawn(process.execPath, [API_ENTRY], {
-      env: { ...process.env, HOME: home, STORAGE_BACKEND: 'files', PORT: String(port), DATABASE_URL: '' },
+      // REQ-0341: every fleet backend serves GET /api/config, so it needs the
+      // public Supabase config in its env. SYNTHETIC values, set
+      // unconditionally (never inherited from the ambient environment): the
+      // run stays hermetic, no live credential is ever inside an e2e process,
+      // and client/e2e/runtime-config.spec.ts can assert exact values that no
+      // bundle could possibly have baked. Keep in sync with that spec.
+      env: { ...process.env, HOME: home, STORAGE_BACKEND: 'files', PORT: String(port), DATABASE_URL: '',
+             SUPABASE_URL: 'https://e2e-supabase.invalid', SUPABASE_ANON_KEY: 'e2e-fleet-anon-key' },
       detached: true, stdio: ['ignore', logFd, logFd],
     });
     child.unref();

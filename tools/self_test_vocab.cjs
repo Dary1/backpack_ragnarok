@@ -69,6 +69,9 @@ function buildEffectForVerb(verbT) {
   if (verbT === 'status_immune' || verbT === 'bonus_vs_status') {
     verb.status = vocab.statuses[0]; // Burn
   }
+  if (verbT === 'grant_self_status') { // REQ-0299: self-buff must be a BUFF status
+    verb.status = 'Spikes';
+  }
 
   // choose a trigger appropriate to the verb; buff_adjacent pairs naturally with "adjacent"
   let trigger;
@@ -86,6 +89,10 @@ function buildEffectForVerb(verbT) {
     trigger = { t: 'on_hp_below', hp_frac: 0.5 };
   } else if (verbT === 'damage_reduction') {
     trigger = { t: 'battle_start' }; // REQ-0121: battle_start-folded constant
+  } else if (verbT === 'grant_self_status') { // REQ-0299: battle_start-folded self-buff status
+    trigger = { t: 'battle_start' };
+  } else if (verbT === 'death_throes') { // REQ-0299: on_death payload (covers the on_death trigger)
+    trigger = { t: 'on_death' };
   } else if (verbT === 'battle_start_test') {
     trigger = { t: 'battle_start' };
   } else {

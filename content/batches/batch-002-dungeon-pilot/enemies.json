@@ -7,7 +7,7 @@
       "name": "Frost Gnoll",
       "hp": [30, 45],
       "footprint": [1, 1],
-      "skills": ["gnoll_claw"],
+      "skills": ["gnoll_claw", "gnoll_snap"],
       "i18n": { "en": { "name": "Frost Gnoll" }, "ja": { "name": "フロストノール" } },
       "rarity": "common",
       "pack_role": "line"
@@ -17,7 +17,7 @@
       "name": "Ice Archer",
       "hp": [22, 34],
       "footprint": [1, 1],
-      "skills": ["ice_arrow"],
+      "skills": ["ice_arrow", "archer_steady_aim"],
       "i18n": { "en": { "name": "Ice Archer" }, "ja": { "name": "氷の弓兵" } },
       "rarity": "common",
       "pack_role": "line"
@@ -27,7 +27,7 @@
       "name": "Rime Shaman",
       "hp": [26, 38],
       "footprint": [1, 1],
-      "skills": ["chilling_word", "frost_ward"],
+      "skills": ["chilling_word", "frost_ward", "rime_mantle"],
       "i18n": { "en": { "name": "Rime Shaman" }, "ja": { "name": "霧氷の呪術師" } },
       "rarity": "common",
       "pack_role": "support"
@@ -37,7 +37,7 @@
       "name": "Frostback Bear",
       "hp": [70, 95],
       "footprint": [2, 2],
-      "skills": ["bear_slam", "frost_roar"],
+      "skills": ["bear_slam", "frost_roar", "bear_frost_hide"],
       "i18n": { "en": { "name": "Frostback Bear" }, "ja": { "name": "フロストバック・ベア" } },
       "rarity": "common",
       "pack_role": "anchor"
@@ -47,7 +47,7 @@
       "name": "Glacier Wisp",
       "hp": [15, 24],
       "footprint": [1, 1],
-      "skills": ["wisp_bolt"],
+      "skills": ["wisp_bolt", "wisp_freezing_touch"],
       "i18n": { "en": { "name": "Glacier Wisp" }, "ja": { "name": "氷河の鬼火" } },
       "rarity": "common",
       "pack_role": "line"
@@ -57,7 +57,7 @@
       "name": "Niflheim Stalker",
       "hp": [50, 65],
       "footprint": [1, 1],
-      "skills": ["stalker_pounce", "stalker_bleed_bite"],
+      "skills": ["stalker_pounce", "stalker_bleed_bite", "stalker_cornered_fury"],
       "i18n": { "en": { "name": "Niflheim Stalker" }, "ja": { "name": "ニヴルヘイムの追跡者" } },
       "rarity": "common",
       "pack_role": "line"
@@ -67,7 +67,7 @@
       "name": "Hrimgrimnir, the Frost-Masked",
       "hp": [400, 400],
       "footprint": [3, 3],
-      "skills": ["hrim_cleave", "hrim_blizzard_volley", "hrim_deep_freeze"],
+      "skills": ["hrim_cleave", "hrim_blizzard_volley", "hrim_deep_freeze", "hrim_frost_masked"],
       "i18n": { "en": { "name": "Hrimgrimnir, the Frost-Masked" }, "ja": { "name": "フロストマスクのフリムグリムニル" } },
       "rarity": "rare",
       "pack_role": "boss"

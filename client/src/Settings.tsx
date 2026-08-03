@@ -1,5 +1,6 @@
-// Settings route (#/settings) — REQ-0037 (account block + logout) and
-// REQ-0039 "Now" (bot/API-mode placeholder block, the ENTIRE REQ-0039
+// Settings route (#/settings) — REQ-0037 (account block; REQ-0362 removed its
+// Logout button -- AuthBlock below is now the app's single sign-out control)
+// and REQ-0039 "Now" (bot/API-mode placeholder block, the ENTIRE REQ-0039
 // scope landing here -- see docs/REQ/REQ-0039-bot-api-pending.md).
 // Replaces the generic PlaceholderPage App.tsx used to render for this
 // route. Follows the same "fetch /api/me, treat failure as roles-less,
@@ -13,9 +14,9 @@
 // ChimeEngine picks up changes live through the CHIME_PREFS_EVENT that
 // saveChimePrefs dispatches.
 import { useEffect, useState } from 'react';
-import { fetchMe, type ApiMe } from './api';
+import { clearStoredToken, fetchMe, getStoredToken, type ApiMe } from './api';
 import { t } from './i18n';
-import { logout, setRoute, type Locale } from './store';
+import { setRoute, type Locale } from './store';
 import { loadChimePrefs, saveChimePrefs, type ChimePrefs } from './schedule/chimes/chimePrefs';
 import { loadMotionPrefs, saveMotionPrefs, type MotionPrefs } from './a11y/motionPrefs'; // REQ-0143
 import { replayGuide } from './guide/guideController'; // REQ-0141
@@ -29,10 +30,30 @@ interface SettingsProps {
 // and, once signed in, link/upgrade or sign out). Degrades to a "not
 // configured" note when the build has no Supabase env (e.g. CI/e2e builds),
 // so the REQ-0037 invite/guest path is entirely unaffected there.
+//
+// REQ-0362: this block is now the app's ONLY sign-out control. The account
+// block above used to carry its own Logout button wired to store's logout(),
+// which cleared ONLY the REQ-0037 invite token and reloaded. On a Supabase
+// session that is a no-op the user can see: auth/client.ts builds the client
+// with persistSession: true, so initSupabaseAuth() restores the identical
+// session on the very next boot -- and the hash was still #/settings, so the
+// page came back byte-identical and the button read as inert. signOut() below
+// drops BOTH credentials and lands on the landing route.
+//
+// Two consequences of that merge, both deliberate:
+//   - the button must ALSO appear when Supabase is unconfigured or signed_out
+//     but an invite token is stored. An env-less CI/e2e build has no Supabase
+//     client at all, so the REQ-0037 invite path is the only auth path there;
+//     gating sign-out on auth.configured would delete its only exit.
+//   - 'anonymous' gains a sign-out button it never had, so a guest is no
+//     longer permanently stuck in that session.
 function AuthBlock({ locale }: { locale: Locale }) {
   const [auth, setAuth] = useState<AuthState>(() => getAuthState());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // REQ-0362: read ONCE at mount. The only writer during this page's life is
+  // signOut() below, which reloads, so this can never go stale under us.
+  const [hasInviteToken] = useState(() => getStoredToken() !== null);
   useEffect(() => subscribeAuth(() => setAuth(getAuthState())), []);
   const run = async (fn: () => Promise<{ error: unknown } | void>) => {
     setBusy(true);
@@ -47,18 +68,33 @@ function AuthBlock({ locale }: { locale: Locale }) {
     }
   };
   const reload = () => { if (typeof location !== 'undefined') location.reload(); };
+  // REQ-0362: sign-out reboots onto the LANDING route. Assigning the hash
+  // before reload() means the fresh boot routes straight there instead of
+  // flashing a signed-out #/settings -- reloading in place is exactly what
+  // made the old Logout button look like it had done nothing.
+  const signOut = async () => {
+    await signOutSupabase(); // no-op when Supabase is not configured
+    clearStoredToken();      // REQ-0037 invite token
+    if (typeof location === 'undefined') return;
+    location.hash = '#/';
+    location.reload();
+  };
+  const signOutButton = (
+    <button type="button" className="settings-signout-btn" data-testid="settings-signout" disabled={busy}
+      onClick={() => run(signOut)}>
+      {t(locale, 'settings.signOut')}
+    </button>
+  );
+  const inviteStatus = hasInviteToken
+    ? <p data-testid="settings-signin-status">{t(locale, 'settings.signedInWithInvite')}</p>
+    : null;
   return (
     <section className="settings-section settings-signin" data-testid="settings-signin">
       <h3>{t(locale, 'settings.signInTitle')}</h3>
-      {!auth.configured ? (
-        <p className="settings-hint" data-testid="settings-signin-unconfigured">{t(locale, 'settings.signInUnconfigured')}</p>
-      ) : auth.status === 'discord' || auth.status === 'other' ? (
+      {auth.status === 'discord' || auth.status === 'other' ? (
         <div className="settings-signin-body">
           <p data-testid="settings-signin-status">{t(locale, 'settings.signedInDiscord', { name: auth.name ?? '' })}</p>
-          <button type="button" className="settings-signout-btn" data-testid="settings-signout" disabled={busy}
-            onClick={() => run(async () => { await signOutSupabase(); reload(); })}>
-            {t(locale, 'settings.signOutDiscord')}
-          </button>
+          {signOutButton}
         </div>
       ) : auth.status === 'anonymous' ? (
         <div className="settings-signin-body">
@@ -67,9 +103,17 @@ function AuthBlock({ locale }: { locale: Locale }) {
             onClick={() => run(() => linkDiscord())}>
             {t(locale, 'settings.continueWithDiscord')}
           </button>
+          {signOutButton}
+        </div>
+      ) : !auth.configured ? (
+        <div className="settings-signin-body">
+          <p className="settings-hint" data-testid="settings-signin-unconfigured">{t(locale, 'settings.signInUnconfigured')}</p>
+          {inviteStatus}
+          {hasInviteToken ? signOutButton : null}
         </div>
       ) : (
         <div className="settings-signin-body">
+          {inviteStatus}
           <button type="button" className="settings-discord-btn" data-testid="settings-continue-discord" disabled={busy}
             onClick={() => run(() => signInWithDiscord())}>
             {t(locale, 'settings.continueWithDiscord')}
@@ -78,6 +122,7 @@ function AuthBlock({ locale }: { locale: Locale }) {
             onClick={() => run(async () => { const r = await signInAsGuest(); if (r && r.error) return r; reload(); })}>
             {t(locale, 'settings.playAsGuest')}
           </button>
+          {hasInviteToken ? signOutButton : null}
         </div>
       )}
       {err ? <p className="settings-account-error" data-testid="settings-signin-error">{err}</p> : null}
@@ -150,9 +195,6 @@ export function Settings({ locale }: SettingsProps) {
                 {me.roles.length > 0 ? me.roles.join(', ') : t(locale, 'settings.rolesNone')}
               </span>
             </div>
-            <button type="button" className="settings-logout-btn" onClick={logout}>
-              {t(locale, 'settings.logout')}
-            </button>
           </div>
         ) : (
           <div className="settings-account-error">

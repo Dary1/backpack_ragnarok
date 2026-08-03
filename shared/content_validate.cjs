@@ -90,6 +90,20 @@ function validateEffect(eff, vocab, ctx) {
   if (verb.status !== undefined && !vocab.statuses.includes(verb.status)) {
     throw new Error(ctx + ': unknown status "' + verb.status + '"');
   }
+  // REQ-0299: grant_self_status may only self-apply a BUFF status
+  // (Spikes/Regen/Haste) and carries a ranged n; death_throes carries a ranged n.
+  if (verb.t === 'grant_self_status') {
+    const SELF_BUFFS = ['Spikes', 'Regen', 'Haste'];
+    if (!SELF_BUFFS.includes(verb.status)) {
+      throw new Error(ctx + ': grant_self_status.status must be one of ' + SELF_BUFFS.join('/') + ', got ' + JSON.stringify(verb.status));
+    }
+    if (!isValidRange(verb.n)) {
+      throw new Error(ctx + ': grant_self_status.n must be a [lo,hi] range with 0 < lo <= hi');
+    }
+  }
+  if (verb.t === 'death_throes' && !isValidRange(verb.n)) {
+    throw new Error(ctx + ': death_throes.n must be a [lo,hi] range with 0 < lo <= hi');
+  }
   if (eff.cond !== undefined && eff.cond !== 'assembled') {
     throw new Error(ctx + ': unknown effect.cond "' + eff.cond + '"');
   }
@@ -431,7 +445,7 @@ function validatePackEntry(pack, unitIds, contentIds) {
 // exactly the box formations.json already draws player canvases in.
 // These constants are duplicated here rather than require()d from
 // sim/lib/field.cjs on purpose: shared/ may not require() out of shared/
-// (the same rule sim/tests/forecast_parity.cjs documents in its header),
+// (a standing rule of this tree),
 // so a parity test pins them equal instead of a cross-tree import.
 const FIELD_COLS = 26, FIELD_ROWS = 18;
 const PLACEABLE = { colMin: 2, rowMin: 2, colMax: FIELD_COLS - 1, rowMax: FIELD_ROWS - 1 };

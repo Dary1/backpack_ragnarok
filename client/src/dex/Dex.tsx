@@ -78,7 +78,7 @@ function combineEntries(payload: ApiContentPayload): DexEntry[] {
 // narrow DexEntry to ApiItemEntry|ApiSIEntry via an isPO()-style type
 // guard (shape/sockets/part fields POs have that SIs+TMs don't), and TMs
 // have no shape at all (always 1x1, inventory-only, no canvas role per
-// the engine design -- see mock-src/engine.js's TM model), so folding
+// the engine design -- see shared/engine.js's TM model), so folding
 // them into the same selectable-detail-view path would require widening
 // that guard logic for comparatively little benefit given the REQ spec
 // only asks for TMs to appear in the catalog display (display-only is

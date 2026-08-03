@@ -15,7 +15,7 @@ const B = require(path.join(__dirname, '..', '..', 'tools', 'balance_sim.cjs'));
 const combat = require(path.join(__dirname, '..', 'combat.cjs'));
 
 let passed = 0, failed = 0;
-function T(name, fn) { try { fn(); passed++; console.log('PASS  ' + name); } catch (e) { failed++; console.log('FAIL  ' + name + ' -- ' + e.message); if (process.env.BSIM_TRACE) console.log(e.stack); } }
+function T(name, fn) { const __t0 = Date.now(); try { fn(); passed++; console.log('PASS  ' + name + clk(name, __t0)); } catch (e) { failed++; console.log('FAIL  ' + name + ' -- ' + e.message); if (process.env.BSIM_TRACE) console.log(e.stack); } }
 function ok(c, m) { if (!c) throw new Error(m || 'assertion failed'); }
 
 const defs = B.loadDefs();
@@ -64,7 +64,13 @@ T('(c) a clone of a live common item does not trip any flag', () => {
 
 // (d) enemy-side injection raises wipe rate
 T('(d) overpowered injected skill raises wipe rate vs baseline', () => {
-  const r = B.runMatrix({ candidate: { kind: 'skill', def: OP_SKILL, source: 'test' }, _defs: defs, boards: ['starter_arms'], levels: [3], seeds: 3 });
+  // REQ-0307: post-0293/0297 scaling, the default 4-encounter frost-scout arena wipes the
+  // starter_arms baseline 100% at EVERY level (empirically L1..L3 all -> wipeRate 1.0), so an
+  // OP-skill injection could not measurably RAISE it. Re-baseline the SCENARIO to a single arena
+  // encounter (arenaEncounters: 1): the baseline is survivable (wipeRate 0) while the injected
+  // 500-600/0.5s strike still guarantees a wipe (wipeRate 1.0) and trips delta_wipe_rate at flag
+  // level -- max headroom, deterministic across seeds. Harness logic unchanged; OP-detection intact.
+  const r = B.runMatrix({ candidate: { kind: 'skill', def: OP_SKILL, source: 'test' }, _defs: defs, boards: ['starter_arms'], levels: [3], seeds: 3, arenaEncounters: 1 });
   ok(r.payload.arms.candidate.wipeRate > r.payload.arms.baseline.wipeRate, 'candidate wipeRate ' + r.payload.arms.candidate.wipeRate + ' not > baseline ' + r.payload.arms.baseline.wipeRate);
   ok(hasFlag(r.payload), 'OP skill injection did not flag');
 });
@@ -80,3 +86,15 @@ T('(e) unknown verb is rejected (closed vocab)', () => {
 console.log('----------------------------------');
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
+
+
+// ---- REQ-0334: per-test timing ----------------------------------------
+// Hoisted on purpose: these suites call their T()/AT() at module scope, so a
+// `const` binding declared down here would be in the temporal dead zone when
+// the first tests run. `var` + `function` hoist to the top of the module, and
+// the require is deferred to the first call so it never runs ahead of a
+// harness's own os.homedir()/env setup. See tools/lib/test_clock.cjs.
+var __clock;
+function clk(name, t0) {
+  return (__clock || (__clock = require('../../tools/lib/test_clock.cjs')(__filename))).clk(name, t0);
+}

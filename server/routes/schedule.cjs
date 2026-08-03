@@ -4,13 +4,26 @@
 // ?format=text, dev backdate/clear seams). REQ-0145a (se): the combined
 // schedule/warehouse/workshop module split into three route files
 // (origin lines 125-341, 407-430 @ commit 9d4bc89, bodies verbatim);
-// the shared caller-resolution preamble + error/canvas helpers live in
-// lib/route_auth.cjs and are used by all three. Returns false when not
-// matched (router then tries warehouse -> workshop in the same slot the
-// combined module occupied).
-const { sendJSON, sendText, readBody } = require('../lib/http_util.cjs');
+// the shared request preamble + canvas helpers live in lib/route_kit.cjs
+// (REQ-0349; replaced lib/route_auth.cjs) and are used by all three.
+// Returns false when not matched (router then tries
+// warehouse -> workshop in the same slot the combined module occupied).
+const { sendJSON, sendText } = require('../lib/http_util.cjs');
 const { humanizeEventText } = require('../lib/humanize.cjs');
-const { resolveCallerOr401, loadOwnCanvas, requireOwnCanvas, sendScheduleError } = require('../lib/route_auth.cjs');
+// sendScheduleError is the kit's sendDomainError: identical body (including the
+// REQ-0041 structured `reason`), over one shared code->status table. This
+// family's copy was the ONLY one of the four that mapped FORBIDDEN->403, which is
+// why the kit's table keeps it -- services/seals.cjs's participant gate throws
+// exactly that, and it is reachable only from here.
+const {
+  resolveCallerOr401, loadOwnCanvas, requireOwnCanvas,
+  methodGuard, withJsonBody, sendDomainError,
+} = require('../lib/route_kit.cjs');
+// Of the 8 body readers below, SIX used a bare JSON.parse(bodyStr) -- an empty
+// body has always been a 400 for those -- and TWO guarded with `if (bodyStr)`
+// and tolerate one. Both behaviours are preserved. This is real behaviour, not a
+// wording override.
+const BODY_STRICT = { allowEmpty: false };
 const storage = require('../storage.cjs');
 const schedule = require('../schedule.cjs');
 
@@ -29,6 +42,16 @@ const SCHEDULE_SEAL_MINT_RE = /^\/api\/schedule\/seal$/;
 const SCHEDULE_SEAL_GET_RE = /^\/api\/schedule\/seals\/([^/]+)$/;
 const SCHEDULE_SEAL_COMPARE_RE = /^\/api\/schedule\/seals\/([^/]+)\/comparison$/;
 const SCHEDULE_SEAL_REPLAY_RE = /^\/api\/schedule\/seals\/([^/]+)\/runs\/([^/]+)$/;
+// REQ-0324: co-operative Troop routes. /api/schedule/troops* collides with
+// nothing in this family (the /rooms* + /seals* + /sorties regexes above never
+// match a /troops path), so it is appended here in the order-safe tail slot the
+// router documents. join/leave are anchored (.../join$, .../leave$) so the
+// generic /troops/:id item regex can never shadow them.
+const SCHEDULE_TROOPS_RE = /^\/api\/schedule\/troops$/;
+const SCHEDULE_TROOP_JOIN_RE = /^\/api\/schedule\/troops\/([^/]+)\/join$/;
+const SCHEDULE_TROOP_LEAVE_RE = /^\/api\/schedule\/troops\/([^/]+)\/leave$/;
+const SCHEDULE_TROOP_CANCEL_RE = /^\/api\/schedule\/troops\/([^/]+)\/cancel$/; // REQ-0326: seated-member cancel -> disband
+const SCHEDULE_TROOP_RE = /^\/api\/schedule\/troops\/([^/]+)$/;
 
 function tryScheduleRoutes(req, res, url, p) {
   const scheduleMatch = p.match(SCHEDULE_ROOMS_RE) || p.match(SCHEDULE_ROOM_RE) ||
@@ -36,7 +59,9 @@ function tryScheduleRoutes(req, res, url, p) {
     p.match(SCHEDULE_ROOM_DEV_BACKDATE_RE) ||
     p.match(SCHEDULE_ROOMS_DEV_CLEAR_RE) || p.match(SCHEDULE_SORTIES_RE) ||
     p.match(SCHEDULE_SEAL_MINT_RE) || p.match(SCHEDULE_SEAL_GET_RE) ||
-    p.match(SCHEDULE_SEAL_COMPARE_RE) || p.match(SCHEDULE_SEAL_REPLAY_RE);
+    p.match(SCHEDULE_SEAL_COMPARE_RE) || p.match(SCHEDULE_SEAL_REPLAY_RE) ||
+    p.match(SCHEDULE_TROOPS_RE) || p.match(SCHEDULE_TROOP_JOIN_RE) ||
+    p.match(SCHEDULE_TROOP_LEAVE_RE) || p.match(SCHEDULE_TROOP_CANCEL_RE) || p.match(SCHEDULE_TROOP_RE);
   if (scheduleMatch) {
     const ctx = resolveCallerOr401(req, res);
     if (!ctx) return;
@@ -100,14 +125,11 @@ function tryScheduleRoutes(req, res, url, p) {
             }
           });
           sendJSON(res, 200, { ok: true, rooms: rooms.map(withLastRun) });
-        } catch (e) { sendScheduleError(res, e); }
+        } catch (e) { sendDomainError(res, e); }
         return;
       }
       if (req.method === 'POST') {
-        readBody(req, (err, bodyStr) => {
-          if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
-          let body;
-          try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+        withJsonBody(req, res, BODY_STRICT, (body) => {
           // REQ-0043: genSeed is a privileged-only field (see
           // callerCanSetGenSeed above) -- checked HERE, before
           // schedule.createRoom() is ever called, so an ungated caller's
@@ -120,6 +142,15 @@ function tryScheduleRoutes(req, res, url, p) {
             sendJSON(res, 403, { ok: false, error: 'forbidden: genSeed may only be specified by a dev/item_admin caller (test-control seam, not a real player action)' });
             return;
           }
+          // REQ-0304: drawSeed (the dungeon-DRAW seed) is privileged-only, gated
+          // EXACTLY like genSeed above. A present drawSeed pins WHICH dungeon the
+          // random draw selects (test/dev reproducibility), so an ungated player can
+          // never force or replay the draw. Absent drawSeed is fine for anyone -- the
+          // room gets a crypto-random one (schedule.createRoom's own default).
+          if (body && body.drawSeed !== undefined && body.drawSeed !== null && !callerCanSetGenSeed) {
+            sendJSON(res, 403, { ok: false, error: 'forbidden: drawSeed may only be specified by a dev/item_admin caller (test-control seam, not a real player action)' });
+            return;
+          }
           try {
             // REQ-0058: a body carrying a sealId joins a sealed run --
             // the room copies the frozen tuple (dungeonType/level/genSeed/
@@ -130,25 +161,28 @@ function tryScheduleRoutes(req, res, url, p) {
               ? schedule.createSealRoom(callerId, body.sealId, body)
               : schedule.createRoom(callerId, body);
             sendJSON(res, 200, { ok: true, room });
-          } catch (e) { sendScheduleError(res, e); }
+          } catch (e) { sendDomainError(res, e); }
         });
         return;
       }
-      sendJSON(res, 405, { ok: false, error: 'method not allowed' });
+      methodGuard(req, res, ['GET', 'POST']); // neither matched above, so this sends the 405
       return;
     }
 
     // ---- POST /api/schedule/sorties (REQ-0239 D1: atomic create + assign) ----
     if (p.match(SCHEDULE_SORTIES_RE)) {
-      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
-      readBody(req, (err, bodyStr) => {
-        if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
-        let body;
-        try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+      if (!methodGuard(req, res, 'POST')) return;
+      withJsonBody(req, res, BODY_STRICT, (body) => {
         // REQ-0043 parity: genSeed is privileged-only, gated BEFORE any room is
         // created (same check the POST /rooms path applies).
         if (body && body.genSeed !== undefined && body.genSeed !== null && !callerCanSetGenSeed) {
           sendJSON(res, 403, { ok: false, error: 'forbidden: genSeed may only be specified by a dev/item_admin caller (test-control seam, not a real player action)' });
+          return;
+        }
+        // REQ-0304 parity: drawSeed is privileged-only, gated BEFORE any room is
+        // created (same check the POST /rooms path applies).
+        if (body && body.drawSeed !== undefined && body.drawSeed !== null && !callerCanSetGenSeed) {
+          sendJSON(res, 403, { ok: false, error: 'forbidden: drawSeed may only be specified by a dev/item_admin caller (test-control seam, not a real player action)' });
           return;
         }
         try {
@@ -161,7 +195,7 @@ function tryScheduleRoutes(req, res, url, p) {
           // its run immediately, landing the client on a live expedition.
           const launched = schedule.settleRoomIfDue(room, canvas, itemDefsById);
           sendJSON(res, 200, { ok: true, room: withLastRun(launched) });
-        } catch (e) { sendScheduleError(res, e); }
+        } catch (e) { sendDomainError(res, e); }
       });
       return;
     }
@@ -174,7 +208,7 @@ function tryScheduleRoutes(req, res, url, p) {
         try {
           const room = loadAndSettleRoom(roomId);
           sendJSON(res, 200, { ok: true, room: withLastRun(room) });
-        } catch (e) { sendScheduleError(res, e); }
+        } catch (e) { sendDomainError(res, e); }
         return;
       }
       if (req.method === 'DELETE') {
@@ -182,10 +216,10 @@ function tryScheduleRoutes(req, res, url, p) {
           const room = loadAndSettleRoom(roomId);
           const canceled = schedule.cancelRoom(room);
           sendJSON(res, 200, { ok: true, room: canceled });
-        } catch (e) { sendScheduleError(res, e); }
+        } catch (e) { sendDomainError(res, e); }
         return;
       }
-      sendJSON(res, 405, { ok: false, error: 'method not allowed' });
+      methodGuard(req, res, ['GET', 'DELETE']); // neither matched above, so this sends the 405
       return;
     }
 
@@ -194,18 +228,15 @@ function tryScheduleRoutes(req, res, url, p) {
     if (slotMatch) {
       const roomId = decodeURIComponent(slotMatch[1]);
       const slotIndex = parseInt(slotMatch[2], 10);
-      if (req.method !== 'PUT') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
-      readBody(req, (err, bodyStr) => {
-        if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
-        let body;
-        try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+      if (!methodGuard(req, res, 'PUT')) return;
+      withJsonBody(req, res, BODY_STRICT, (body) => {
         try {
           const room = loadAndSettleRoom(roomId);
           const { itemDefsById } = schedule.getScheduleContent();
           const canvas = requireOwnCanvas(callerId);
           const updated = schedule.assignSlot(room, callerId, slotIndex, body.squadIndex, canvas, itemDefsById);
           sendJSON(res, 200, { ok: true, room: updated });
-        } catch (e) { sendScheduleError(res, e); }
+        } catch (e) { sendDomainError(res, e); }
       });
       return;
     }
@@ -214,18 +245,15 @@ function tryScheduleRoutes(req, res, url, p) {
     const swapMatch = p.match(SCHEDULE_ROOM_SWAP_RE);
     if (swapMatch) {
       const roomId = decodeURIComponent(swapMatch[1]);
-      if (req.method !== 'PUT') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
-      readBody(req, (err, bodyStr) => {
-        if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
-        let body;
-        try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+      if (!methodGuard(req, res, 'PUT')) return;
+      withJsonBody(req, res, BODY_STRICT, (body) => {
         try {
           const room = loadAndSettleRoom(roomId);
           const { itemDefsById } = schedule.getScheduleContent();
           const canvas = requireOwnCanvas(callerId);
           const result = schedule.swapSquad(room, body.slot, body.squadIndex, canvas, itemDefsById);
           sendJSON(res, 200, { ok: true, room: result.room, applied: result.applied });
-        } catch (e) { sendScheduleError(res, e); }
+        } catch (e) { sendDomainError(res, e); }
       });
       return;
     }
@@ -234,7 +262,7 @@ function tryScheduleRoutes(req, res, url, p) {
     const runMatch = p.match(SCHEDULE_ROOM_RUN_RE);
     if (runMatch) {
       const roomId = decodeURIComponent(runMatch[1]);
-      if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      if (!methodGuard(req, res, 'GET')) return;
       try {
         const room = loadAndSettleRoom(roomId);
         if (!room.lastRunId) { sendJSON(res, 404, { ok: false, error: 'this room has no run yet' }); return; }
@@ -275,7 +303,7 @@ function tryScheduleRoutes(req, res, url, p) {
           cooldownSecs: run.cooldownSecs, levelAfter: run.levelAfter, H: run.H,
           settled: run.settled,
         });
-      } catch (e) { sendScheduleError(res, e); }
+      } catch (e) { sendDomainError(res, e); }
       return;
     }
 
@@ -294,22 +322,17 @@ function tryScheduleRoutes(req, res, url, p) {
     const devBackdateMatch = p.match(SCHEDULE_ROOM_DEV_BACKDATE_RE);
     if (devBackdateMatch) {
       const roomId = decodeURIComponent(devBackdateMatch[1]);
-      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      if (!methodGuard(req, res, 'POST')) return;
       if (!callerIsDevFallback) {
         sendJSON(res, 403, { ok: false, error: 'forbidden: dev/backdate is only available to the dev_mode fallback caller (test-control seam, not a real player action)' });
         return;
       }
-      readBody(req, (err, bodyStr) => {
-        if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
-        let body = {};
-        if (bodyStr) {
-          try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
-        }
+      withJsonBody(req, res, {}, (body) => {
         try {
           const room = schedule.getOwnRoomOr404(roomId, callerId);
           const run = schedule.devBackdateActiveRun(room, body.extraSecsIntoPast);
           sendJSON(res, 200, { ok: true, runId: run.id, startedAt: run.startedAt, durationSecs: run.durationSecs });
-        } catch (e) { sendScheduleError(res, e); }
+        } catch (e) { sendDomainError(res, e); }
       });
       return;
     }
@@ -327,7 +350,7 @@ function tryScheduleRoutes(req, res, url, p) {
     // real guest token, even valid, gets 403) and always targets the RESOLVED
     // caller's own rooms (no client-supplied playerId in this route's shape).
     if (p.match(SCHEDULE_ROOMS_DEV_CLEAR_RE)) {
-      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      if (!methodGuard(req, res, 'POST')) return;
       if (!callerIsDevFallback) {
         sendJSON(res, 403, { ok: false, error: 'forbidden: rooms/dev/clear is only available to the dev_mode fallback caller (test-control seam, not a real player action)' });
         return;
@@ -335,7 +358,7 @@ function tryScheduleRoutes(req, res, url, p) {
       try {
         const deleted = schedule.devClearRooms(callerId);
         sendJSON(res, 200, { ok: true, deleted });
-      } catch (e) { sendScheduleError(res, e); }
+      } catch (e) { sendDomainError(res, e); }
       return;
     }
 
@@ -346,15 +369,12 @@ function tryScheduleRoutes(req, res, url, p) {
     // invoked nor bypassed (sealing never accepts a seed). Returns the
     // public seal meta (genSeed withheld) + the shareToken (== sealId).
     if (p.match(SCHEDULE_SEAL_MINT_RE)) {
-      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
-      readBody(req, (err, bodyStr) => {
-        if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
-        let body = {};
-        if (bodyStr) { try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; } }
+      if (!methodGuard(req, res, 'POST')) return;
+      withJsonBody(req, res, {}, (body) => {
         try {
           const seal = schedule.mintSeal(callerId, body);
           sendJSON(res, 200, { ok: true, seal: schedule.publicSealMeta(seal), shareToken: seal.sealId });
-        } catch (e) { sendScheduleError(res, e); }
+        } catch (e) { sendDomainError(res, e); }
       });
       return;
     }
@@ -366,11 +386,11 @@ function tryScheduleRoutes(req, res, url, p) {
     const sealCompareMatch = p.match(SCHEDULE_SEAL_COMPARE_RE);
     if (sealCompareMatch) {
       const sealId = decodeURIComponent(sealCompareMatch[1]);
-      if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      if (!methodGuard(req, res, 'GET')) return;
       try {
         const comparison = schedule.buildSealComparison(sealId, callerId);
         sendJSON(res, 200, Object.assign({ ok: true }, comparison));
-      } catch (e) { sendScheduleError(res, e); }
+      } catch (e) { sendDomainError(res, e); }
       return;
     }
 
@@ -382,11 +402,11 @@ function tryScheduleRoutes(req, res, url, p) {
     if (sealReplayMatch) {
       const sealId = decodeURIComponent(sealReplayMatch[1]);
       const targetPlayerId = decodeURIComponent(sealReplayMatch[2]);
-      if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      if (!methodGuard(req, res, 'GET')) return;
       try {
         const replay = schedule.buildSealReplay(sealId, callerId, targetPlayerId);
         sendJSON(res, 200, Object.assign({ ok: true }, replay));
-      } catch (e) { sendScheduleError(res, e); }
+      } catch (e) { sendDomainError(res, e); }
       return;
     }
 
@@ -396,7 +416,7 @@ function tryScheduleRoutes(req, res, url, p) {
     const sealGetMatch = p.match(SCHEDULE_SEAL_GET_RE);
     if (sealGetMatch) {
       const sealId = decodeURIComponent(sealGetMatch[1]);
-      if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      if (!methodGuard(req, res, 'GET')) return;
       try {
         const seal = schedule.getSeal(sealId);
         const yourEntry = storage.readSealRun(sealId, callerId);
@@ -408,7 +428,121 @@ function tryScheduleRoutes(req, res, url, p) {
           youAreParticipant: !!yourEntry,
           yourRoomId: yourEntry ? yourEntry.roomId : null,
         });
-      } catch (e) { sendScheduleError(res, e); }
+      } catch (e) { sendDomainError(res, e); }
+      return;
+    }
+
+    // ===================================================================
+    // REQ-0324: co-operative Troop routes (tail-appended, order-safe). A
+    // Troop is a visibility:'public' room; these routes are the CROSS-PLAYER
+    // browse/host/join/leave surface (distinct from the owner-guarded /rooms*
+    // surface above). Auth is the standard X-Auth-Token resolved once at the
+    // top of this function -- a bot account browses/joins EXACTLY like a human.
+    // ===================================================================
+
+    // ---- GET/POST /api/schedule/troops ----
+    if (p.match(SCHEDULE_TROOPS_RE)) {
+      if (req.method === 'GET') {
+        // Browse PUBLIC recruiting troops with a free seat -- the signal the
+        // reactive fleet polls. ?state=recruiting (default) [&attackLv=<n>].
+        try {
+          const state = url.searchParams.get('state') || 'recruiting';
+          const attackLvRaw = url.searchParams.get('attackLv');
+          const attackLv = (attackLvRaw !== null && attackLvRaw !== '' && Number.isFinite(Number(attackLvRaw)))
+            ? parseInt(attackLvRaw, 10) : null;
+          const troops = schedule.listRecruitingTroops({ state, attackLv });
+          sendJSON(res, 200, { ok: true, troops });
+        } catch (e) { sendDomainError(res, e); }
+        return;
+      }
+      if (req.method === 'POST') {
+        // Host a Troop: {dungeonId, level, formationId?, squadIndex}. Only the
+        // host may open a Troop; they are seated in slot 0 here.
+        withJsonBody(req, res, BODY_STRICT, (body) => {
+          // REQ-0043/0304 parity: genSeed/drawSeed are privileged-only test-
+          // control seams, gated BEFORE any room is created (same guard the
+          // POST /rooms + /sorties paths apply).
+          if (body && body.genSeed !== undefined && body.genSeed !== null && !callerCanSetGenSeed) {
+            sendJSON(res, 403, { ok: false, error: 'forbidden: genSeed may only be specified by a dev/item_admin caller (test-control seam, not a real player action)' });
+            return;
+          }
+          if (body && body.drawSeed !== undefined && body.drawSeed !== null && !callerCanSetGenSeed) {
+            sendJSON(res, 403, { ok: false, error: 'forbidden: drawSeed may only be specified by a dev/item_admin caller (test-control seam, not a real player action)' });
+            return;
+          }
+          try {
+            const { itemDefsById } = schedule.getScheduleContent();
+            const canvas = requireOwnCanvas(callerId);
+            const troop = schedule.createTroop(callerId, body, canvas, itemDefsById);
+            sendJSON(res, 200, { ok: true, troop });
+          } catch (e) { sendDomainError(res, e); }
+        });
+        return;
+      }
+      methodGuard(req, res, ['GET', 'POST']); // neither matched above, so this sends the 405
+      return;
+    }
+
+    // ---- POST /api/schedule/troops/:id/join {squadIndex} ----
+    const troopJoinMatch = p.match(SCHEDULE_TROOP_JOIN_RE);
+    if (troopJoinMatch) {
+      const roomId = decodeURIComponent(troopJoinMatch[1]);
+      if (!methodGuard(req, res, 'POST')) return;
+      withJsonBody(req, res, BODY_STRICT, (body) => {
+        try {
+          const { itemDefsById } = schedule.getScheduleContent();
+          const canvas = requireOwnCanvas(callerId);
+          const troop = schedule.joinTroop(roomId, callerId, body.squadIndex, canvas, itemDefsById);
+          sendJSON(res, 200, { ok: true, troop });
+        } catch (e) { sendDomainError(res, e); }
+      });
+      return;
+    }
+
+    // ---- POST /api/schedule/troops/:id/leave ----
+    const troopLeaveMatch = p.match(SCHEDULE_TROOP_LEAVE_RE);
+    if (troopLeaveMatch) {
+      const roomId = decodeURIComponent(troopLeaveMatch[1]);
+      if (!methodGuard(req, res, 'POST')) return;
+      try {
+        const troop = schedule.leaveTroop(roomId, callerId);
+        sendJSON(res, 200, { ok: true, troop });
+      } catch (e) { sendDomainError(res, e); }
+      return;
+    }
+
+    // ---- POST /api/schedule/troops/:id/cancel (REQ-0326) ----
+    // ANY seated member cancels the co-op Troop -> the WHOLE troop disbands
+    // (all-or-nothing). No run in flight (recruiting, or between runs cooling
+    // down) -> disband NOW; a dive in flight -> flag it and disband ON RETURN
+    // after the current run settles its rewards (REQ-0325). Every seat is
+    // returned; the response carries a discrete disbandEvent (REQ-0327's roster).
+    const troopCancelMatch = p.match(SCHEDULE_TROOP_CANCEL_RE);
+    if (troopCancelMatch) {
+      const roomId = decodeURIComponent(troopCancelMatch[1]);
+      if (!methodGuard(req, res, 'POST')) return;
+      try {
+        const { itemDefsById } = schedule.getScheduleContent();
+        const troop = schedule.cancelTroop(roomId, callerId, itemDefsById);
+        sendJSON(res, 200, { ok: true, troop });
+      } catch (e) { sendDomainError(res, e); }
+      return;
+    }
+
+    // ---- GET /api/schedule/troops/:id (full troop state) ----
+    const troopMatch = p.match(SCHEDULE_TROOP_RE);
+    if (troopMatch) {
+      const roomId = decodeURIComponent(troopMatch[1]);
+      if (!methodGuard(req, res, 'GET')) return;
+      try {
+        // REQ-0325: settle + lazily auto-restart a DEPARTED troop on read
+        // (poll-driven, like the solo /rooms scheduler). Per-owner canvases are
+        // re-read inside the run engine, so no caller canvas is threaded here; a
+        // still-recruiting troop settles to a no-op and returns its current view.
+        const { itemDefsById } = schedule.getScheduleContent();
+        const troop = schedule.settleTroopIfDue(roomId, itemDefsById);
+        sendJSON(res, 200, { ok: true, troop });
+      } catch (e) { sendDomainError(res, e); }
       return;
     }
   }

@@ -125,6 +125,12 @@
 .sortie-slot { position: relative; min-height: 120px; border-radius: 3px; padding: 10px; }
 .sortie-slot.is-empty { border: 1px dashed var(--border-lo); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--bone-3); }
 .sortie-slot.is-filled { border: 1px solid var(--border-lo); }
+/* REQ-0337: once at least one squad is seated, the slots left empty ARE the
+   public recruitment -- they stop reading as a shortfall (dim, dashed grey)
+   and start reading as an open call (gold). Same element, same drop target. */
+.sortie-slot.is-open-seat { border-color: var(--gold-lo); color: var(--gold-lo); }
+.sortie-slot.is-open-seat .sortie-slot-empty-ghost { color: var(--gold-lo); }
+.sortie-launch-status.is-recruiting { color: var(--gold-lo); }
 .sortie-slot:focus-visible { box-shadow: var(--focus-ring); outline: none; }
 .sortie-slot-ord { position: absolute; top: 6px; left: 10px; font-size: 14px; color: var(--gold-lo); opacity: .8; }
 .sortie-slot.is-filled .sortie-slot-ord { display: none; }
