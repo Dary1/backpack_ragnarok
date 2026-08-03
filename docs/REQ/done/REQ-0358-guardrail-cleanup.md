@@ -1,6 +1,5 @@
 # REQ-0358 — Guardrail cleanup of docs/llm_managed (audit 2026-08-02)
 
-- State: built (docs-only; awaiting user inspection/merge)
 - Spec: apply the guardrail audit delivered in chat 2026-08-02 (verdict table:
   guardrail_audit_llm_managed.md, session outputs). Doctrine: a guardrail pays
   context rent every session; keep only premise-carrying notes, archive dead
