@@ -1,9 +1,5 @@
 # REQ-0288 — drag ghosts restored: registry-art ghosts, lifted-BP carry, revert feedback
 
-## Status
-draft (spec by orchestrator session 2026-07-22; awaiting user ratification).
-Reserved 2026-07-22 on branch `req-canvas-inventory-ux-spec`.
-
 ## Origin (user directive, 2026-07-22, chat — verbatim)
 「ドラッグしている最中のドラッグ途中状態が表示されず、ドラッグアンドドロップが
 やりにくいです。(以前はもっとわかりやすかったのですが、直近のセッションが
@@ -147,3 +143,71 @@ fixed: coordinates are `boundingBox() + cx/cy`, the convention every drag spec u
 **Evidence**: `web/preview/req-0288/` — bp-ghost-legal.png (lifted origin as shadow;
 whole-bag ghost with unit disc + PO art + green paint at rows 6-8 × G-H),
 bp-ghost-illegal.png (same ghost, dimmed, under red paint over beta).
+
+---
+
+## Log (revival + merge to master, 2026-08-03, Opus session)
+
+The 2026-07-23 work above was never merged. Master moved **559 commits** while
+the branch sat, and current master still carried the defect (`ghosts.ts` L11
+was still `textures.get(def.icon)`), so the REQ was still live, not obsolete.
+User ruling this session: bring the branch up to master rather than reimplement,
+and carry it through to a master merge.
+
+**Merge** (`8d170d19`). `ghosts.ts` / `drag.ts` / `commits.ts` / `itemArt.ts`
+auto-merged. `BoardRenderer.ts` conflicted in 6 hunks, every one of them master
+restructuring rather than a disagreement about REQ-0288 behaviour:
+
+| master's change | resolution |
+|---|---|
+| BP and BP-unit loops wrapped in `drawGuarded(...)` closures; label/badge/handles moved inside the BP closure | took master's structure; re-applied the lift as `lifted`/`carriedBPId` guards inside it (`continue` -> `return` where a loop body became a closure) |
+| REQ-0287 ownership ribbons, new, sitting between the badge and the grab handles | badge + ribbons + handles are all bag furniture at the TAIL of the closure, so ONE early `if (lifted) return;` replaces the branch's three separate guards. Ribbons lift with the bag: a wedge hovering over a lifted footprint reads as "the bag is still there". Merge-era decision the original spec could not have made. |
+| REQ-0345 killed the always-on Ticker; mutation sites now `requestRender()` themselves | additive at both conflict sites -- kept both sides. `flash()` now carries REQ-0288's colour parameter AND REQ-0345's repaints. |
+
+**A real defect the merge exposed** (`7f08f424`). The refreshed evidence
+screenshot showed the bag ghosting correctly at the drop origin while its
+ORIGIN cells stayed fully painted -- badge, unit core, contained-PO art, full
+outline. All five specs were green across that change, because the lift's only
+evidence WAS the screenshot. Found by looking at the PNG, not by a gate.
+
+Root cause is PRE-EXISTING and not merge damage: every Pixi Application's
+EventSystem listens on `document`, so BOTH boards run `onGlobalPointerMove` for
+every pointermove (the REQ-0031 note inside that function already says so).
+`armCarry()` is global and one-shot, so whichever board's handler crosses the
+5px threshold FIRST arms the carry -- and the origin repaint sat inside that
+same `if (!carry.armed)` branch. An origin board that LOST the race saw
+`carry.armed === true` on its own pass, skipped the branch, and never
+repainted. Which board won was decided by mount order, so this was a silent
+order-dependent flake for PO hide-in-place long before REQ-0288; the BP lift
+made it impossible to miss, and master's board mount changes flipped the race.
+Fixed by arming and then repainting the ORIGIN board regardless of which
+handler armed it, latched one-shot per carry (`armRendered`).
+
+**New gate seam**: `BoardRenderer.liftProbe` -- the BP id `render()` actually
+resolved as airborne -- published through the same `__backpackBoardProbes`
+seam, asserted by T3. Verified RED before the fix (`lift: null` on a losing
+race) and green 3/3 solo runs after. A screenshot nobody diffs is not a gate.
+
+**Correction to this REQ's own Gates section**: the port decade named there
+(7880-7889, derived from the REQ number) is exactly what PROJECT.md forbids --
+ports come from the port desk (`tools/e2e_ports.sh`, REQ-0323), which post-dates
+the spec. Scoped runs leased their decade from the desk; `tools/ci.sh` leases
+its own.
+
+**Gates (2026-08-03, on the merged tree)**
+
+| gate | result |
+|---|---|
+| `tools/ci.sh` (scope=both) | **CI GREEN** -- 217 client e2e, 28+8+4+1 admin e2e, full server/sim suites |
+| `drag-ghost.spec.ts` T1-T5, scoped solo, 3 consecutive runs | 5/5 green x3 (no flake) |
+| `check_ghost_chain.mjs` tripwire / `tsc --noEmit` | OK / clean |
+| lift regression, pre-fix | T3 RED (`lift: null`) -- the fix is pinned |
+
+No pre-existing red this time: the `bp-transfer.spec.ts:164` parallel flake the
+2026-07-23 run had to explain away did not reproduce.
+
+**Evidence**: `web/preview/req-0288/` refreshed from the fixed tree --
+bp-ghost-legal.png (origin alpha at rows 1-3 x A-B reduced to its lift shadow:
+no badge, no unit core, no contained-PO art, dimmed outline; whole-bag ghost
+with unit disc + PO art under green paint at rows 6-8 x G-H),
+bp-ghost-illegal.png (same ghost dimmed, under red paint over beta).
