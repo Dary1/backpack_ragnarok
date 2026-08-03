@@ -303,8 +303,9 @@ golden)**. Mechanics:
    lives only under `docs/llm_managed/` (G4).
 2. **Stage.** Copy the doc VERBATIM to
    `docs/llm_managed/promotion_candidates/<name>_CANDIDATE.md`, and list it
-   one-line-per-file in `user_managed_rename_suggestions.md` (the same note
-   mechanism REQ-0123 used).
+   one-line-per-file in a fresh `user_managed_rename_suggestions.md`
+   (mechanism precedent: REQ-0123; the original list is archived at
+   `archive/user_managed_rename_suggestions.md`).
 3. **Promote (user-only).** The USER moves candidates into `docs/user_managed/` and
    commits. **No LLM ever writes `docs/user_managed/`.**
 4. **Volatile / contract split (freeze-then-rot mitigation).** Box timings, OOM
