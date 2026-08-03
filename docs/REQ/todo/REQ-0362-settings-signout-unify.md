@@ -83,8 +83,45 @@ not a stale build artifact.
 
 ## Gates
 
-<pending>
+`tools/ci.sh` on this worktree: **CI GREEN**, 235s, ci-scope `public`
+(diff = 17 paths, 0 admin -> [6.5]/[6.6] admin harnesses correctly skipped).
+Receipt tree `5ceea596568116d228669bf2cff4c4f36fe3eb2a` written to
+`/srv/bpkgit/backpack_ragnarok.git/ci-receipts/`; the run was against a dirty
+tree, and commit 17e591cf reproduces that tree hash EXACTLY (verified with
+`git rev-parse HEAD^{tree}`), so the push gate has the matching receipt.
+
+- `[6/7]` client typecheck + build: clean (7.0s).
+- `[7/7]` client e2e, SCOPED hermetic run (port desk decade 9000-9009):
+  **212 passed**, including the rewritten
+  `guest-auth.spec.ts › sign out › sign out clears the stored token and returns
+  to the landing in the dev-mode/default state`.
+- `client/scripts/check_auth.mjs`: all assertions pass -- covers
+  `signOutSupabase -> signOut called + token cleared`.
+- `oxlint`: 45 warnings / 0 errors, byte-identical to the master baseline
+  measured in `~/backpack_ragnarok/client`; none of the 45 fall in a file this
+  REQ touched.
+- Post-patch sweep: no live reference to `settings-logout-btn`,
+  `settings.logout`, `signOutDiscord`, or store's `logout` survives. The four
+  remaining string hits are a CSS rename comment, an e2e comment, and two
+  NEGATIVE assertions (`toHaveCount(0)`) that pin the deletion.
+- Bundle provenance: the deployed `web/app/assets/index-BZ0RK0nt.js` was
+  decompiled before any edit and matched source, ruling out a stale-artifact
+  explanation for the reported defect.
+
+### Coverage limitation -- read before accepting
+
+The e2e fleet builds ENV-LESS (no Supabase config), so `[7/7]` exercises the
+new button only in its **invite-token** branch. The `discord` / `anonymous`
+branches are unreachable without a configured server, and `signOutSupabase()`
+is proven only at unit level by `check_auth.mjs`. The user-reported symptom is
+in the Supabase path, so acceptance needs a LIVE check after deploy:
+
+1. `#/settings` on backpack-dev, signed in with Discord -> Sign out -> lands on
+   the landing (`#/`) and `sb-*-auth-token` is gone from localStorage.
+2. Same as an anonymous guest -- the branch that had no sign-out control at all.
 
 ## Outcome
 
-<pending>
+Built, NOT merged. `~/backpack_ragnarok` @ master IS live (backpack-api mtime
+hot-reload), so the merge is a deploy and needs the user's go-ahead. The live
+check above is the acceptance criterion.
