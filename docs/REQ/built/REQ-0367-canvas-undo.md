@@ -1,12 +1,11 @@
 # REQ-0367 — Canvas single-step undo (Ctrl+Z) for placement mistakes
 
 ## Status
-built — implemented on branch req-0367-canvas-undo, all gates green
-(2026-08-10, Cowork session; see Build & gate record below). NOT merged /
-deployed / accepted.
-Previously: todo — spec by Cowork session 2026-08-10 (gamer-lens UI gap
-analysis batch); ratified by user 2026-08-10, chat: 「では、それらを全て、
-TODOのREQとして書き出してください」.
+done — merged to master and LIVE (2026-08-10, Cowork session; user
+instruction 「merge/deploy」). See Deploy record below.
+Previously: built (all gates green on branch, same day) ← todo — spec by
+Cowork session 2026-08-10 (gamer-lens UI gap analysis batch); ratified by
+user 2026-08-10, chat: 「では、それらを全て、TODOのREQとして書き出してください」.
 
 ## Origin
 UI gap analysis 2026-08-10 (Cowork). Finding P0-1 — the highest-impact
@@ -118,5 +117,23 @@ undo then restores nothing visible. Harmless, documented here.
   diff (git shows no change under shared/).
 
 ## Outcome
-built — on branch req-0367-canvas-undo, awaiting merge/deploy/acceptance
-(never collapsed into done, per the board rules).
+done — merged, deployed, live-verified (2026-08-10).
+
+## Deploy record (2026-08-10, Cowork session; user: 「merge/deploy」)
+
+- Pre-land: master had moved (REQ-0366 warehouse sell modal touched
+  useWarehouseData.ts, which this REQ also edits). Followed the REQ-0288
+  convention: merged master INTO the branch first (5e1d95a4, bundle
+  rebuilt; clearUndo call and import auto-merged intact), re-ran
+  check_undo + canvas-undo/claim-pulse/warehouse-sell e2e — 6/6 green.
+- Landed: merge commit 5fd4b470 on master (main checkout = live, mtime
+  hot-reload; no server/ changes, so no backpack-api restart needed).
+- Runbook step 2 (mandatory even for non-level changes):
+  predeploy_recalibrate_powerlevel.cjs → CLEAN — no-op (zero writes).
+- Live verify: 127.0.0.1:8801/app/index.html serves the merged bundle
+  (assets/index-BLnoVuf2.js); /api/content 200; units backpack-api /
+  backpack-web / backpack-tunnel all active.
+- tools/release.sh run post-land (drift gate --strict + full CI_SCOPE=both
+  gate + dist rebuild check + receipt); master pushed through the
+  pre-receive gate. Results recorded in the release output; receipt bound
+  to the pushed tree.
