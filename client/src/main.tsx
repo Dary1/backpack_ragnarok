@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { initButtonFx } from './theme/buttonFx'
-import { boot, initAutoSaveLifecycle } from './store'
+import { boot, initAutoSaveLifecycle, initUndoHotkey } from './store'
 import { initGuideController } from './guide/guideController'
 import { initMotionPrefs } from './a11y/motionPrefs' // REQ-0143
 
@@ -24,5 +24,6 @@ createRoot(document.getElementById('root')!).render(
 // (via useSyncExternalStore in useGameStore) once it resolves.
 boot();
 initAutoSaveLifecycle();
+initUndoHotkey(); // REQ-0367: global Ctrl+Z -> single-step undo
 initGuideController();
 initButtonFx();

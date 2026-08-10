@@ -87,7 +87,7 @@ import { publishRibbonProbe, type UsageRibbonProbeEntry } from './usageRibbonPro
 import { publishCursorProbe, type CursorProbeEntry } from './cursorProbe'; // REQ-0290
 import { countPaint } from './paintProbe'; // REQ-0345
 import { flash, paintNeutralReturn, pulseCellsSuccess, renderGhostAssembly, renderGhostBP, renderGhostPO } from './ghosts';
-import { notifyStateChanged } from '../store';
+import { armUndoFrom, captureUndoState, clearUndo, notifyStateChanged } from '../store';
 import { clearItemTip, clearItemTipForBoard, showItemTip } from './itemTip';
 // REQ-0142 (link-trace diagnostics): beam hover is ephemeral INTERACTION
 // state (board/beamHover.ts, the same pub-sub shape as itemTip/carry), and
@@ -1267,6 +1267,11 @@ export class BoardRenderer {
       btn.on('pointerdown', (e: FederatedPointerEvent) => e.stopPropagation());
       btn.on('click', (e: FederatedPointerEvent) => {
         e.stopPropagation();
+        // REQ-0367: the chain-link toggle is OUTSIDE undo's scope (place/
+        // move/rotate/remove only) -- clear the slot so a later undo can
+        // never silently revert this toggle as a side effect of the
+        // whole-state restore.
+        clearUndo();
         state.linked = !state.linked;
         notifyStateChanged();
       });
@@ -1654,8 +1659,13 @@ export class BoardRenderer {
     this.lastBPPointerDown.delete(bpId);
     if (last !== undefined && now - last <= DBLCLICK_WINDOW_MS) {
       const { ops } = this.deps;
+      // REQ-0367: arm only on SUCCESS -- a refused rotate must not
+      // overwrite a slot armed by an earlier successful mutation with a
+      // copy that undoes nothing. The copy is still taken BEFORE the
+      // mutator runs (spec item 2).
+      const undoCopy = captureUndoState();
       const r = ops.rotateBP(this.lastState!, bpId);
-      if (r.ok) notifyStateChanged();
+      if (r.ok) { armUndoFrom(undoCopy); notifyStateChanged(); }
       else flash(this, r.cells);
       return;
     }
@@ -1685,8 +1695,9 @@ export class BoardRenderer {
       // exists on the canvas board (isAssemblyPart is always false on an
       // inventory board, since `asm` there is always null).
       const rotateUid = isAssemblyPart && asm ? asm.blade.uid : p.uid;
+      const undoCopy = captureUndoState(); // REQ-0367: arm-on-success, see handleBPPointerDown.
       const r = this.deps.ops.rotatePO(this.lastState!, rotateUid);
-      if (r.ok) notifyStateChanged();
+      if (r.ok) { armUndoFrom(undoCopy); notifyStateChanged(); }
       else flash(this, r.cells);
       return;
     }

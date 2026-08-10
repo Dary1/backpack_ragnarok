@@ -25,7 +25,7 @@ import { applyWarehouseClaim } from '../../../shared/player_actions.mjs'; // REQ
 import { pulseTab } from '../lib/tabPulse';
 import { usePolledResource } from '../lib/usePolledResource';
 import { friendlyScheduleError, isApiErrorStatus } from '../schedule/errors';
-import { notifyStateChanged, useGameStore, type Locale } from '../store';
+import { clearUndo, notifyStateChanged, useGameStore, type Locale } from '../store';
 import { playClaimChime } from './claimSfx';
 import { sellFromWarehouse } from '../api/market'; // REQ-0328
 
@@ -216,6 +216,10 @@ export function useWarehouseData(locale: Locale) {
       // two-phase design is that this auto-save is once again the
       // single writer; the server finalizes/deletes the warehouse row
       // on the arrival of the resulting profile PUT).
+      // REQ-0367 (spec item 1): a warehouse claim is an EXCLUDED, server-
+      // authoritative op -- it CLEARS the one-step undo slot (a client-side
+      // undo of a claim would desync the finalize handshake).
+      clearUndo();
       notifyStateChanged();
 
       setToast(

@@ -1,0 +1,156 @@
+#!/usr/bin/env node
+// client/scripts/check_undo.mjs -- REQ-0367 gate. Drives the REAL store
+// modules (src/store/undo.ts + core/autosave/squads) and the REAL
+// shared/engine.js in plain Node via the same vite-ssrLoadModule rig as
+// check_auth.mjs -- no browser, no Pixi. Pins the spec's unit gate --
+// mutate -> undo -> state deep-equals the pre-mutation snapshot -- plus the
+// slot's whole lifecycle: arm-before-mutation, arm-only-on-success for the
+// dblclick-rotate discipline, excluded-op clear, one-step consumption (no
+// redo), and the undoAvailable store flag the boardfoot button binds to.
+import { createServer } from 'vite';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const CLIENT_ROOT = path.resolve(__dirname, '..');
+const REPO = path.resolve(CLIENT_ROOT, '..');
+const require_ = createRequire(import.meta.url);
+
+// localStorage + fetch shims: store/autosave.ts's debounced pump runs on a
+// timer after every notifyStateChanged() and touches both; neither exists
+// under plain Node. The PUT itself is irrelevant to this gate (persistence
+// is the e2e spec's job) -- it just must not crash the process.
+const ls = new Map();
+globalThis.localStorage = {
+  getItem: (k) => (ls.has(k) ? ls.get(k) : null),
+  setItem: (k, v) => { ls.set(k, String(v)); },
+  removeItem: (k) => { ls.delete(k); },
+};
+globalThis.fetch = async () => ({ ok: false, status: 503, headers: { get: () => null }, json: async () => ({}), text: async () => '' });
+
+let failures = 0;
+function check(name, cond, detail = '') {
+  if (cond) console.log('  ok   ', name);
+  else { failures++; console.log('  FAIL ', name, detail ? `-- ${detail}` : ''); }
+}
+
+/** Key-order-insensitive deep equality: undo restores through
+ * engine.migrateState (the loadGame path), whose no-op copy may rebuild
+ * objects in a different key insertion order -- content equality is the
+ * contract, not serialization identity. undefined-valued keys count as
+ * absent, matching JSON semantics (the slot is a JSON round-trip). */
+function deepEq(a, b) {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return a === b;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) return a.length === b.length && a.every((v, i) => deepEq(v, b[i]));
+  const ka = Object.keys(a).filter((k) => a[k] !== undefined);
+  const kb = Object.keys(b).filter((k) => b[k] !== undefined);
+  if (ka.length !== kb.length) return false;
+  return ka.every((k) => deepEq(a[k], b[k]));
+}
+const copyOf = (x) => JSON.parse(JSON.stringify(x));
+
+const server = await createServer({
+  configFile: false, root: CLIENT_ROOT, server: { middlewareMode: true },
+  optimizeDeps: { noDiscovery: true, include: [] }, logLevel: 'error',
+});
+try {
+  const core = await server.ssrLoadModule('/src/store/core.ts');
+  const undo = await server.ssrLoadModule('/src/store/undo.ts');
+
+  const Engine = require_(path.join(REPO, 'shared', 'engine.js'));
+  const ITEMS = {
+    hilt: { name: 'H', tags: [], shape: [[0, 0]], icon: 'icon-x' },
+    dagger: { name: 'D', tags: [], shape: [[0, 0], [1, 0]], icon: 'icon-x' },
+  };
+  const E = Engine.create(ITEMS, {}, { ROWS: 8, COLS: 8 });
+  const shape = [];
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) shape.push([r, c]);
+  const bp = { id: 'bp1', name: 'B', color: '#4a90d9', origin: [2, 2], shape, unit: { id: 'dwarf', off: [0, 0] } };
+  const state = E.migrateState({
+    linked: true,
+    bps: [bp],
+    pos: [],
+    sis: [],
+    inv: {
+      pages: [
+        { bps: [bp], pos: [{ uid: 'p1', id: 'hilt', loc: 'grid', cell: [7, 7], rot: 0 }], sis: [] },
+        { bps: [], pos: [], sis: [] }, { bps: [], pos: [], sis: [] }, { bps: [], pos: [], sis: [] }, { bps: [], pos: [], sis: [] },
+      ],
+      names: ['1', '2', '3', '4', '5'],
+    },
+  });
+  core.setSnapshot({ ...core.getSnapshot(), status: 'ready', engine: E, state });
+  const st = core.getSnapshot().state;
+
+  console.log('spec unit gate: mutate -> undo -> deep-equals the pre-mutation snapshot');
+  {
+    const pre = copyOf(st);
+    check('slot starts empty (undoAvailable false)', core.getSnapshot().undoAvailable === false);
+    undo.armUndo(); // = the top of a drop commit (board/commits.ts)
+    const mv = E.invMovePO(st, 0, 'p1', [6, 6]);
+    check('setup: the in-scope mutation applied', !!mv && mv.ok === true);
+    check('undoAvailable true once armed', core.getSnapshot().undoAvailable === true);
+    check('setup: the mutation really changed the state', !deepEq(st, pre));
+    undo.undo();
+    check('undo(): state deep-equals the pre-mutation snapshot', deepEq(st, pre));
+    check('the restore kept the SAME state object (loadGame contract)', core.getSnapshot().state === st);
+    check('one step only: the slot is consumed', core.getSnapshot().undoAvailable === false);
+    const frozen = copyOf(st);
+    undo.undo(); // no redo, no second step
+    check('a second undo() is a no-op', deepEq(st, frozen));
+  }
+
+  console.log('canvas crossing: inv -> canvas reference creation undone');
+  {
+    const pre = copyOf(st);
+    undo.armUndo();
+    const r = E.createRef(st, 'po', 'p1', { cell: [2, 2] });
+    check('setup: createRef placed a canvas reference', !!r && r.ok === true && st.pos.some((p) => p.uid === 'p1'),
+      r && r.why ? r.why : '');
+    undo.undo();
+    check('undo(): the reference creation is fully reverted', deepEq(st, pre));
+  }
+
+  console.log('refused-rotate arm discipline (captureUndoState / armUndoFrom)');
+  {
+    const preMove = copyOf(st); // state A
+    undo.armUndo();
+    const mv = E.invMovePO(st, 0, 'p1', [5, 5]); // A -> B (slot = A)
+    check('setup: the armed mutation applied', !!mv && mv.ok === true);
+    // A REFUSED dblclick-rotate runs the BoardRenderer pattern: capture
+    // BEFORE the mutator, arm ONLY if it reports ok.
+    let rot = null;
+    try { rot = E.invRotatePO(st, 0, 'uid_that_does_not_exist'); } catch { rot = null; }
+    check('setup: the rotate really was refused', !(rot && rot.ok === true));
+    if (rot && rot.ok === true) undo.armUndoFrom(undo.captureUndoState()); // (not reached)
+    check('the slot survives the refusal (still armed)', core.getSnapshot().undoAvailable === true);
+    undo.undo();
+    check('undo() restores A -- the pre-move state, not the refusal point', deepEq(st, preMove));
+  }
+
+  console.log('excluded-op / context-switch clear semantics');
+  {
+    undo.armUndo();
+    const mv = E.invMovePO(st, 0, 'p1', [4, 4]);
+    check('setup: mutation applied', !!mv && mv.ok === true);
+    undo.clearUndo(); // = warehouse claim / gacha finalize / loadGame / squad+page+route switch
+    check('clearUndo() empties the slot (undoAvailable false)', core.getSnapshot().undoAvailable === false);
+    const frozen = copyOf(st);
+    undo.undo();
+    check('undo() after a clear does NOTHING', deepEq(st, frozen));
+    undo.clearUndo(); // redundant clear is safe
+    check('a redundant clearUndo() stays a no-op', core.getSnapshot().undoAvailable === false);
+  }
+} finally {
+  await server.close();
+}
+console.log('');
+if (failures) { console.log(`check_undo: ${failures} FAILURE(S)`); process.exit(1); }
+console.log('check_undo: all assertions pass');
+// store/autosave.ts's debounce/retry timers (armed by undo()'s
+// notifyStateChanged) keep the event loop alive. Exit explicitly, same as
+// check_auth.mjs does for supabase's auto-refresh interval.
+process.exit(0);

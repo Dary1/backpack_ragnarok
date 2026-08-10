@@ -30,6 +30,8 @@ export const canvasEn = {
   'canvas.saveState.saved': 'Saved',
   'canvas.saveState.saving': 'Saving…',
   'canvas.saveState.offline': 'Offline',
+  // REQ-0367: boardfoot single-step undo button (tooltip/aria label).
+  'canvas.undo': 'Undo last placement (Ctrl+Z)',
   // REQ-0140 (canvas-side-panel-parity): side-panel filter chips, detail
   // card No. line, and empty-state guidance copy (SHARED with REQ-0141).
   'canvas.filter.all': 'All',
@@ -94,6 +96,8 @@ export const canvasJa = {
   'canvas.saveState.saved': '保存済み',
   'canvas.saveState.saving': '保存中…',
   'canvas.saveState.offline': 'オフライン',
+  // REQ-0367
+  'canvas.undo': '直前の配置を元に戻す（Ctrl+Z）',
   // REQ-0140 (canvas-side-panel-parity)
   'canvas.filter.all': 'すべて',
   'canvas.filter.weapon': '武具',

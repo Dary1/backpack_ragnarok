@@ -139,6 +139,34 @@
   box-shadow: 0 0 6px rgba(176, 65, 62, 0.7);
 }
 
+/* REQ-0367: single-step undo button, boardfoot, right beside the auto-save
+   seal (the seal's own margin-left:auto right-aligns the pair). */
+.boardfoot-undo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--bone-3);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--bone-3);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.boardfoot-undo:hover:not(:disabled) {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
+.boardfoot-undo:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 /* item cards (mock .icard) -- the rarity frame/word/corner-gem triple
    encoding comes from the theme's .rar-* / .rar-word / .gem primitives;
    these rules add only the card layout. */

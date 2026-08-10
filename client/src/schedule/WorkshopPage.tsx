@@ -35,7 +35,7 @@ import { pulseTab } from '../lib/tabPulse';
 import { BpDiagram } from '../dex/BpDiagram';
 import { DismantlePanel } from './DismantlePanel';
 import { t } from '../i18n';
-import { notifyStateChanged, useGameStore, type Locale } from '../store';
+import { clearUndo, notifyStateChanged, useGameStore, type Locale } from '../store';
 import { GACHA_COMMON_BP_COST } from '../../../shared/constants.json';
 
 interface WorkshopPageProps {
@@ -241,6 +241,9 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
       // Let the existing debounced auto-save run naturally -- this PUT
       // is what finalizes the pending roll server-side (uid present AND
       // balance dropped, see the gacha finalize path).
+      // REQ-0367 (spec item 1): gacha two-phase placement finalization is
+      // an EXCLUDED, server-authoritative op -- clear the slot, never arm.
+      clearUndo();
       notifyStateChanged();
 
       setToast(

@@ -13,6 +13,7 @@ import { ApiError, fetchMe, getStoredToken, resolveGameData, setStoredToken } fr
 import type { ApiMe } from '../api';
 import { INVITE_HASH_RE, snapshot, setSnapshot } from './core';
 import type { Locale } from './core';
+import { clearUndo } from './undo';
 import { readGuide, writeGuide, defaultGuide } from '../guide/guideModel'; // REQ-0141
 import { buildStarterUnitsState } from '../../../shared/player_actions.mjs'; // REQ-0310 (was a local function here)
 import { createSupabaseClient } from '../auth/client'; // REQ-0118c
@@ -379,6 +380,9 @@ export function setActiveInvPage(page: number): void {
   const max = engine ? engine.PAGE_COUNT - 1 : 4;
   const clamped = Math.max(0, Math.min(max, page));
   if (clamped === snapshot.activeInvPage) return;
+  // REQ-0367 (spec item 4): an inventory page change is a context switch
+  // the player can see -- it drops the one-step undo snapshot.
+  clearUndo();
   setSnapshot({ ...snapshot, activeInvPage: clamped });
 }
 

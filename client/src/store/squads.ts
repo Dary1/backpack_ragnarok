@@ -2,13 +2,16 @@
 // Moved VERBATIM from client/src/store.ts (see that file for the barrel).
 import { snapshot, setSnapshot } from './core';
 import { scheduleAutoSave } from './autosave';
+import { clearUndo } from './undo';
 
 export function switchActiveSquad(n: number): void {
   const st = snapshot.state;
   const engine = snapshot.engine;
   if (!st || !engine) return;
   const r = engine.switchSquad(st, n);
-  if (r.ok) notifyStateChanged();
+  // REQ-0367 (spec item 4): an active-squad change is a context switch the
+  // player can see -- it drops the one-step undo snapshot.
+  if (r.ok) { clearUndo(); notifyStateChanged(); }
 }
 
 /** Appends a brand-new EMPTY squad and immediately switches to it
@@ -20,7 +23,8 @@ export function addNewSquadAndSwitch(name?: string): void {
   const added = engine.addSquad(st, name);
   if (!added.ok || added.index === undefined) return;
   const switched = engine.switchSquad(st, added.index);
-  if (switched.ok) notifyStateChanged();
+  // REQ-0367 (spec item 1): squad CREATE is an excluded op -- clear, never arm.
+  if (switched.ok) { clearUndo(); notifyStateChanged(); }
 }
 
 /** Renames squad `n` (0-based) -- works for the active or an inactive
@@ -30,7 +34,9 @@ export function renameActiveSquad(n: number, name: string): void {
   const engine = snapshot.engine;
   if (!st || !engine) return;
   const r = engine.renameSquad(st, n, name);
-  if (r.ok) notifyStateChanged();
+  // REQ-0367: out-of-scope mutation -- the whole-state restore must never
+  // silently revert a rename, so the slot is dropped instead of kept.
+  if (r.ok) { clearUndo(); notifyStateChanged(); }
 }
 
 /** REQ-0032: commits a squad drag-to-reorder (0-based from/to) through
@@ -45,7 +51,8 @@ export function reorderActiveSquad(from: number, to: number): void {
   const engine = snapshot.engine;
   if (!st || !engine) return;
   const r = engine.reorderSquad(st, from, to);
-  if (r.ok) notifyStateChanged();
+  // REQ-0367: out-of-scope mutation (same rationale as renameActiveSquad).
+  if (r.ok) { clearUndo(); notifyStateChanged(); }
 }
 
 /** REQ-0032: deletes squad `n` (0-based) via the squad trash-drop-zone.
@@ -64,6 +71,8 @@ export function deleteActiveSquadTab(n: number): void {
   if (!st || !engine) return;
   const r = engine.deleteSquad(st, n);
   if (r.ok) {
+    // REQ-0367 (spec item 1): squad DELETE is an excluded op -- clear.
+    clearUndo();
     notifyStateChanged();
     return;
   }
@@ -124,6 +133,9 @@ export function reorderInventoryPage(from: number, to: number): void {
   const r = engine.reorderInvPage(st, from, to);
   if (!r.ok) return;
   const nextActive = reorderedActiveIndex(snapshot.activeInvPage, from, to);
+  // REQ-0367: out-of-scope mutation AND a page-identity change the player
+  // can see -- drop the slot (same rationale as renameActiveSquad).
+  clearUndo();
   setSnapshot({ ...snapshot, activeInvPage: nextActive });
   notifyStateChanged();
 }
@@ -134,7 +146,8 @@ export function renameInventoryPage(n: number, name: string): void {
   const engine = snapshot.engine;
   if (!st || !engine) return;
   const r = engine.renameInvPage(st, n, name);
-  if (r.ok) notifyStateChanged();
+  // REQ-0367: out-of-scope mutation (same rationale as renameActiveSquad).
+  if (r.ok) { clearUndo(); notifyStateChanged(); }
 }
 
 /**

@@ -23,10 +23,12 @@
 // mutate->debounce->reload round-trip still holds.
 import { fetchCanvas, saveCanvas, saveCanvasBeacon } from '../api';
 import { cancelCarry } from '../board/drag';
+import type { GameState } from '../engine/engine.d.ts';
 import { snapshot, setSnapshot } from './core';
 import type { StoreSnapshot } from './core';
 import { resolveProfileId, resolveSaveProfileId, refreshMe } from './boot';
 import { notifyStateChanged } from './squads';
+import { clearUndo } from './undo';
 
 const AUTO_SAVE_DEBOUNCE_MS = 800;
 const RETRY_BASE_MS = 1000;
@@ -162,6 +164,30 @@ export function initAutoSaveLifecycle(): void {
   });
 }
 
+/** REQ-0367: loadGame()'s field replacement, extracted VERBATIM so undo
+ * (store/undo.ts) restores through the IDENTICAL code path (spec item 2).
+ * Cancels any active drag BEFORE the field replacement -- same order as
+ * the mock (`carry=null` before `state.linked=...` etc). No engine call:
+ * this is a pure UI-state abort (matches Esc-cancel semantics), and
+ * BoardRenderer's carry-subscription clears the ghost/target Pixi layers
+ * as a side effect of the carry becoming null (see
+ * BoardRenderer.wireGlobalInteraction's subscribeCarry callback). Replaces
+ * state's OWN FIELDS in place (never reassigns `snapshot.state`); the
+ * caller owns the follow-up notifyStateChanged(). */
+export function applyCanvasToState(st: GameState, canvas: GameState): void {
+  cancelCarry();
+  st.linked = canvas.linked;
+  st.bps = canvas.bps;
+  st.pos = canvas.pos;
+  st.sis = canvas.sis || [];
+  st.inv = canvas.inv;
+  st.presets = canvas.presets;
+  // REQ-0141: restore the persisted first-run guide (client-only UI field
+  // riding in the canvas doc). Absent on a pre-REQ-0141 save -> keep boot's.
+  const savedGuide = (canvas as unknown as { guide?: unknown }).guide;
+  if (savedGuide) (st as unknown as { guide?: unknown }).guide = savedGuide;
+}
+
 /**
  * Load: GET /api/profile/:profileId/canvas (REQ-0037: the authenticated
  * player's own id via resolveProfileId(), not a hardcoded 'default'),
@@ -190,23 +216,13 @@ export async function loadGame(): Promise<void> {
       throw new Error('malformed saved canvas');
     }
     const canvas = engine.migrateState(rawCanvas);
-    // Cancel any active drag BEFORE the field replacement -- same order as
-    // the mock (`carry=null` before `state.linked=...` etc). No engine call:
-    // this is a pure UI-state abort (matches Esc-cancel semantics), and
-    // BoardRenderer's carry-subscription clears the ghost/target Pixi
-    // layers as a side effect of the carry becoming null (see
-    // BoardRenderer.wireGlobalInteraction's subscribeCarry callback).
-    cancelCarry();
-    st.linked = canvas.linked;
-    st.bps = canvas.bps;
-    st.pos = canvas.pos;
-    st.sis = canvas.sis || [];
-    st.inv = canvas.inv;
-    st.presets = canvas.presets;
-    // REQ-0141: restore the persisted first-run guide (client-only UI field
-    // riding in the canvas doc). Absent on a pre-REQ-0141 save -> keep boot's.
-    const savedGuide = (canvas as unknown as { guide?: unknown }).guide;
-    if (savedGuide) (st as unknown as { guide?: unknown }).guide = savedGuide;
+    // REQ-0367: a fresh server copy replacing the live fields invalidates
+    // the one-step undo slot. Market / dismantle / ragnarok all refresh
+    // through loadGame() after their server-side flows, and every one of
+    // them is an EXCLUDED op (spec item 1) -- this clear IS their
+    // exclusion; no per-page call is needed.
+    clearUndo();
+    applyCanvasToState(st, canvas);
     // NOTE: this reload just replaced state's fields FROM the server's own
     // saved copy, so there is nothing new to auto-save -- notifyStateChanged()
     // still bumps stateVersion (so the boards re-render) but the resulting

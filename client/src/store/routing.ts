@@ -12,9 +12,13 @@ import { fetchMe, setStoredToken } from '../api';
 import type { ApiMe } from '../api';
 import { ARTADMIN_HASH_RE, CONTENTADMIN_HASH_RE, DEX_ITEM_HASH_RE, INVITE_HASH_RE, MARKET_SELL_HASH_RE, SORTIE_HASH_RE, routeFromHash, snapshot, setSnapshot } from './core';
 import type { Route } from './core';
+import { clearUndo } from './undo';
 
 export function setRoute(route: Route): void {
   if (route === snapshot.route) return;
+  // REQ-0367 (spec item 4): a route change is a context switch -- drop the
+  // one-step undo snapshot (undo never crosses one).
+  clearUndo();
   setSnapshot({ ...snapshot, route });
   if (typeof location !== 'undefined') {
     // REQ-0069: the landing's canonical hash is the bare '#/' (empty
@@ -123,6 +127,7 @@ export function clearSortieFocusDungeonId(): void {
  * history for the user to accidentally navigate back onto. Falls back to
  * a plain hash write if the History API isn't available for some reason. */
 function setRouteReplacingHash(route: Route): void {
+  clearUndo(); // REQ-0367 (spec item 4): route change -- see setRoute().
   setSnapshot({ ...snapshot, route });
   if (typeof location === 'undefined') return;
   const newUrl = location.pathname + location.search + `#/${route}`;
@@ -184,6 +189,7 @@ export function initRouting(): () => void {
   }
   const onHashChange = () => {
     if (typeof location === 'undefined') return;
+    clearUndo(); // REQ-0367 (spec item 4): browser navigation is a route change too.
     const inviteMatch = INVITE_HASH_RE.exec(location.hash);
     if (inviteMatch) {
       void handleInviteRoute(decodeURIComponent(inviteMatch[1]));

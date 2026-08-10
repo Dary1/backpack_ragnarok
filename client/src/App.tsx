@@ -85,7 +85,7 @@ import { createPortal } from 'react-dom';
 import { Board } from './board/Board';
 import { InventoryBoard } from './board/InventoryBoard';
 import { useInventorySlot } from './board/inventorySlot';
-import { BoardCoords, CanvasStatsChip, EmbarkDock, SaveSeal } from './CanvasChrome';
+import { BoardCoords, CanvasStatsChip, EmbarkDock, SaveSeal, UndoButton } from './CanvasChrome';
 import { CanvasSidePanel } from './canvas/CanvasSidePanel'; // REQ-0140
 import { CanvasSelectionOverlay } from './canvas/CanvasSelectionOverlay'; // REQ-0140
 import { CanvasEmptyState } from './canvas/CanvasEmptyState'; // REQ-0140/0141
@@ -274,6 +274,8 @@ function App() {
               <div className="boardfoot">
                 {snapshot.status === 'ready' ? <SquadTabs /> : null}
                 <SaveSeal locale={snapshot.locale} status={snapshot.autoSaveStatus} />
+                {/* REQ-0367: single-step undo, beside the auto-save seal. */}
+                <UndoButton locale={snapshot.locale} />
               </div>
               {/* REQ-0032: trash-drop-zone overlay, ONLY visible while a
                   SQUAD tab is being dragged (see SquadTrashZone.tsx's own

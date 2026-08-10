@@ -34,7 +34,7 @@
 //    has no backing data client-side and is omitted.
 import { t } from './i18n';
 import type { Locale } from './store';
-import { setRoute, useGameStore } from './store';
+import { setRoute, undo, useGameStore } from './store';
 
 /** Column letters/row numbers around the canvas grid (mock: .coord). */
 export function BoardCoords() {
@@ -100,6 +100,27 @@ export function SaveSeal({ locale, status }: SaveSealProps) {
       <span className="boardfoot-saved-dot" aria-hidden="true" />
       {t(locale, SAVE_KEY[status])}
     </span>
+  );
+}
+
+/** REQ-0367: the boardfoot's single-step undo button, right beside the
+ * SaveSeal. Same action as Ctrl+Z (store/undo.ts's undo()); disabled while
+ * the one snapshot slot is empty (store field `undoAvailable`). Tooltip is
+ * i18n'd via the title/aria-label pair. */
+export function UndoButton({ locale }: { locale: Locale }) {
+  const snapshot = useGameStore();
+  return (
+    <button
+      type="button"
+      className="boardfoot-undo"
+      data-testid="canvas-undo-btn"
+      disabled={!snapshot.undoAvailable}
+      title={t(locale, 'canvas.undo')}
+      aria-label={t(locale, 'canvas.undo')}
+      onClick={() => undo()}
+    >
+      {'↩'}
+    </button>
   );
 }
 

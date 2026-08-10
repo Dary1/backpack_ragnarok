@@ -8,3 +8,4 @@ export * from './store/boot';
 export * from './store/routing';
 export * from './store/squads';
 export * from './store/autosave';
+export * from './store/undo';
