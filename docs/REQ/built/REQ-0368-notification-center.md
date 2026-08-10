@@ -1,8 +1,8 @@
 # REQ-0368 — Notification center: bell + nav badges + login digest
 
 ## Status
-built — all gates green on branch req-0368-notification-center (2026-08-10);
-NOT yet merged/deployed/accepted. Spec by Cowork session 2026-08-10 (gamer-lens
+done — merged (efe0389d), deployed and live-verified 2026-08-10.
+Gates green on branch req-0368-notification-center. Spec by Cowork session 2026-08-10 (gamer-lens
 UI gap analysis batch); ratified by user 2026-08-10, chat: 「では、それらを全て、
 TODOのREQとして書き出してください」.
 
@@ -180,3 +180,39 @@ Edited:
   share that one loop. No second interval exists anywhere in `client/src`.
 - **CI GREEN**: full `tools/ci.sh`, `CI_SCOPE=both`, 352 s wall, receipt written
   for tree `e0191212` (2026-08-10).
+
+## Outcome (merged + deployed 2026-08-10)
+
+Merged to `master` as `efe0389d` (--no-ff). Deploy followed
+`docs/llm_managed/content_deploy_runbook.md` in order:
+
+1. Merge landed on the main checkout (which IS live).
+2. `node tools/predeploy_recalibrate_powerlevel.cjs` -> **CLEAN, zero writes**
+   (mandatory step run even though this REQ touches no content).
+3. Nothing regenerated, so nothing to commit at step 3.
+4. `bash tools/release.sh` -> content-registry drift gate MATCH=413 / DRIFT=0 /
+   MISSING=0 / UNADOPTED=0, STRICT OK; full `ci.sh` scope=both GREEN (360 s,
+   e2e 229 passed / 1 skipped); `client && pnpm run build` -> **dist unchanged**
+   (the bundle committed on the branch was already the current one); CI receipt
+   written.
+5. `systemctl --user restart backpack-api` -> active, clean boot
+   (`backpack-api listening on http://127.0.0.1:8802`), no errors in the unit log.
+
+### Live verification
+- Served bundle: `web/app/index.html` and the bytes `backpack-web` actually
+  serves both reference `index-Bqu84Y8R.js` -- the build this REQ produced.
+- Route registration on the restarted service: `/api/notifications` 401,
+  `/api/notifications/ack` 405 (GET on a POST route), the new
+  `/api/warehouse/dev/backdate-expiry` 401, an unknown path 404, and the public
+  `/api/schedule/dungeons` still 200. 401/405 rather than 404 is the proof the
+  new route is wired and reached its auth/method guard; a require-time failure
+  anywhere in the changed service tree would have shown up as a failed boot, and
+  the unit came up clean.
+- BEHAVIOURAL live-drive was deliberately NOT performed: the live service runs
+  with `dev_mode` OFF (REQ-0365), so exercising the feed end-to-end there would
+  mean minting a player and writing live rows. The behavioural proof is the
+  hermetic e2e suite, which runs this exact code against a throwaway backend --
+  see the e2e gate above.
+
+`built -> done` on the strength of: gates green on branch, merged, deployed,
+live-verified as above.
