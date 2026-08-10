@@ -87,9 +87,40 @@ export async function autoSaveAndFetch(page: Page): Promise<any> {
   return fetchSavedCanvas(page);
 }
 
+/** REQ-0368: acks every unseen notification row for the caller. The login
+ * digest is a MODAL: it covers the app on boot whenever there is unseen news,
+ * and would then intercept the first click of any spec that inherited feed
+ * debris from an earlier test in the same worker (a settled run, an expired
+ * warehouse row). Draining BEFORE navigating is deterministic -- one request,
+ * no waiting -- where "dismiss the modal if it appears" would be a race
+ * against the app's first poll, and a blanket wait-for-it-to-maybe-appear
+ * would reintroduce exactly the assertion-free sleep REQ-0331 (F4) removed
+ * from this very function. Best-effort: a 401 (signed-out specs) is a no-op.
+ * Specs that are ABOUT the notification feed opt out via
+ * bootApp(page, { keepNotifications: true }). */
+export async function drainNotifications(page: Page, token?: string): Promise<void> {
+  const headers = token ? { 'X-Auth-Token': token } : undefined;
+  try {
+    const res = await page.request.get('/api/notifications', headers ? { headers } : {});
+    if (!res.ok()) return;
+    const body = await res.json();
+    const ids = (body.notifications ?? []).map((n: { id: number }) => n.id);
+    if (ids.length > 0) {
+      await page.request.post('/api/notifications/ack', headers ? { headers, data: { ids } } : { data: { ids } });
+    }
+  } catch { /* best-effort test hygiene, never a gate */ }
+}
+
+export interface BootAppOptions {
+  /** Keep the caller's unseen notifications instead of draining them --
+   * only the REQ-0368 suite, which is about that feed, wants this. */
+  keepNotifications?: boolean;
+}
+
 /** Boots the app and waits for the live data-source badge, same
  * boilerplate every spec repeats. */
-export async function bootApp(page: Page): Promise<void> {
+export async function bootApp(page: Page, opts: BootAppOptions = {}): Promise<void> {
+  if (!opts.keepNotifications) await drainNotifications(page); // REQ-0368, see above
   // REQ-0069: '/app/' with an EMPTY hash boots the landing (title)
   // screen, which renders no header/badge -- app-page specs boot straight
   // into the backpacks route (the pre-REQ-0069 default) explicitly.

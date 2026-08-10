@@ -29,9 +29,17 @@
 // client/src/warehouse/WarehousePage.tsx's module comment.
 // The landing itself has no rail entry — the logo IS the way back (the
 // mock's 表題 rail entry collapses into the logo).
+// REQ-0368: the rail carries unseen-count badges. Before this REQ it carried
+// none at all while the LOWER-level inventory tabs already pulsed
+// (lib/tabPulse.ts) -- the attention hierarchy was inverted. Counts come from
+// the shared notification feed, so a badge clears the moment the bell is
+// opened (both read the same unseen set).
+import { useMemo } from 'react';
 import { t, type TranslationKey } from './i18n';
 import type { Locale, Route } from './store';
 import { setRoute } from './store';
+import { useNotificationCenter } from './notify/notifyContext';
+import { navBadgeCounts } from './notify/digest';
 
 interface NavItem {
   route: Route;
@@ -57,7 +65,20 @@ interface NavProps {
   locale: Locale;
 }
 
+/** REQ-0368: the rail slots that a notification kind maps to, and the
+ * screen-reader label for each. A route absent from this table never shows a
+ * badge -- only halls where opening them IS the next action are badged. */
+const BADGE_LABEL: Partial<Record<Route, TranslationKey>> = {
+  schedule: 'notify.badge.schedule',
+  warehouse: 'notify.badge.warehouse',
+};
+
 export function Nav({ active, locale }: NavProps) {
+  const { notifications } = useNotificationCenter();
+  const badges = useMemo(() => navBadgeCounts(notifications), [notifications]);
+  const countFor = (route: Route): number =>
+    route === 'schedule' ? badges.schedule : route === 'warehouse' ? badges.warehouse : 0;
+
   return (
     <nav className="nav-rail" aria-label="primary">
       <button
@@ -75,20 +96,37 @@ export function Nav({ active, locale }: NavProps) {
         </svg>
         <span className="nav-logo-text">RAGNARÖK</span>
       </button>
-      {NAV_ITEMS.map((item) => (
-        <button
-          key={item.route}
-          type="button"
-          className={`nav-link${item.route === active ? ' nav-link-active' : ''}`}
-          aria-current={item.route === active ? 'page' : undefined}
-          onClick={() => setRoute(item.route)}
-        >
-          <span className="nav-rune" aria-hidden="true">
-            {item.rune}
-          </span>
-          <span className="nav-lbl">{t(locale, item.key)}</span>
-        </button>
-      ))}
+      {NAV_ITEMS.map((item) => {
+        const count = countFor(item.route);
+        const badgeKey = BADGE_LABEL[item.route];
+        return (
+          <button
+            key={item.route}
+            type="button"
+            className={`nav-link${item.route === active ? ' nav-link-active' : ''}`}
+            aria-current={item.route === active ? 'page' : undefined}
+            onClick={() => setRoute(item.route)}
+          >
+            <span className="nav-rune" aria-hidden="true">
+              {item.rune}
+            </span>
+            <span className="nav-lbl">{t(locale, item.key)}</span>
+            {count > 0 && badgeKey ? (
+              // Shape + number, never colour alone (REQ-0143): the two badge
+              // shapes differ (round / square) and the count itself is the
+              // information, so nothing here depends on hue.
+              <span
+                className={`nav-badge nav-badge-${item.route}`}
+                data-testid={`nav-badge-${item.route}`}
+                data-count={count}
+                aria-label={t(locale, badgeKey, { count: String(count) })}
+              >
+                {count > 99 ? '99+' : count}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
     </nav>
   );
 }

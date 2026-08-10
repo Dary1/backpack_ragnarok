@@ -297,6 +297,11 @@ function settleRun(room, run, profileCanvas, itemDefsById) {
   if (run.settled) return { room, run };
 
   const now = new Date().toISOString();
+  // REQ-0368: the level the dive was FOUGHT at, captured before the
+  // level-down below rewrites room.level to run.levelAfter -- the
+  // notification must describe the run that happened, not the room's next
+  // attempt.
+  const attackLv = room.level != null ? room.level : null;
 
   if (run.result !== 'wipe') {
     // distributeRewardsUniform's assignment shape is {item, owner,
@@ -369,6 +374,13 @@ function settleRun(room, run, profileCanvas, itemDefsById) {
   run.settled = true;
   storage.writeRun(run.id, run);
   storage.writeRoom(swapped.id, swapped);
+
+  // REQ-0368: the run-return notification, emitted AFTER both docs are
+  // durable so a feed entry can never describe a settlement that did not
+  // commit -- and, like emitTroopDisbanded below, deliberately OUTSIDE the
+  // run engine's math and best-effort inside the service (a feed write must
+  // never unwind banked rewards). One entry per participant (REQ-0325).
+  notifications.emitRunSettled(swapped, run, attackLv);
 
   return { room: swapped, run };
 }

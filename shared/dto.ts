@@ -1386,17 +1386,47 @@ export interface ApiDismantleLedgerResponse {
 // POST /api/notifications/ack (server/routes/notifications.cjs). ONE
 // mechanism a human device and a bot program consume identically; one
 // kind today ('troop_disbanded').
+/** REQ-0368: the notification kinds. The first two are REQ-0327/0357 push
+ * TOASTS; the four added by REQ-0368 feed the bell, the nav badges and the
+ * login digest. Every one is emitted from a service code path the server
+ * already owned -- see server/services/notifications.cjs's kind table. */
+export type ApiNotificationKind =
+  | 'troop_disbanded'
+  | 'room_halted'
+  | 'run_settled'
+  | 'market_settled'
+  | 'warehouse_expiring'
+  | 'warehouse_expired';
+
 export interface ApiNotification {
   id: number;
   ts: string;
   /** REQ-0357: 'room_halted' = a solo room's wipe-streak circuit breaker
    * canceled its lane (a troop's breaker rides 'troop_disbanded' with
-   * payload.reason 'wipe_streak'). */
-  kind: 'troop_disbanded' | 'room_halted';
-  roomId: string;
+   * payload.reason 'wipe_streak'). REQ-0368 added the four feed kinds. */
+  kind: ApiNotificationKind;
+  /** null for a kind with no room behind it (REQ-0368: market/warehouse). */
+  roomId: string | null;
+  /** REQ-0368: widens append()'s idempotency key beyond (kind, roomId) --
+   * a run settles many times per room, so run_settled carries the run id,
+   * market_settled the listing id, the warehouse kinds the sweep stamp.
+   * null on every REQ-0327/0357 entry (and on every entry written before
+   * REQ-0368), which is exactly the original collapse behaviour. */
+  dedupeKey?: string | null;
   attackLv: number | null;
   seenAt: string | null;
-  payload: { reason?: string; disbandedAt?: string; streak?: number; haltedAt?: string };
+  payload: {
+    // REQ-0327 / REQ-0357
+    reason?: string; disbandedAt?: string; streak?: number; haltedAt?: string;
+    // REQ-0368 run_settled
+    result?: 'victory' | 'wipe' | 'incomplete'; dungeonId?: string | null;
+    lootCount?: number; runId?: string;
+    // REQ-0368 market_settled
+    listingId?: string; itemId?: string; itemName?: string; itemNameJa?: string | null;
+    net?: number; burn?: number; tm?: string;
+    // REQ-0368 warehouse_expiring / warehouse_expired
+    count?: number; itemIds?: string[]; itemNames?: string[]; itemNamesJa?: (string | null)[];
+  };
 }
 export interface ApiNotificationsResponse {
   ok: true;

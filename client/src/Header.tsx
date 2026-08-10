@@ -18,6 +18,7 @@
 // per the mock once that data exists in the client.
 import { t } from './i18n';
 import { TmHud } from './TmHud'; // REQ-0205: global held-TM balance strip
+import { NotificationBell } from './notify/NotificationBell'; // REQ-0368
 import type { DataSource, Locale } from './store';
 
 interface HeaderProps {
@@ -49,6 +50,12 @@ export function Header({ source, locale, onToggleLocale, autoSaveStatus }: Heade
           app-wide header; self-renders null when the player holds no TM. */}
       <TmHud />
       <div className="header-controls">
+        {/* REQ-0368: the notification bell. Placed FIRST in the control
+            cluster so the unread count sits at the edge of the HUD where the
+            eye lands, ahead of the status chips. The four E2E-selected
+            elements below (.data-source-badge, .auto-save-status,
+            .lang-toggle, the h1) keep their exact classes and order. */}
+        <NotificationBell locale={locale} />
         <span className={`data-source-badge ${badgeClass}`}>{badgeLabel}</span>
         <span className="auto-save-status" style={{ color: STATUS_COLOR[autoSaveStatus] }} data-status={autoSaveStatus}>
           {t(locale, STATUS_KEY[autoSaveStatus])}

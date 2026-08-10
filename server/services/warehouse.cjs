@@ -4,7 +4,23 @@
 // the dev-only backdate-claim seam, moved VERBATIM from
 // server/schedule.cjs.
 const storage = require('../storage.cjs');
-const { WAREHOUSE_CAP, WAREHOUSE_TTL_MS, WAREHOUSE_CLAIM_TIMEOUT_MS, genId } = require('./core.cjs');
+const { WAREHOUSE_CAP, WAREHOUSE_TTL_MS, WAREHOUSE_CLAIM_TIMEOUT_MS, genId, getScheduleContent } = require('./core.cjs');
+const notifications = require('./notifications.cjs'); // REQ-0368
+
+// REQ-0368: a row is "expiring" once it is inside this window of its
+// expiresAt. 24h out of the 7-day TTL (golden e) -- long enough that a
+// player who opens the game once a day still sees the warning before the
+// loss, short enough that it is not permanently lit.
+const WAREHOUSE_EXPIRING_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+// REQ-0368: purge re-entrancy depth. purgeExpiredWarehouseItems calls
+// ITSELF (grantTmQty -> addToWarehouse -> purge, see the long note inside);
+// only the OUTERMOST sweep may emit notifications, otherwise the inner call
+// would mark/announce rows the outer call is still holding stale copies of
+// and the outer pass would then double-count them. The deletion logic's own
+// re-entrancy answer (defer grants past the loop) makes the inner call see
+// zero expired rows, so this guard only has to cover the announce pass.
+let sweepDepth = 0;
 
 function isExpired(item, nowMs) {
   return Date.parse(item.expiresAt) <= (nowMs != null ? nowMs : Date.now());
@@ -41,6 +57,15 @@ function normalizeWarehouseStatus(playerId, item, nowMs) {
 }
 
 function purgeExpiredWarehouseItems(playerId) {
+  sweepDepth += 1;
+  try {
+    return purgeExpiredWarehouseItemsInner(playerId, sweepDepth === 1);
+  } finally {
+    sweepDepth -= 1;
+  }
+}
+
+function purgeExpiredWarehouseItemsInner(playerId, announce) {
   const now = Date.now();
   const items = storage.listWarehouseItems(playerId);
   const survivors = [];
@@ -58,8 +83,13 @@ function purgeExpiredWarehouseItems(playerId) {
   // left, so it is a safe no-op.
   let yieldCount = 0;
   let anyNonTmExpired = false;
+  // REQ-0368: every row this sweep deletes, currency included -- the payload
+  // for the warehouse_expired notification. Until this REQ an expired row
+  // vanished with NO player-visible trace anywhere in the product.
+  const expiredRows = [];
   for (const item of items) {
     if (isExpired(item, now)) {
+      expiredRows.push(item);
       if (item.kind === 'tm') {
         // Currency has no Dex entry -- nothing to engrave. Same plain
         // delete as before REQ-0063.
@@ -96,6 +126,53 @@ function purgeExpiredWarehouseItems(playerId) {
       if (Math.random() < 0.5) yieldCount++;
     }
     for (let i = 0; i < yieldCount; i++) grantTmQty(playerId, dismantle.YIELD_TM_ID, dismantle.YIELD_QTY);
+  }
+  // REQ-0368: the announce pass. Runs LAST, after every deletion and every
+  // deferred yield grant has committed, and only for the outermost sweep
+  // (see sweepDepth above). Both emissions are best-effort: a feed write
+  // must never break the purge every warehouse read depends on.
+  if (announce) {
+    const sweepKey = String(now);
+    if (expiredRows.length > 0) {
+      try {
+        // Display names resolved the way views.cjs's toListingDto does. A
+        // warehouse row does not always carry a `kind` (a market-delivered
+        // SI/PO row carries none), so the def is looked up across the four
+        // tables rather than branched on kind.
+        const content = getScheduleContent();
+        const itemDefs = content.itemDefsById || {};
+        const siDefs = content.siDefsById || {};
+        const unitDefs = content.unitDefsById || {};
+        const tmDefs = content.tmDefsById || {};
+        const named = expiredRows.map((it) => {
+          const def = itemDefs[it.itemId] || siDefs[it.itemId] || unitDefs[it.itemId] || tmDefs[it.itemId] || null;
+          const ja = def && def.i18n && def.i18n.ja;
+          return {
+            itemId: it.itemId,
+            itemName: def ? def.name : it.itemId,
+            itemNameJa: (ja && ja.name) || (def && def.name_ja) || null,
+          };
+        });
+        notifications.emitWarehouseExpired(playerId, named, sweepKey);
+      } catch (e) { /* best-effort: the purge itself already committed */ }
+    }
+    // Rows ENTERING the <24h window. Marked on the row itself
+    // (expiringNotifiedAt) so a player polling every few seconds is warned
+    // ONCE per item -- the same lazy write-on-read discipline
+    // normalizeWarehouseStatus above already uses for its own migrations --
+    // and the per-sweep count is batch-collapsed into a single entry.
+    let newlyExpiring = 0;
+    for (const item of survivors) {
+      if (item.expiringNotifiedAt) continue;
+      const msLeft = Date.parse(item.expiresAt) - now;
+      if (!(msLeft > 0 && msLeft < WAREHOUSE_EXPIRING_WINDOW_MS)) continue;
+      item.expiringNotifiedAt = new Date(now).toISOString();
+      storage.writeWarehouseItem(playerId, item.itemUid, item);
+      newlyExpiring += 1;
+    }
+    if (newlyExpiring > 0) {
+      try { notifications.emitWarehouseExpiring(playerId, newlyExpiring, sweepKey); } catch (e) { /* best-effort */ }
+    }
   }
   return survivors;
 }
@@ -378,6 +455,31 @@ function devBackdateClaimedWarehouseItem(playerId, itemUid, extraSecsIntoPast) {
   return item;
 }
 
+// devSetWarehouseExpiry (REQ-0368 E2E hook): rewrites a warehouse row's
+// expiresAt to `secsUntilExpiry` seconds from now (negative = already past,
+// i.e. the row dies on the very next sweep). Exact sibling of
+// devBackdateClaimedWarehouseItem above, and gated the same way by its route
+// (dev_mode fallback caller only, always the caller's OWN id) -- a pure
+// timestamp move, no reward RNG and no content involved.
+//
+// WHY IT EXISTS: the warehouse TTL is 7 days and the expiring window is the
+// last 24h of it, so the e2e suite has no way at all to observe either edge
+// without a time-control seam. This is the same argument REQ-0036's
+// dev/backdate and REQ-0041's dev/backdate-claim already made for the run
+// clock and the claim timeout.
+function devSetWarehouseExpiry(playerId, itemUid, secsUntilExpiry) {
+  const item = storage.readWarehouseItem(playerId, itemUid);
+  if (!item) { const err = new Error('warehouse item not found'); err.code = 'NOT_FOUND'; throw err; }
+  const secs = Number(secsUntilExpiry);
+  item.expiresAt = new Date(Date.now() + (Number.isFinite(secs) ? secs : 3600) * 1000).toISOString();
+  // A row moved back INTO (or across) the window must be announceable again:
+  // clear the once-only marker the sweep sets, or a row the test just aged
+  // would stay silent because a previous sweep had already warned about it.
+  delete item.expiringNotifiedAt;
+  storage.writeWarehouseItem(playerId, itemUid, item);
+  return item;
+}
+
 // peekClaimableRow (REQ-0328): the warehouse->market DIRECT-SELL seam.
 // Validates that `itemUid` names a CLAIMABLE (never 'claiming') warehouse
 // row for `playerId` and returns it WITHOUT mutating anything -- purging
@@ -422,6 +524,7 @@ function devClearWarehouse(playerId) {
 
 
 module.exports = {
+  WAREHOUSE_EXPIRING_WINDOW_MS, // REQ-0368
   isExpired,
   normalizeWarehouseStatus,
   purgeExpiredWarehouseItems,
@@ -433,5 +536,6 @@ module.exports = {
   claimWarehouseItem,
   finalizeClaimingItemsForCanvas,
   devBackdateClaimedWarehouseItem,
+  devSetWarehouseExpiry, // REQ-0368
   devClearWarehouse,
 };
