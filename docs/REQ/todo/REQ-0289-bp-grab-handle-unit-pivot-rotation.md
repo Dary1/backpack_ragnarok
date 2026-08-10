@@ -132,3 +132,18 @@ Blocked by REQ-0288. Independent of REQ-0287/0290/0291.
   whichever lands second removes the core wiring / keeps it removed.
 - Rotation AXIS is unaffected by trigger location: §B pivots on the Unit's
   absolute seat cell regardless of where the rotation is invoked.
+
+## Amendment (2026-08-10, UI-gap batch — user-ratified)
+From the 2026-08-10 gamer-lens UI gap analysis (finding P0-2), ratified with
+the REQ-0366..0377 batch: rotation's DISCOVERABILITY is part of this REQ's
+acceptance, not a separate REQ.
+- The dblclick/double-tap trigger may not remain the only visible path: ship a
+  persistent rotate affordance at the Unit seat (e.g. a ↻ affordance on/next
+  to the ✥ badge on hover/selection), so a player who never reads the one-shot
+  REQ-0141 hint (`guide.hint.rotation`, fires once per profile) can still find
+  rotation.
+- Keyboard: R during drag/float rotates via this REQ's Unit-pivot path — the
+  key binding itself lands with REQ-0369 (input conventions); this REQ only
+  guarantees the pivot entry point is callable from a non-pointer trigger.
+- Gate addition: an e2e that rotates a BP using ONLY single clicks on the
+  visible affordance (no dblclick), and one via R while floating (with 0369).
