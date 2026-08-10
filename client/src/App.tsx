@@ -101,6 +101,8 @@ import { FloatingItemTip } from './FloatingItemTip';
 import { BeamTracePanel } from './BeamTracePanel';
 import { InviteBanner } from './InviteBanner';
 import { TroopDisbandToast } from './TroopDisbandToast'; // REQ-0327
+import { NotificationCenterProvider } from './notify/NotificationCenter'; // REQ-0368
+import { LoginDigest } from './notify/LoginDigest'; // REQ-0368
 import { LandingPage } from './landing/LandingPage';
 import { Nav } from './Nav';
 import { PlaceholderPage } from './PlaceholderPage';
@@ -202,6 +204,11 @@ function App() {
 
   return (
     <DexCardProvider locale={snapshot.locale}>
+    {/* REQ-0368: ONE notification poller for the whole app. The bell (in the
+        header), the nav-rail badges, the login digest and the REQ-0327 toast
+        all read this one feed -- the toast's own poll moved in here, so the
+        request cadence is exactly what it was before this REQ. */}
+    <NotificationCenterProvider>
     <div className={`app-shell${onLanding ? '' : ' with-rail'}`}>
       {onLanding ? null : <Nav active={route} locale={snapshot.locale} />}
       {onLanding ? null : (
@@ -217,6 +224,9 @@ function App() {
           surfaces the one notification kind. Top-level (outside the route
           switch), like InviteBanner, so it can appear on any route. */}
       <TroopDisbandToast locale={snapshot.locale} />
+      {/* REQ-0368: the login digest -- "what happened while I was away",
+          shown once per boot if the first poll carries unseen news. */}
+      <LoginDigest locale={snapshot.locale} />
       {/* REQ-0141: first-run guided tour + contextual hint. Non-modal; both
           render null unless on the canvas page with an active guide/hint. */}
       <FirstRunGuide />
@@ -350,6 +360,7 @@ function App() {
         <BeamTracePanel />
       </main>
     </div>
+    </NotificationCenterProvider>
     </DexCardProvider>
   );
 }

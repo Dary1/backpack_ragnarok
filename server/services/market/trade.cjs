@@ -5,7 +5,8 @@
 // services/market.cjs facade header for the rule-5 divergence writeup.
 'use strict';
 const storage = require('../../storage.cjs');
-const { WAREHOUSE_CAP, WAREHOUSE_TTL_MS, genId } = require('../core.cjs');
+const { WAREHOUSE_CAP, WAREHOUSE_TTL_MS, genId, getScheduleContent } = require('../core.cjs');
+const notifications = require('../notifications.cjs'); // REQ-0368
 const { purgeExpiredWarehouseItems, addToWarehouse } = require('../warehouse.cjs');
 const { deployedUidSet, referencedUidSet } = require('../squads.cjs');
 const { burnOf, findInventoryPO, findInventorySI, findInventoryBP, readTmBalance, DEX_PRICE_HISTORY_MAX } = require('./lib.cjs');
@@ -319,6 +320,36 @@ function buyListing(buyerId, listingId, idemKey) {
   hist.entries.unshift({ qty, tm: listing.price.tm, t: tIso, listingId: listing.id });
   hist.entries = hist.entries.slice(0, DEX_PRICE_HISTORY_MAX);
   storage.writeMarketDexHistory(listing.itemId, hist);
+
+  // REQ-0368: notify the SELLER that their listing sold. Emitted after all
+  // seven steps are durable (proceeds row, furnace entry, price history), and
+  // best-effort: a feed write must never unwind a committed trade. The buyer
+  // is NOT notified -- they performed the action synchronously and hold the
+  // receipt in this very response; the seller is the absent party the
+  // notification centre exists for (before this REQ their only signal was
+  // market.mine.settledChip, visible only by opening My Listings).
+  // Display names resolve exactly the way views.cjs's toListingDto does
+  // (def.name / i18n.ja.name / name_ja), so the bell reads the same string
+  // the market card does.
+  try {
+    let def = null;
+    const content = getScheduleContent();
+    if (kind === 'tm') def = content.tmDefsById[listing.itemId] || null;
+    else if (kind === 'si') def = content.siDefsById[listing.itemId] || null;
+    else if (kind === 'unit') def = content.unitDefsById[listing.itemId] || null;
+    else def = content.itemDefsById[listing.itemId] || null;
+    const ja = def && def.i18n && def.i18n.ja;
+    notifications.emitMarketSettled(listing.sellerId, {
+      listingId: listing.id,
+      itemId: listing.itemId,
+      itemName: def ? def.name : listing.itemId,
+      itemNameJa: (ja && ja.name) || (def && def.name_ja) || null,
+      net: sellerReceives,
+      burn,
+      tm: listing.price.tm,
+      t: tIso,
+    });
+  } catch (e) { /* a feed write must never unwind a committed trade */ }
 
   return { listing, receipt: receiptOf(listing), replayed: false };
 }

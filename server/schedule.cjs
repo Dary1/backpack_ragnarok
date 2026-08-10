@@ -72,6 +72,7 @@ module.exports = {
   grantWarehouseItem: warehouse.grantWarehouseItem,
   grantTmQty: warehouse.grantTmQty,
   devBackdateClaimedWarehouseItem: warehouse.devBackdateClaimedWarehouseItem,
+  devSetWarehouseExpiry: warehouse.devSetWarehouseExpiry, // REQ-0368
   devClearWarehouse: warehouse.devClearWarehouse,
   listWarehouse: warehouse.listWarehouse,
   claimWarehouseItem: warehouse.claimWarehouseItem,

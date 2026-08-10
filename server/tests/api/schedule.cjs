@@ -1157,25 +1157,30 @@ module.exports.run = async function run(h) {
       idOf[pl.playerId] = entry.id;
     }
     // Idempotent: a second settle poll never double-emits.
+    // REQ-0368: scoped to the KIND. These counts used "entries for this room"
+    // as a proxy for "troop_disbanded entries", which held while the room was
+    // the only thing that could notify; the same room's FINAL dive now emits a
+    // run_settled entry on the settle poll first, so the proxy no longer holds
+    // even though the disband emission itself is unchanged.
     await scheduleReq('GET', '/api/schedule/troops/' + id, owners[0].token);
     const again = await scheduleReq('GET', '/api/notifications', owners[0].token);
-    assert.strictEqual(again.body.notifications.filter((n) => n.roomId === id).length, 1, 'a re-poll never double-notifies (exactly one entry stands)');
+    assert.strictEqual(again.body.notifications.filter((n) => n.roomId === id && n.kind === 'troop_disbanded').length, 1, 'a re-poll never double-notifies (exactly one entry stands)');
     // ack hides the entry for THAT owner only.
     const ack = await scheduleReq('POST', '/api/notifications/ack', owners[0].token, { ids: [idOf[owners[0].playerId]] });
     assert.strictEqual(ack.status, 200, 'ack: ' + JSON.stringify(ack.body));
     assert.strictEqual(ack.body.acked, 1, 'exactly one entry acked');
     const afterAck = await scheduleReq('GET', '/api/notifications', owners[0].token);
-    assert.strictEqual(afterAck.body.notifications.filter((n) => n.roomId === id).length, 0, 'ack hides the entry from the unseen feed');
+    assert.strictEqual(afterAck.body.notifications.filter((n) => n.roomId === id && n.kind === 'troop_disbanded').length, 0, 'ack hides the entry from the unseen feed');
     // The BOT account (no browser) still reads its identical entry via the SAME endpoint (item 7).
     const botFeed = await scheduleReq('GET', '/api/notifications', owners[3].token);
-    const botMine = botFeed.body.notifications.filter((n) => n.roomId === id);
+    const botMine = botFeed.body.notifications.filter((n) => n.roomId === id && n.kind === 'troop_disbanded');
     assert.strictEqual(botMine.length, 1, 'the bot account reads its own identical entry via the same endpoint');
     assert.strictEqual(botMine[0].kind, 'troop_disbanded', 'same kind for the bot');
     assert.strictEqual(botMine[0].attackLv, level, 'same attackLv for the bot');
     // since cursor: passing the bot own latest id returns nothing strictly-newer.
     const sinceSelf = await scheduleReq('GET', '/api/notifications?since=' + botMine[0].id, owners[3].token);
     assert.strictEqual(sinceSelf.status, 200, 'since read: ' + JSON.stringify(sinceSelf.body));
-    assert.strictEqual(sinceSelf.body.notifications.filter((n) => n.roomId === id).length, 0, 'a since cursor at the latest id returns only strictly-newer entries');
+    assert.strictEqual(sinceSelf.body.notifications.filter((n) => n.roomId === id && n.kind === 'troop_disbanded').length, 0, 'a since cursor at the latest id returns only strictly-newer entries');
     // No leak: an unrelated caller never sees this disband entry.
     const outsider = playersFixture.createPlayer('R7Outsider', []);
     const outFeed = await scheduleReq('GET', '/api/notifications', outsider.token);
@@ -1200,6 +1205,164 @@ module.exports.run = async function run(h) {
       assert.strictEqual(mine[0].attackLv, 4, 'the entry carries the troop attack level');
     }
     scheduleStorage.deleteRoom(id);
+  });
+
+  // =====================================================================
+  // REQ-0368: the notification CENTRE kinds. Each is emitted from a service
+  // code path the server already owned (settleRun / the warehouse purge
+  // sweep / market buyListing -- the market one is asserted in the market
+  // suite, which is where a settled trade already exists). What is proven
+  // here: the moment fires, the payload is per-RECIPIENT (never the whole
+  // party's haul), a re-poll never double-notifies now that (kind, roomId)
+  // alone no longer identifies an event, and the REQ-0327 `since` cursor
+  // filters the new kinds exactly as it filters the old ones.
+  // =====================================================================
+
+  await AT('REQ-0368: a settled SOLO run emits exactly one run_settled entry to the room owner -- result/dungeonId/lootCount/runId payload, attackLv = the level FOUGHT, a re-poll never double-emits, and the since cursor hides it', async () => {
+    const solo = playersFixture.createPlayer('R8Solo', []);
+    scheduleStorage.writeProfile(solo.playerId, makeTestCanvas());
+    // Level 1: the fixture dungeon is the one the sibling auto-start test
+    // above uses, and it only rolls a runnable dive at that level.
+    const level = 1;
+    const created = await scheduleReq('POST', '/api/schedule/rooms', solo.token, { dungeonId: 'test_dungeon', level, formationId: 'formation1' });
+    assert.strictEqual(created.status, 200, 'create room: ' + JSON.stringify(created.body));
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) {
+      const r = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, solo.token, { squadIndex: i });
+      assert.strictEqual(r.status, 200, 'slot ' + i + ': ' + JSON.stringify(r.body));
+    }
+    // The first run starts LAZILY, on the next read of the room (see
+    // settleRoomIfDue's "the very first run, once all 4 slots just got
+    // filled" branch) -- the sibling auto-start test above reads it the
+    // same way.
+    const after = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, solo.token);
+    assert.strictEqual(after.body.room.status, 'active', 'precondition: four unique squads auto-start the room first run');
+    // Nothing announced while the dive is still in flight.
+    const pre = await scheduleReq('GET', '/api/notifications', solo.token);
+    assert.strictEqual(pre.body.notifications.filter((n) => n.roomId === roomId).length, 0, 'no run_settled before the run returns');
+    const roomRaw0 = scheduleStorage.readRoom(roomId);
+    assert.strictEqual(roomRaw0.status, 'active', 'precondition: four unique squads auto-start the room first run');
+    const runId = roomRaw0.lastRunId;
+    const runBefore = scheduleStorage.readRun(runId);
+    forceRunElapsed(runId);
+    await scheduleReq('GET', '/api/schedule/rooms/' + roomId, solo.token); // poll -> lazy settle -> emit
+    assert.strictEqual(scheduleStorage.readRun(runId).settled, true, 'precondition: the run settled on the poll');
+
+    const feed = await scheduleReq('GET', '/api/notifications', solo.token);
+    assert.strictEqual(feed.status, 200, 'feed: ' + JSON.stringify(feed.body));
+    const mine = feed.body.notifications.filter((n) => n.kind === 'run_settled' && n.payload.runId === runId);
+    assert.strictEqual(mine.length, 1, 'exactly one run_settled entry for the settled run');
+    const entry = mine[0];
+    assert.strictEqual(entry.roomId, roomId, 'the entry carries the room id');
+    assert.strictEqual(entry.attackLv, level, 'attackLv is the level the dive was FOUGHT at, not the room level after settlement');
+    assert.strictEqual(entry.seenAt, null, 'a fresh entry is unseen');
+    assert.strictEqual(entry.dedupeKey, runId, 'the run id is the idempotency key -- a room settles many runs');
+    assert.strictEqual(entry.payload.result, runBefore.result, 'the payload carries the run result');
+    assert.strictEqual(entry.payload.dungeonId, 'test_dungeon', 'the payload carries the dungeon');
+    const ownLoot = (runBefore.rewards || []).filter((a) => a.owner === solo.playerId).length;
+    assert.strictEqual(entry.payload.lootCount, ownLoot, 'lootCount is THIS owner own reward count');
+
+    // Idempotent across polls: the widened (kind, roomId, dedupeKey) key
+    // collapses a re-emission for the SAME run, while still allowing the
+    // room next run to notify (asserted by the follow-up below).
+    await scheduleReq('GET', '/api/schedule/rooms/' + roomId, solo.token);
+    const again = await scheduleReq('GET', '/api/notifications', solo.token);
+    assert.strictEqual(again.body.notifications.filter((n) => n.kind === 'run_settled' && n.payload.runId === runId).length, 1, 'a re-poll never double-notifies the same run');
+
+    // since cursor: nothing strictly newer than this entry own id.
+    const since = await scheduleReq('GET', '/api/notifications?since=' + entry.id, solo.token);
+    assert.strictEqual(since.status, 200, 'since read: ' + JSON.stringify(since.body));
+    assert.strictEqual(since.body.notifications.filter((n) => n.id <= entry.id).length, 0, 'the since cursor returns only strictly-newer entries');
+    // ack hides it.
+    const ack = await scheduleReq('POST', '/api/notifications/ack', solo.token, { ids: [entry.id] });
+    assert.strictEqual(ack.body.acked, 1, 'exactly one entry acked');
+    const afterAck = await scheduleReq('GET', '/api/notifications', solo.token);
+    assert.strictEqual(afterAck.body.notifications.filter((n) => n.id === entry.id).length, 0, 'ack hides the entry');
+    // No leak to an unrelated caller.
+    const outsider = playersFixture.createPlayer('R8SoloOutsider', []);
+    const out = await scheduleReq('GET', '/api/notifications', outsider.token);
+    assert.strictEqual(out.body.notifications.filter((n) => n.roomId === roomId).length, 0, 'no run_settled leaks to a non-participant');
+    for (const item of schedule.listWarehouse(solo.playerId)) scheduleStorage.deleteWarehouseItem(solo.playerId, item.itemUid);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, solo.token);
+  });
+
+  await AT('REQ-0368: a settled TROOP run notifies EVERY participant, each with their OWN lootCount (never the party total) and nobody else', async () => {
+    const owners = ['R8TrA', 'R8TrB', 'R8TrC', 'R8TrD'].map((n) => playersFixture.createPlayer(n, []));
+    for (const pl of owners) scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const { id } = await openAndFillTroop(owners, 1);
+    const runId = scheduleStorage.readRoom(id).lastRunId;
+    const runBefore = scheduleStorage.readRun(runId);
+    forceRunElapsed(runId);
+    await scheduleReq('GET', '/api/schedule/troops/' + id, owners[0].token); // settle
+    assert.strictEqual(scheduleStorage.readRun(runId).settled, true, 'precondition: the troop dive settled');
+    let summed = 0;
+    for (const pl of owners) {
+      const feed = await scheduleReq('GET', '/api/notifications', pl.token);
+      const mine = feed.body.notifications.filter((n) => n.kind === 'run_settled' && n.payload.runId === runId);
+      assert.strictEqual(mine.length, 1, 'each participant gets exactly one run_settled: ' + pl.playerId);
+      const own = (runBefore.rewards || []).filter((a) => a.owner === pl.playerId).length;
+      assert.strictEqual(mine[0].payload.lootCount, own, 'participant ' + pl.playerId + ' is told THEIR OWN haul, not the party total');
+      summed += mine[0].payload.lootCount;
+    }
+    assert.strictEqual(summed, (runBefore.rewards || []).length, 'the per-participant counts sum to the run whole reward set');
+    const outsider = playersFixture.createPlayer('R8TrOutsider', []);
+    const out = await scheduleReq('GET', '/api/notifications', outsider.token);
+    assert.strictEqual(out.body.notifications.filter((n) => n.roomId === id).length, 0, 'nothing leaks to a non-participant');
+    for (const pl of owners) for (const item of schedule.listWarehouse(pl.playerId)) scheduleStorage.deleteWarehouseItem(pl.playerId, item.itemUid);
+    scheduleStorage.deleteRoom(id);
+  });
+
+  await AT('REQ-0368: the warehouse purge sweep announces BOTH edges -- warehouse_expired names the rows it deleted (the silent-loss fix) and warehouse_expiring batch-collapses the rows entering the <24h window, each exactly once', async () => {
+    const wh = playersFixture.createPlayer('R8Wh', []);
+    scheduleStorage.writeProfile(wh.playerId, makeTestCanvas());
+    const now = Date.now();
+    const row = (uid, itemId, expiresInMs) => ({
+      itemUid: uid, playerId: wh.playerId, itemId,
+      harvestedAt: new Date(now - 1000).toISOString(),
+      expiresAt: new Date(now + expiresInMs).toISOString(),
+      sourceRoomId: null, sourceRunId: null, status: 'claimable',
+    });
+    // One already dead, two inside the 24h window, one comfortably fresh.
+    scheduleStorage.writeWarehouseItem(wh.playerId, 'wh_dead1', row('wh_dead1', 'test_sword', -60 * 1000));
+    scheduleStorage.writeWarehouseItem(wh.playerId, 'wh_soon1', row('wh_soon1', 'test_sword', 6 * 60 * 60 * 1000));
+    scheduleStorage.writeWarehouseItem(wh.playerId, 'wh_soon2', row('wh_soon2', 'test_sword', 20 * 60 * 60 * 1000));
+    scheduleStorage.writeWarehouseItem(wh.playerId, 'wh_fresh', row('wh_fresh', 'test_sword', 6 * 24 * 60 * 60 * 1000));
+
+    const survivors = schedule.listWarehouse(wh.playerId); // a read IS the sweep
+    assert.strictEqual(survivors.length, 3, 'the expired row is gone, the other three survive');
+
+    const feed = await scheduleReq('GET', '/api/notifications', wh.token);
+    assert.strictEqual(feed.status, 200, 'feed: ' + JSON.stringify(feed.body));
+    const expired = feed.body.notifications.filter((n) => n.kind === 'warehouse_expired');
+    assert.strictEqual(expired.length, 1, 'one batch-collapsed warehouse_expired entry for the sweep');
+    assert.strictEqual(expired[0].payload.count, 1, 'it counts the one row that actually died');
+    assert.deepStrictEqual(expired[0].payload.itemIds, ['test_sword'], 'it names the lost item -- until REQ-0368 this loss was entirely silent');
+    assert.strictEqual(expired[0].roomId, null, 'a warehouse kind has no room behind it');
+    const expiring = feed.body.notifications.filter((n) => n.kind === 'warehouse_expiring');
+    assert.strictEqual(expiring.length, 1, 'the two rows entering the window collapse into ONE entry for the sweep');
+    assert.strictEqual(expiring[0].payload.count, 2, 'the entry carries the batch count');
+
+    // A second sweep announces NOTHING new: the deleted row is gone, and the
+    // two warned rows are marked on the row itself, so a client polling every
+    // few seconds is warned once per item rather than once per poll.
+    schedule.listWarehouse(wh.playerId);
+    schedule.listWarehouse(wh.playerId);
+    const feed2 = await scheduleReq('GET', '/api/notifications', wh.token);
+    assert.strictEqual(feed2.body.notifications.filter((n) => n.kind === 'warehouse_expired').length, 1, 'no second warehouse_expired');
+    assert.strictEqual(feed2.body.notifications.filter((n) => n.kind === 'warehouse_expiring').length, 1, 'no re-warning on a re-poll');
+    assert.ok(scheduleStorage.readWarehouseItem(wh.playerId, 'wh_soon1').expiringNotifiedAt, 'the warned row carries its own once-only marker');
+    assert.ok(!scheduleStorage.readWarehouseItem(wh.playerId, 'wh_fresh').expiringNotifiedAt, 'a row outside the window is not marked');
+
+    // A row CROSSING into the window later gets its own entry.
+    const fresh = scheduleStorage.readWarehouseItem(wh.playerId, 'wh_fresh');
+    fresh.expiresAt = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
+    scheduleStorage.writeWarehouseItem(wh.playerId, 'wh_fresh', fresh);
+    schedule.listWarehouse(wh.playerId);
+    const feed3 = await scheduleReq('GET', '/api/notifications', wh.token);
+    const expiring3 = feed3.body.notifications.filter((n) => n.kind === 'warehouse_expiring');
+    assert.strictEqual(expiring3.length, 2, 'a row that crosses into the window later is its own batch');
+    assert.strictEqual(expiring3[1].payload.count, 1, 'and counts only the newly-crossed row');
+    for (const item of schedule.listWarehouse(wh.playerId)) scheduleStorage.deleteWarehouseItem(wh.playerId, item.itemUid);
   });
 
   scheduleStorage.deleteRoom(r5TroopId);

@@ -17,10 +17,12 @@ const WAREHOUSE_RE = /^\/api\/warehouse$/;
 const WAREHOUSE_CLAIM_RE = /^\/api\/warehouse\/claim$/;
 const WAREHOUSE_DEV_BACKDATE_CLAIM_RE = /^\/api\/warehouse\/dev\/backdate-claim$/; // REQ-0041 E2E hook, dev-only
 const WAREHOUSE_DEV_CLEAR_DEBRIS_RE = /^\/api\/warehouse\/dev\/clear-debris$/; // fix: e2e pg teardown -- E2E debris-cleanup hook, dev-only
+const WAREHOUSE_DEV_BACKDATE_EXPIRY_RE = /^\/api\/warehouse\/dev\/backdate-expiry$/; // REQ-0368 E2E hook, dev-only
 
 function tryWarehouseRoutes(req, res, url, p) {
   const warehouseMatch = p.match(WAREHOUSE_RE) || p.match(WAREHOUSE_CLAIM_RE) ||
-    p.match(WAREHOUSE_DEV_BACKDATE_CLAIM_RE) || p.match(WAREHOUSE_DEV_CLEAR_DEBRIS_RE);
+    p.match(WAREHOUSE_DEV_BACKDATE_CLAIM_RE) || p.match(WAREHOUSE_DEV_CLEAR_DEBRIS_RE) ||
+    p.match(WAREHOUSE_DEV_BACKDATE_EXPIRY_RE);
   if (warehouseMatch) {
     const ctx = resolveCallerOr401(req, res);
     if (!ctx) return;
@@ -48,6 +50,30 @@ function tryWarehouseRoutes(req, res, url, p) {
         try {
           const item = schedule.devBackdateClaimedWarehouseItem(callerId, body.itemUid, body.extraSecsIntoPast);
           sendJSON(res, 200, { ok: true, itemUid: item.itemUid, claimedAt: item.claimedAt });
+        } catch (e) { sendDomainError(res, e); }
+      });
+      return;
+    }
+
+    // ---- POST /api/warehouse/dev/backdate-expiry (REQ-0368 E2E hook,
+    // dev-only) ----
+    // Body: {itemUid, secsUntilExpiry?}. Moves a warehouse row's expiresAt to
+    // `secsUntilExpiry` seconds from now (default 3600; negative = already
+    // dead), so the e2e suite can observe both expiry edges -- the <24h
+    // warning and the deletion -- without waiting out a 7-day TTL. Same
+    // test-control-seam shape and gating as dev/backdate-claim above: the
+    // dev_mode fallback caller ONLY, and always that caller's own id.
+    if (p.match(WAREHOUSE_DEV_BACKDATE_EXPIRY_RE)) {
+      if (!methodGuard(req, res, 'POST')) return;
+      if (!callerIsDevFallback) {
+        sendJSON(res, 403, { ok: false, error: 'forbidden: dev/backdate-expiry is only available to the dev_mode fallback caller (test-control seam, not a real player action)' });
+        return;
+      }
+      withJsonBody(req, res, {}, (body) => {
+        if (!body.itemUid) { sendJSON(res, 400, { ok: false, error: 'itemUid is required' }); return; }
+        try {
+          const item = schedule.devSetWarehouseExpiry(callerId, body.itemUid, body.secsUntilExpiry);
+          sendJSON(res, 200, { ok: true, itemUid: item.itemUid, expiresAt: item.expiresAt });
         } catch (e) { sendDomainError(res, e); }
       });
       return;

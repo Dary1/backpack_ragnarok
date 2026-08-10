@@ -323,6 +323,31 @@ module.exports.run = async function run(h) {
     assert.deepStrictEqual(settledRow.priceHistory, [{ qty: 46, tm: 'lrdst', t: hist.entries[0].t }], 'DTO exposes the engraved history (with its price TM)');
   });
 
+  await AT('REQ-0368: a settled trade notifies the SELLER (net/burn + the resolved item name) and nobody else -- the buyer already holds the receipt, and the entry is idempotent per listing', async () => {
+    // Runs directly after the settle above, against that same trade
+    // (mktListing1Id: blade, qty 46 -> burn 4 -> seller receives 42).
+    const sellerFeed = await marketReq('GET', '/api/notifications', mktSeller.token);
+    assert.strictEqual(sellerFeed.status, 200, 'seller feed: ' + JSON.stringify(sellerFeed.body));
+    const sold = sellerFeed.body.notifications.filter((n) => n.kind === 'market_settled' && n.payload.listingId === mktListing1Id);
+    assert.strictEqual(sold.length, 1, 'the seller gets exactly one market_settled entry for the trade');
+    assert.strictEqual(sold[0].roomId, null, 'a trade has no room behind it');
+    assert.strictEqual(sold[0].dedupeKey, mktListing1Id, 'the listing id is the idempotency key -- a listing settles once');
+    assert.strictEqual(sold[0].payload.itemId, 'blade', 'the payload names the item sold');
+    assert.strictEqual(sold[0].payload.net, 42, 'net is what actually landed in the seller warehouse (qty - burn)');
+    assert.strictEqual(sold[0].payload.burn, 4, 'burn is what the furnace took');
+    assert.strictEqual(sold[0].payload.tm, 'lrdst', 'the payload carries the price TM');
+    // The display name is resolved the SAME way the market card resolves it,
+    // so the bell and My Listings never disagree about what was sold.
+    const mine = await marketReq('GET', '/api/market/listings?filter=mine', mktSeller.token);
+    const card = mine.body.listings.find((x) => x.id === mktListing1Id);
+    assert.strictEqual(sold[0].payload.itemName, card.itemName, 'the entry carries the same itemName the market card shows');
+    assert.strictEqual(sold[0].payload.itemNameJa, card.itemNameJa, 'and the same ja name');
+    // The BUYER is deliberately NOT notified: they performed the action
+    // synchronously and the receipt came back in that very response.
+    const buyerFeed = await marketReq('GET', '/api/notifications', mktBuyer.token);
+    assert.strictEqual(buyerFeed.body.notifications.filter((n) => n.kind === 'market_settled').length, 0, 'the buyer is not notified of their own purchase');
+  });
+
   await AT('market: concurrent buys -- first wins, second 409 already_settled; self-buy 409; insufficient balance 409 leaves everything untouched', async () => {
     const mine = await marketReq('GET', '/api/market/listings?filter=mine', mktSeller.token);
     const fxId = mine.body.listings.find((x) => x.itemUid === 'mkt_sell_3').id;
