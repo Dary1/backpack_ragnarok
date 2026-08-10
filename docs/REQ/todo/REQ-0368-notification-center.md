@@ -1,8 +1,10 @@
 # REQ-0368 — Notification center: bell + nav badges + login digest
 
 ## Status
-todo — spec by Cowork session 2026-08-10 (gamer-lens UI gap analysis batch);
-ratified by user 2026-08-10, chat: 「では、それらを全て、TODOのREQとして書き出してください」.
+built — all gates green on branch req-0368-notification-center (2026-08-10);
+NOT yet merged/deployed/accepted. Spec by Cowork session 2026-08-10 (gamer-lens
+UI gap analysis batch); ratified by user 2026-08-10, chat: 「では、それらを全て、
+TODOのREQとして書き出してください」.
 
 ## Origin
 UI gap analysis 2026-08-10 (Cowork). Findings P0-6 + P0-7 combined (same
