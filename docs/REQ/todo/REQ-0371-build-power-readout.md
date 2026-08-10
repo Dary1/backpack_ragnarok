@@ -73,6 +73,26 @@ metric — it is just never shown to the player.
 - Power number present on canvas chip + sortie squad cards, both locales.
 - CI green.
 
+## Gate results (2026-08-11, worktree req-0371-build-power-readout)
+- Unit [5.79/7] client/scripts/check_build_power.mjs: ALL PASS -- chip HP ==
+  engine-summed HP (bpHpMax + the sim's 100 fallback) for the fixture canvas;
+  magnitude arithmetic (range mean / scalar / multi_strike x hits / no-n = 0 /
+  inv exclusion / seated SI); en+ja key presence for chip + squad-card copy.
+- e2e canvas-chrome.spec.ts "REQ-0371 build power readout": PASS -- chip shows
+  HP + power; dragging bp-transfer's empty test_empty BP onto canvas raises
+  both by exactly 100.
+- e2e sortie-prefill.spec.ts: PASS -- attackLv 7 committed at depart seeds the
+  stepper on in-session revisit AND after a full reload (canvas-doc round
+  trip). First CI run caught the spec leaking its recruiting troop into the
+  reused fleet worker (409 in workshop.spec) -- fixed by disbanding via
+  POST /troops/:id/cancel (troop-host.spec convention), commit 1d84d391.
+- Full tools/ci.sh: CI GREEN (375s, scope=both, 236 e2e passed / 0 failed,
+  receipt tree 73414029e70521ae1aecc1b83808ff3b4ddd6e9c).
+- Commits: d69feed8 (implementation), 1d84d391 (e2e cleanup fix), 1d84d391
+  = HEAD at gate time.
+- Dungeon band note on the stepper: untouched (spec item 3), belowBand
+  behavior unchanged.
+
 ## Out of scope
 DPS simulation, win-rate prediction, per-dungeon success forecast (a future
 REQ may revive a calibrated forecast; this one is display-only).
