@@ -138,8 +138,8 @@ KNOWN_TOPLEVEL='.gitignore bot client content deploy docs mock-src package.json
 pnpm-lock.yaml server shared sim tools tsconfig.server.json types web'
 
 KNOWN_CLIENT_SRC='a11y api artadmin auth board canvas contentadmin dex engine
-guide i18n landing lib market ragnarok render schedule sortie store styles theme
-warehouse'
+guide i18n landing lib market notify ragnarok render schedule sortie store styles
+theme warehouse'
 KNOWN_CLIENT_SRC_ADMIN='artadmin contentadmin'
 
 KNOWN_SERVER_ROUTES='admin.cjs art.cjs bio.cjs content.cjs dex.cjs dismantle.cjs
