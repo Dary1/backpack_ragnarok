@@ -4,7 +4,7 @@ import type { Cell, GameState, Socket } from '../engine/engine.d.ts';
 import { boardIdEquals } from './drag';
 import type { BoardCommitApi, BoardId, CarryState, DropTarget } from './drag';
 import { flash } from './ghosts'; // REQ-0288: the revert cue reuses the flash mechanism (neutral grey)
-import { armUndo, notifyStateChanged } from '../store';
+import { armUndo, armUndoFrom, captureUndoState, notifyStateChanged } from '../store';
 import type { BoardRenderer } from './BoardRenderer';
 
 export function makeCommitApi(self: BoardRenderer, ): BoardCommitApi {
@@ -20,6 +20,17 @@ export function makeCommitApi(self: BoardRenderer, ): BoardCommitApi {
         if (self.disposed || !self.lastState) return;
         self.revertCount++;
         flash(self, carryHomeCells(self, c), '#8a8a8a');
+      },
+      // REQ-0369: the R shortcut's rotate -- the SAME call path as the
+      // dblclick-rotate cores (BoardRenderer.handleBPPointerDown /
+      // handlePOPointerDown): REQ-0367 arm-on-success undo, notify on ok,
+      // reject flash on refusal. Reached via drag.ts's rotatePieceOnBoard.
+      rotateShortcut: (kind, uid) => {
+        if (self.disposed || !self.lastState) return;
+        const undoCopy = captureUndoState();
+        const r = kind === 'bp' ? self.deps.ops.rotateBP(self.lastState, uid) : self.deps.ops.rotatePO(self.lastState, uid);
+        if (r.ok) { armUndoFrom(undoCopy); notifyStateChanged(); }
+        else flash(self, r.cells);
       },
     };
   }

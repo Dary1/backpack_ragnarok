@@ -10,6 +10,7 @@
 import { useState } from 'react';
 import { buyMarketListing, type ApiMarketListing, type GameData } from '../api';
 import { t } from '../i18n';
+import { useModalConventions } from '../lib/useModalConventions'; // REQ-0369
 import type { Locale } from '../store';
 import { buyReasonOf } from './marketErrors';
 import { RollBar, MarketThumb, PriceTag, dexNoLabel, listingKindLine } from './marketShared';
@@ -43,6 +44,9 @@ export function BuyModal({ listing, gameData, locale, tms, balance, onSettled, o
   const [phase, setPhase] = useState<BuyPhase>('form');
   const [busy, setBusy] = useState(false);
   const [genericMsg, setGenericMsg] = useState<string>('');
+  // REQ-0369: unified modal conventions (Esc / overlay-click / focus trap /
+  // initial focus) -- the same hook warehouse/SellModal (REQ-0366) adopted.
+  const { dialogRef, onScrimClick } = useModalConventions(onClose);
 
   const qty = listing.price.qty;
   const burn = listing.burn;
@@ -82,8 +86,8 @@ export function BuyModal({ listing, gameData, locale, tms, balance, onSettled, o
   }
 
   return (
-    <div className="scrim market-scrim" data-testid="market-buy-modal" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal panel ornate market-modal" role="dialog" aria-modal="true">
+    <div className="scrim market-scrim" data-testid="market-buy-modal" onClick={onScrimClick}>
+      <div className="modal panel ornate market-modal" role="dialog" aria-modal="true" ref={dialogRef} tabIndex={-1}>
         <i className="k tl" /><i className="k tr" /><i className="k br" /><i className="k bl" />
 
         {phase === 'form' ? (
