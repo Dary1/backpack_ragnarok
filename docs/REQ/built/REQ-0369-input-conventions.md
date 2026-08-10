@@ -1,8 +1,7 @@
 # REQ-0369 — Input conventions: keyboard shortcuts + unified modal behavior
 
 ## Status
-built — implemented + all gates green 2026-08-10 (Cowork session); NOT merged/
-deployed. Spec by Cowork session 2026-08-10 (gamer-lens UI gap analysis batch);
+done — merged, deployed, live-verified 2026-08-10 (Cowork session). Spec by Cowork session 2026-08-10 (gamer-lens UI gap analysis batch);
 ratified by user 2026-08-10, chat: 「では、それらを全て、TODOのREQとして書き出してください」.
 
 ## Origin
@@ -122,3 +121,25 @@ Unit-pivot path when 0289 lands: swap the `rotateShortcut` closure's body
 (board/commits.ts) — the trigger layer (inputShortcuts.ts) needs no
 change. 0289's "R while floating" gate can then reuse
 input-conventions.spec.ts's float test wholesale.
+
+## Outcome (merged + deployed 2026-08-10)
+Merged to `master` as `cfc204ed` (--no-ff). Deploy followed
+`docs/llm_managed/content_deploy_runbook.md` in order (same as REQ-0368):
+1. Merge landed on the main checkout (which IS live); tree clean before and
+   after.
+2. `node tools/predeploy_recalibrate_powerlevel.cjs` -> **CLEAN, zero
+   writes** (mandatory step run even though this REQ touches no content).
+3. Nothing regenerated, nothing to commit.
+4. `bash tools/release.sh` -> full ci.sh scope=both **CI GREEN** (379 s;
+   e2e 234 passed incl. input-conventions.spec.ts 5/5); **dist
+   unchanged** (the bundle committed on the branch was already current);
+   receipt tree `5af27191e6519659dfc44761ab38ec04e3b24e8b`.
+5. `systemctl --user restart backpack-api` -> active, clean boot
+   (`backpack-api listening on http://127.0.0.1:8802`); `backpack-web`
+   active. (No server-code change in this REQ; restart per runbook.)
+
+### Live verification
+- Served bundle: `web/app/index.html` on disk AND the bytes served at
+  `/app/` both reference `index-BCTE7Yks.js` -- the build this REQ
+  produced.
+- `/api/content` -> 200 on the restarted service.
