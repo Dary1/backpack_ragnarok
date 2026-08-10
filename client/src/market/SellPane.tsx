@@ -18,6 +18,7 @@ import type { GameState } from '../engine/engine.d.ts';
 import type { Locale } from '../store';
 import { marketErrorKey } from './marketErrors';
 import { MarketThumb, PriceTag, RollBar, burnOf, dexNoLabel, referencedUidSet, MARKET_PRICE_MIN, MARKET_PRICE_MAX } from './marketShared';
+import { anchorFor, usePriceCarve, CarveAnchor, CarveStepper, CarveEst } from './priceCarve'; // REQ-0366
 
 /** One sellable inventory instance (PO or SI), with display fields
  * precomputed off the right def map so the picker/carve never touch the
@@ -107,8 +108,11 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
   const priceTm = tms[0] || 'lrdst'; // REQ-0195a: price TM from the live registry (selector arrives with a 2nd live TM).
   const multiTm = tms.length > 1; // REQ-0195a: with >1 live TM, prices carry the TM's short label (a lone rune would be ambiguous).
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
-  const [price, setPrice] = useState<number>(1);
-  const [priceText, setPriceText] = useState<string>('1');
+  // REQ-0366: the price stepper state machine lives in priceCarve.tsx
+  // now (shared with the warehouse SellModal); price/applyPrice keep
+  // their historical names here via destructuring.
+  const carve = usePriceCarve();
+  const { price, applyPrice } = carve;
   const [busy, setBusy] = useState(false);
   const [errKey, setErrKey] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -158,13 +162,8 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
     if (!target || deployedUids.has(target.itemUid) || listedUids.has(target.itemUid) || referencedUids.has(target.itemUid)) return;
     setSelectedUid(target.itemUid);
     setErrKey(null);
-    let seed = MARKET_PRICE_MIN;
-    for (const l of allListings) {
-      if (l.itemId === target.itemId && l.priceHistory && l.priceHistory.length > 0) { seed = l.priceHistory[0].qty; break; }
-    }
-    const clamped = Math.max(MARKET_PRICE_MIN, Math.min(MARKET_PRICE_MAX, Math.round(seed) || MARKET_PRICE_MIN));
-    setPrice(clamped);
-    setPriceText(String(clamped));
+    // REQ-0366: same clamp/seed law as before, via priceCarve's helpers.
+    applyPrice(anchorFor(target.itemId, allListings) ?? MARKET_PRICE_MIN);
     if (typeof document !== 'undefined') {
       requestAnimationFrame(() => {
         const el = document.querySelector(`[data-testid="market-sell-item"][data-item-uid="${preselect.uid}"]`);
@@ -177,21 +176,7 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
    * this itemId anywhere in the known listings (priceHistory[0], newest
    * first). Empty-state when never settled -- per spec, this one sub-
    * element empty-states rather than blocking the pane. */
-  const anchor = useMemo(() => {
-    if (!selected) return null;
-    for (const l of allListings) {
-      if (l.itemId === selected.itemId && l.priceHistory && l.priceHistory.length > 0) {
-        return l.priceHistory[0].qty;
-      }
-    }
-    return null;
-  }, [selected, allListings]);
-
-  function applyPrice(v: number) {
-    const clamped = Math.max(MARKET_PRICE_MIN, Math.min(MARKET_PRICE_MAX, Math.round(v) || MARKET_PRICE_MIN));
-    setPrice(clamped);
-    setPriceText(String(clamped));
-  }
+  const anchor = useMemo(() => anchorFor(selected?.itemId ?? null, allListings), [selected, allListings]);
 
   function selectItem(uid: string) {
     if (deployedUids.has(uid) || listedUids.has(uid) || referencedUids.has(uid)) return;
@@ -200,13 +185,7 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
     // Seed the stepper from the anchor when known, else 1 (mock seeds
     // from data-ask; we have no ask until listed, so anchor or floor).
     const it = sellable.find((s) => s.itemUid === uid);
-    let seed = MARKET_PRICE_MIN;
-    if (it) {
-      for (const l of allListings) {
-        if (l.itemId === it.itemId && l.priceHistory && l.priceHistory.length > 0) { seed = l.priceHistory[0].qty; break; }
-      }
-    }
-    applyPrice(seed);
+    applyPrice((it ? anchorFor(it.itemId, allListings) : null) ?? MARKET_PRICE_MIN);
   }
 
   async function list() {
@@ -232,8 +211,9 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
     }
   }
 
+  // REQ-0366: the tm section's est line below still uses this; the po
+  // path's own burn now lives inside CarveEst.
   const burn = burnOf(price);
-  const capped = price >= MARKET_PRICE_MAX;
 
   // Eligible = at least one inventory PO not already locked/listed.
   const anyEligible = sellable.some((s) => !deployedUids.has(s.itemUid) && !listedUids.has(s.itemUid) && !referencedUids.has(s.itemUid));
@@ -417,43 +397,15 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
                 <span>{t(locale, 'market.sell.pieceLabel')}</span>
                 <b className="dj" data-testid="market-carve-name">{locale === 'ja' ? selected.nameJa || selected.name : selected.name}</b>
                 <span className="chip dexno">{dexNoLabel(dexNoOf(selected.itemId, allListings))}</span>
-                <span className="t-micro" data-testid="market-carve-anchor">
-                  {anchor != null ? t(locale, 'market.sell.anchor', { n: anchor }) : t(locale, 'market.sell.anchorNone')}
-                </span>
+                <CarveAnchor locale={locale} anchor={anchor} />
                 {/* REQ-0198 (A): the selected instance's roll bar in the carve header. */}
                 <RollBar kind={sellKind} rollPct={selected.rollPct} locale={locale} />
               </div>
-              <div className="stepper market-stepper">
-                <button type="button" className="sbtn" data-testid="market-price-down" aria-label={t(locale, 'market.sell.priceDown')} onClick={() => applyPrice(price - 1)}>−</button>
-                <span className="sval">
-                  <PriceTag gameData={gameData} tm={priceTm} multi={multiTm} />
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    data-testid="market-price-input"
-                    aria-label={t(locale, 'market.sell.priceAria')}
-                    value={priceText}
-                    onChange={(e) => {
-                      const d = e.target.value.replace(/[^\d]/g, '');
-                      if (d === '') { setPriceText(''); return; }
-                      const n = parseInt(d, 10);
-                      setPriceText(d);
-                      setPrice(Math.max(MARKET_PRICE_MIN, Math.min(MARKET_PRICE_MAX, n)));
-                    }}
-                    onBlur={() => applyPrice(parseInt(priceText, 10) || MARKET_PRICE_MIN)}
-                  />
-                </span>
-                <button type="button" className="sbtn" data-testid="market-price-up" aria-label={t(locale, 'market.sell.priceUp')} onClick={() => applyPrice(price + 1)}>+</button>
-                <span className="t-micro">{t(locale, 'market.sell.ceiling')}</span>
-              </div>
-              {capped ? <div className="t-micro capnote" data-testid="market-cap-note">{t(locale, 'market.sell.capReached')}</div> : null}
-              <div className="est market-est">
-                <span className="lbl">{t(locale, 'market.sell.estLabel')}</span>
-                <span data-testid="market-est-line">
-                  {t(locale, 'market.sell.estPay')} <b className="tnum" data-testid="market-est-pay">{price}</b> → <span className="kw-ember">{t(locale, 'market.sell.estBurn')} <b className="tnum" data-testid="market-est-burn">{burn}</b></span> ・ {t(locale, 'market.sell.estGet')} <b className="kw-gold tnum" data-testid="market-est-get">{price - burn}</b>{multiTm ? <>{' '}<PriceTag gameData={gameData} tm={priceTm} multi /></> : null}
-                </span>
-              </div>
+              {/* REQ-0366: stepper/capnote/est extracted VERBATIM to
+                  priceCarve.tsx (shared with the warehouse SellModal) --
+                  rendered DOM/classes/testids are unchanged. */}
+              <CarveStepper gameData={gameData} locale={locale} priceTm={priceTm} multiTm={multiTm} carve={carve} />
+              <CarveEst gameData={gameData} locale={locale} priceTm={priceTm} multiTm={multiTm} price={price} />
               <div className="mt16">
                 <button type="button" className="btn btn-forge" data-testid="market-list-btn" disabled={busy} onClick={() => void list()}>
                   {busy ? t(locale, 'market.sell.listing') : t(locale, 'market.sell.listButton')}

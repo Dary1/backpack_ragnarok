@@ -102,6 +102,7 @@ import { formatWarehouseCountdown } from '../lib/time';
 import { localizedName } from '../lib/contentName'; // REQ-0239: relocated
 import { t } from '../i18n';
 import type { Locale } from '../store';
+import { SellModal } from './SellModal'; // REQ-0366
 import { TtlRing } from './TtlRing';
 import { useWarehouseData, type WarehouseRow } from './useWarehouseData';
 import { WAREHOUSE_CAP } from '../../../shared/constants.json';
@@ -151,6 +152,8 @@ export function WarehousePage({ locale }: WarehousePageProps) {
   // a row carries, so the honest chip set is all / spoils / currency.
   // Display-only: claim-all still walks the FULL list.
   const [filter, setFilter] = useState<WarehouseFilter>('all');
+  // REQ-0366: the row whose direct-sell modal is open (null = closed).
+  const [sellRow, setSellRow] = useState<WarehouseRow | null>(null);
   const slotRef = useRef<HTMLDivElement | null>(null);
 
   // REQ-0041: claim this DOM node as the inventory column's portal
@@ -312,13 +315,15 @@ export function WarehousePage({ locale }: WarehousePageProps) {
           </button>
           {/* REQ-0328: sell a drop DIRECTLY from the warehouse to the
               market (no claim-to-canvas first). Hidden for currency (tm)
-              rows, which have no direct-sell path server-side. */}
+              rows, which have no direct-sell path server-side.
+              REQ-0366: opens the SellModal (market price-carve UI) --
+              the POST fires from the modal's confirm, not from here. */}
           {item.kind !== 'tm' ? (
             <button
               type="button"
               className="btn schedule-sell-btn"
               disabled={isSelling}
-              onClick={() => void handleSell(item.itemUid)}
+              onClick={() => setSellRow(item)}
               data-testid={`schedule-sell-btn-${item.itemUid}`}
             >
               {isSelling ? t(locale, 'schedule.warehouse.selling') : t(locale, 'schedule.warehouse.sellButton')}
@@ -489,6 +494,28 @@ export function WarehousePage({ locale }: WarehousePageProps) {
         <div className="t-micro">{t(locale, 'schedule.warehouse.footNote')}</div>
       </footer>
       </div>
+
+      {/* REQ-0366: the direct-sell price modal -- the market's own
+          price-carve UI replacing REQ-0328's raw browser prompt(), the
+          product's last raw browser dialog. Modal behavior (Esc /
+          overlay-click / focus trap / initial focus) follows the
+          REQ-0369 conventions via lib/useModalConventions. */}
+      {sellRow ? (
+        <SellModal
+          row={sellRow}
+          content={content}
+          locale={locale}
+          busy={sellingUid === sellRow.itemUid}
+          onConfirm={(qty) => {
+            void handleSell(sellRow.itemUid, qty).then((ok) => {
+              if (ok) setSellRow(null);
+            });
+          }}
+          onClose={() => {
+            if (sellingUid !== sellRow.itemUid) setSellRow(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
