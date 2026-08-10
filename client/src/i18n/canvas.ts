@@ -26,6 +26,12 @@ export const canvasEn = {
   'canvas.statBp': 'Packs',
   'canvas.statItems': 'Items',
   'canvas.statLinks': 'Linked',
+  // REQ-0371: total HP + REFERENCE power aggregate (lib/buildPower.ts). The
+  // tip follows the ragnarok.order.forecastTip honesty convention: a
+  // reference number, never a battle prediction.
+  'canvas.statHp': 'HP',
+  'canvas.statPower': 'Power',
+  'canvas.statPowerTip': 'Reference value: total backpack HP plus the summed effect magnitudes of placed items. Not a battle prediction.',
   'canvas.embark': 'Depart on Expedition',
   'canvas.saveState.saved': 'Saved',
   'canvas.saveState.saving': 'Saving…',
@@ -92,6 +98,10 @@ export const canvasJa = {
   'canvas.statBp': '背嚢',
   'canvas.statItems': '物品',
   'canvas.statLinks': '連結',
+  // REQ-0371: HP合計 + 参考戦力値（lib/buildPower.ts）。
+  'canvas.statHp': 'HP',
+  'canvas.statPower': '戦力',
+  'canvas.statPowerTip': '参考値 — 配置済み背嚢のHP合計と、盤上の物品の効果量の合計。戦闘結果の予測ではありません。',
   'canvas.embark': '遠征へ発つ',
   'canvas.saveState.saved': '保存済み',
   'canvas.saveState.saving': '保存中…',

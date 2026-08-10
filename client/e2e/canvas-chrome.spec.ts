@@ -7,7 +7,8 @@
 // this file asserts only the NEW chrome's presence and wiring, without
 // duplicating those flows.
 import { test, expect } from '@playwright/test';
-import { bootApp } from './helpers';
+import { readFileSync } from 'node:fs';
+import { bootApp, bx, by, cx, cy, drag } from './helpers';
 
 test.describe('REQ-0070 canvas page chrome (MJOLNIR)', () => {
   test('board stages, coord rails, boardfoot squads + save seal render around live boards', async ({ page }) => {
@@ -60,5 +61,36 @@ test.describe('REQ-0070 canvas page chrome (MJOLNIR)', () => {
     await expect(page).toHaveURL(/#\/backpacks$/);
     await expect(page.locator('canvas.board-canvas')).toHaveCount(2);
     await expect(page.locator('.embark-dock .btn-forge')).toBeVisible();
+  });
+});
+
+// REQ-0371: the stats chip's HP + REFERENCE power readout ("place a BP ->
+// chip updates" gate). Reuses bp-transfer's fixture + its case-1 move so the
+// drag mechanics stay pinned by that spec, not re-proven here.
+test.describe('REQ-0371 build power readout', () => {
+  test('chip shows HP + power; both rise by exactly the BP\'s HP when an empty BP lands on canvas', async ({ page }) => {
+    const fixture = JSON.parse(readFileSync(new URL('./fixtures/bp-transfer-fixture.json', import.meta.url), 'utf8'));
+    await page.request.put('/api/profile/default/canvas', { data: fixture });
+    await bootApp(page);
+    const hpChip = page.locator('[data-testid="canvas-stat-hp"]');
+    const powerChip = page.locator('[data-testid="canvas-stat-power"]');
+    await expect(hpChip).toContainText(/\d/);
+    await expect(powerChip).toContainText(/\d/);
+    const num = async (loc: import('@playwright/test').Locator) =>
+      parseInt((await loc.innerText()).replace(/\D/g, ''), 10);
+    const hp0 = await num(hpChip);
+    const pw0 = await num(powerChip);
+    // bp-transfer case-1's own move: test_empty (1x2, no POs, no hpMax -> the
+    // sim's 100 default) from inv (1,1) via its ✥ badge onto canvas (6,5).
+    const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
+    const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
+    await drag(
+      page,
+      { x: invBox.x + bx(1), y: invBox.y + by(1) },
+      { x: canvasBox.x + cx(5), y: canvasBox.y + cy(6) },
+    );
+    // An empty BP contributes exactly its HP to both numbers.
+    await expect(hpChip).toContainText(String(hp0 + 100));
+    await expect(powerChip).toContainText(String(pw0 + 100));
   });
 });

@@ -6,6 +6,7 @@
 // the caller's rooms (+ the B1 lastRun window for the "frees at" time).
 import { useMemo } from 'react';
 import type { ApiRoom } from '../api';
+import { buildPower } from '../lib/buildPower'; // REQ-0371
 import { roomHoldsOwnSquad } from '../schedule/seats'; // REQ-0337
 import { useGameStore } from '../store';
 import {
@@ -39,6 +40,9 @@ export interface SquadInfo {
   deployment: SquadDeployment | null;
   /** total uids this squad shares with ANY other squad (passive link badge). */
   sharedBadgeCount: number;
+  /** REQ-0371: the REFERENCE power aggregate (lib/buildPower.ts) -- null until
+   * gameData loads. The same number the canvas chip shows for the active squad. */
+  power: number | null;
 }
 
 export interface SquadConflicts {
@@ -81,6 +85,7 @@ export function useSquadConflicts(rooms: ApiRoom[] | null): SquadConflicts {
   const snapshot = useGameStore();
   const state = (snapshot.state as GameStateLike | null) ?? null;
   const engine = snapshot.engine;
+  const gameData = snapshot.gameData;
   const presets = state?.presets ?? null;
 
   return useMemo<SquadConflicts>(() => {
@@ -114,6 +119,8 @@ export function useSquadConflicts(rooms: ApiRoom[] | null): SquadConflicts {
         unitIds,
         deployment: deploymentFor(i, rooms),
         sharedBadgeCount: sharedAll.size,
+        // REQ-0371: display-only reference power (pure data read, no engine call).
+        power: gameData ? buildPower(canvas, gameData.ITEMS, gameData.SI_DEFS).power : null,
       };
     });
 
@@ -132,7 +139,7 @@ export function useSquadConflicts(rooms: ApiRoom[] | null): SquadConflicts {
 
     return { squads, sharedBetween };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presets, state, engine, rooms]);
+  }, [presets, state, engine, gameData, rooms]);
 }
 
 /** Whether two squad indices conflict (share >=1 uid). Convenience over the hook. */

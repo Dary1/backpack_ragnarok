@@ -38,6 +38,34 @@ metric — it is just never shown to the player.
    LevelStepper with it. Show the dungeon band note as today.
 4. NO engine change (rule 1): all sums read the existing snapshot.
 
+## Build decisions (recorded at build time, 2026-08-11)
+- POWER FORMULA: the content-pipeline powerLevel is NOT expressible from the
+  client-side snapshot -- it is the sim-driven all-pairs round-robin
+  autobalance (tools/autobalance_pack_powerlevel.cjs, REQ-0297/REQ-0306),
+  which needs the combat simulator. Adopted the spec's fallback aggregate,
+  implemented in client/src/lib/buildPower.ts (the full documented rules live
+  in that module header; check_build_power.mjs pins the arithmetic):
+    power = round(totalHp + summed effect magnitudes)
+    * totalHp = sum of bp.hpMax ?? 100 (the sim's own fallback,
+      sim/lib/compile.cjs).
+    * effect magnitude = mean of each verb's [lo,hi] `n` (x hits for
+      multi_strike); verbs without numeric n count 0. The structured
+      `effects` AST reaches the client because server/lib/content.cjs serves
+      po/si entries via Object.assign({}, e, {eff_en, eff_ja}) -- the raw
+      field rides along; read cast-at-seam (REQ-0141 precedent), NO string
+      parsing of eff_en, NO server/engine change.
+    * counted: grid POs + SIs seated on them ({po,si} host) or host 'bond';
+      'inv'/page-stowed excluded ("items parked here take no effect").
+  Labelled reference, not prediction: canvas.statPowerTip on the chip and on
+  every squad-card power badge (the ragnarok.order.forecastTip convention).
+- ATTACK-LV PERSISTENCE: state.sortie = { attackLv } (client-only field in
+  the canvas doc -- sortie/sortiePrefs.ts), written at sortie/recruit commit
+  through notifyStateChanged() -> the one auto-save writer, restored by
+  applyCanvasToState + boot's migrate deep clone. GameState NOT widened.
+- SQUAD CARDS: power computed in useSquadConflicts (SquadInfo.power, null
+  until gameData loads) and rendered by SquadMiniCard as `⚔{n}` after the
+  BPxN / charge metas.
+
 ## Gates
 - Unit: chip HP equals engine-summed HP for a fixture canvas.
 - e2e: place a BP → chip updates; set attackLv 7, depart, revisit sortie →
