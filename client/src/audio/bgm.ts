@@ -23,8 +23,8 @@ export type BgmScene = 'title' | 'hall';
 
 const ASSET_BASE = '/redesign/assets'; // REQ-0069 served-docroot convention
 const TRACKS: Record<BgmScene, string> = {
-  title: `${ASSET_BASE}/bgm_main_loop.mp3`,
-  hall: `${ASSET_BASE}/bgm_main_loop.mp3`,
+  title: `${ASSET_BASE}/bgm_main_loop.wav`,
+  hall: `${ASSET_BASE}/bgm_main_loop.wav`,
 };
 
 let inited = false;
