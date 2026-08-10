@@ -20,13 +20,17 @@
 // atomic swap).
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { autoSaveAndFetch, cx, cy, drag } from './helpers';
+import { autoSaveAndFetch, cx, cy, drag, drainNotifications } from './helpers';
 
 const FIXTURE_PATH = new URL('./fixtures/squad-fixture.json', import.meta.url);
 
 async function loadFixtureAndBoot(page: import('@playwright/test').Page) {
   const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
   await page.request.put('/api/profile/default/canvas', { data: fixture });
+  // REQ-0368: this file boots by hand rather than through helpers.bootApp,
+  // so it needs the same drain -- an unseen feed would pop the login digest
+  // modal over the board and intercept the drags below.
+  await drainNotifications(page);
   await page.goto('/app/#/backpacks');
   await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
   await page.waitForTimeout(400);

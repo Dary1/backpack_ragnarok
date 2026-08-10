@@ -44,7 +44,7 @@ import { join } from 'node:path';
 import { E2E_CODE_ROOT, E2E_DATA_ROOT, E2E_CLI_ENV } from './e2e-env';
 import { test, expect, type Page } from '@playwright/test';
 import { GUEST_AUTH_TRACKED_FILES_PATH, PLAYERS_DIR, PROFILES_DIR } from './global-setup';
-import { bootApp, waitForAutoSave } from './helpers';
+import { bootApp, drainNotifications, waitForAutoSave } from './helpers';
 
 const REPO_ROOT = E2E_DATA_ROOT;
 const CLI_INVITE_PATH = join(E2E_CODE_ROOT, 'server', 'cli_invite.cjs');
@@ -182,6 +182,16 @@ test.beforeAll(() => {
 // harmless no-op overwrite.
 test.beforeEach(async ({ page }) => {
   await page.request.put(`/api/profile/${player.playerId}/canvas`, { headers: { 'X-Auth-Token': player.token }, data: fixture });
+  // REQ-0368: this file settles a lot of runs, and a settled run now leaves an
+  // unseen notification behind. Most tests here boot with a raw page.goto
+  // (invite deep-links, direct route loads) rather than through
+  // helpers.bootApp, so they do not get bootApp's own drain -- without this,
+  // debris from an earlier test in the same worker pops the login-digest MODAL
+  // over the board and intercepts the first click. Both identities are drained
+  // because a /#/invite/<token> boot runs the app as the GUEST, not the dev
+  // fallback.
+  await drainNotifications(page);
+  await drainNotifications(page, player.token);
 });
 
 test.describe('dungeons list (no auth)', () => {
@@ -1310,6 +1320,10 @@ test.describe('REQ-0099: settled-run replay transport', () => {
         expect((await view.json()).room.status).not.toBe('active');
       }).toPass({ timeout: 10000 });
 
+      // REQ-0368: the settle just above produced a run_settled entry for the
+      // dev caller; drain it so the digest modal is not covering the card this
+      // test is about to click. (The beforeEach drain ran BEFORE the settle.)
+      await drainNotifications(page);
       await page.goto('/app/#/schedule');
       await expect(page.locator('.schedule-page')).toBeVisible({ timeout: 10000 });
       const card = page.locator(`[data-room-id="${roomId}"]`);

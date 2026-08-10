@@ -133,7 +133,7 @@ test('REQ-0368: a warehouse row entering the <24h window lights the WAREHOUSE ra
   expect(aged.status()).toBe(200);
   await page.request.get('/api/warehouse');
 
-  await bootApp(page);
+  await bootApp(page, { keepNotifications: true });
   const badge = page.getByTestId('nav-badge-warehouse');
   await expect(badge).toBeVisible({ timeout: 25_000 });
   await expect(badge).toHaveText('1');
@@ -151,7 +151,7 @@ test('REQ-0368: booting with unseen news shows the login digest ONCE -- dismissi
   const feed = await (await page.request.get('/api/notifications')).json();
   expect(feed.notifications.some((n: { kind: string }) => n.kind === 'warehouse_expired'), 'the sweep announced the loss').toBe(true);
 
-  await bootApp(page);
+  await bootApp(page, { keepNotifications: true });
   const digest = page.getByTestId('notify-digest');
   await expect(digest).toBeVisible({ timeout: 25_000 });
   await expect(page.getByTestId('notify-digest-expired')).toBeVisible();
@@ -161,7 +161,7 @@ test('REQ-0368: booting with unseen news shows the login digest ONCE -- dismissi
   await expect(page.getByTestId('notify-bell')).toHaveAttribute('data-unread', '0');
 
   // A reload finds nothing unseen -> no second digest.
-  await bootApp(page);
+  await bootApp(page, { keepNotifications: true });
   await expect(page.getByTestId('notify-bell')).toHaveAttribute('data-unread', '0');
   await expect(digest).toHaveCount(0);
 });
