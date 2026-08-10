@@ -15,10 +15,17 @@
 // (toast text, tab pulse). Audio must never block or break the actual
 // claim flow.
 
+import { getBusContext, getSfxBus } from '../audio/bus';
+
 let sharedCtx: AudioContext | null = null;
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
+  // REQ-0370: prefer the shared bus context so this chime rides the SE bus
+  // (master/SE sliders + mute-all in Settings). Fallback: the pre-bus
+  // module-local context wired straight to the hardware.
+  const shared = getBusContext();
+  if (shared) return shared;
   const Ctor =
     window.AudioContext ??
     (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -53,7 +60,7 @@ export function playClaimChime(): void {
       gain.gain.setValueAtTime(0.0001, now + start);
       gain.gain.exponentialRampToValueAtTime(0.2, now + start + 0.012);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
-      osc.connect(gain).connect(ctx.destination);
+      osc.connect(gain).connect(getSfxBus() ?? ctx.destination);
       osc.start(now + start);
       osc.stop(now + start + dur + 0.02);
     }

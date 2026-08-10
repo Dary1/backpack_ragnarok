@@ -35,7 +35,11 @@ export const settingsEn = {
   'settings.chimesHint': 'Play a deterministic audio signature as your circuit ignites during a run replay.',
   'settings.hapticsLabel': 'Haptics (vibration)',
   'settings.hapticsHint': 'Vibrate in rhythm with the pulse on supported mobile devices.',
-  'settings.volumeLabel': 'Volume',
+  // REQ-0370: master/BGM/SE mixer (the chime volume slider folded into SE).
+  'settings.masterVolumeLabel': 'Master volume',
+  'settings.bgmVolumeLabel': 'BGM volume',
+  'settings.seVolumeLabel': 'SE volume',
+  'settings.muteAllLabel': 'Mute all audio',
 
   // REQ-0143: Accessibility (reduced motion + colourblind-safe note).
   'settings.a11yTitle': 'Accessibility',
@@ -72,7 +76,11 @@ export const settingsJa = {
   'settings.chimesHint': 'リプレイ中、回路の起動に合わせて決定論的なオーディオシグネチャを再生します。',
   'settings.hapticsLabel': '振動（ハプティクス）',
   'settings.hapticsHint': '対応するモバイル端末で、パルスのリズムに合わせて振動します。',
-  'settings.volumeLabel': '音量',
+  // REQ-0370: master/BGM/SE mixer (the chime volume slider folded into SE).
+  'settings.masterVolumeLabel': 'マスター音量',
+  'settings.bgmVolumeLabel': 'BGM音量',
+  'settings.seVolumeLabel': 'SE音量',
+  'settings.muteAllLabel': 'すべての音をミュート',
 
   // REQ-0143: Accessibility (reduced motion + colourblind-safe note).
   'settings.a11yTitle': 'アクセシビリティ',

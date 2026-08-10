@@ -14,6 +14,8 @@
 // start after the first real user gesture (browser autoplay policy); the click
 // flash respects prefers-reduced-motion.
 
+import { getBusContext, getSfxBus } from '../audio/bus';
+
 type Bucket = 'gold' | 'ember' | 'blood' | 'frost' | 'iron';
 
 const GLOW: Record<Bucket, string> = {
@@ -94,6 +96,9 @@ let requested = false;
 
 function ac(): AudioContext | null {
   try {
+    // REQ-0370: prefer the shared bus context (SE bus, mixer-governed).
+    const shared = getBusContext();
+    if (shared) ctx = shared;
     const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return null;
     if (!ctx) ctx = new Ctor();
@@ -130,7 +135,7 @@ function playClip(k: Bucket): void {
   s.buffer = buf;
   const g = c.createGain();
   g.gain.value = VOL[k];
-  s.connect(g).connect(c.destination);
+  s.connect(g).connect(getSfxBus() ?? c.destination);
   s.start();
 }
 
@@ -144,7 +149,7 @@ function hoverTick(): void {
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(0.02, t + 0.005);
   g.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
-  o.connect(g).connect(c.destination);
+  o.connect(g).connect(getSfxBus() ?? c.destination);
   o.start(t);
   o.stop(t + 0.05);
 }

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { initButtonFx } from './theme/buttonFx'
+import { initBgm } from './audio/bgm' // REQ-0370
 import { boot, initAutoSaveLifecycle, initUndoHotkey } from './store'
 import { initGuideController } from './guide/guideController'
 import { initMotionPrefs } from './a11y/motionPrefs' // REQ-0143
@@ -27,3 +28,4 @@ initAutoSaveLifecycle();
 initUndoHotkey(); // REQ-0367: global Ctrl+Z -> single-step undo
 initGuideController();
 initButtonFx();
+initBgm(); // REQ-0370: BGM (first-gesture start, hidden-pause, webdriver hard-off)

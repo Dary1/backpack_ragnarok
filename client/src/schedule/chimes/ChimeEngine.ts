@@ -23,6 +23,7 @@ import {
   type Timbre,
 } from './chimeMapping';
 import type { ChimePrefs } from './chimePrefs';
+import { getBusContext, getSfxBus } from '../../audio/bus'; // REQ-0370
 
 type AudioCtor = typeof AudioContext;
 
@@ -60,6 +61,9 @@ export class ChimeEngine implements ChimeSink {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private noiseBuffer: AudioBuffer | null = null;
+  /** REQ-0370: true when the context was created privately (shared bus
+   * unavailable) and dispose() therefore owns closing it. */
+  private ownsCtx = false;
   private prefs: ChimePrefs;
   /** Audio-clock time before which nothing new is scheduled (the 5-bounce
    * "beat of respect" silence). */
@@ -94,12 +98,15 @@ export class ChimeEngine implements ChimeSink {
   }
 
   dispose(): void {
-    if (this.ctx) {
-      void this.ctx.close();
-      this.ctx = null;
-      this.master = null;
-      this.noiseBuffer = null;
+    // REQ-0370: when parented on the shared bus, disposal detaches this
+    // engine's output only -- the bus context outlives any one Monitor.
+    if (this.master) {
+      try { this.master.disconnect(); } catch { /* already detached */ }
     }
+    if (this.ctx && this.ownsCtx) void this.ctx.close();
+    this.ctx = null;
+    this.master = null;
+    this.noiseBuffer = null;
   }
 
   handleEvent(ev: ApiRunEvent): void {
@@ -135,10 +142,17 @@ export class ChimeEngine implements ChimeSink {
     if (this.ctx) return this.ctx;
     if (!this.ctor) return null;
     try {
-      const ctx = new this.ctor();
+      // REQ-0370: prefer the shared bus context so chime output rides the
+      // SE bus (master/SE sliders + mute-all). The engine keeps its own
+      // master gain (prefs.volume) as the chime-internal mix level -- only
+      // the output PARENT changes. Fallback: a private context wired
+      // straight to the hardware, exactly the pre-bus behaviour.
+      const shared = getBusContext();
+      const ctx = shared ?? new this.ctor();
+      this.ownsCtx = shared == null;
       const master = ctx.createGain();
       master.gain.value = this.prefs.volume;
-      master.connect(ctx.destination);
+      master.connect((shared ? getSfxBus() : null) ?? ctx.destination);
       this.ctx = ctx;
       this.master = master;
       this.timeBase = ctx.currentTime;

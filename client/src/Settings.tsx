@@ -18,6 +18,7 @@ import { ApiError, clearStoredToken, fetchMe, getStoredToken, type ApiMe } from 
 import { t } from './i18n';
 import { setRoute, type Locale } from './store';
 import { loadChimePrefs, saveChimePrefs, type ChimePrefs } from './schedule/chimes/chimePrefs';
+import { loadAudioPrefs, saveAudioPrefs, type AudioPrefs } from './audio/audioPrefs'; // REQ-0370
 import { loadMotionPrefs, saveMotionPrefs, type MotionPrefs } from './a11y/motionPrefs'; // REQ-0143
 import { replayGuide } from './guide/guideController'; // REQ-0141
 import { getAuthState, subscribeAuth, signInWithDiscord, signInAsGuest, linkDiscord, signOutSupabase, type AuthState } from './auth/session'; // REQ-0118c
@@ -139,6 +140,7 @@ export function Settings({ locale }: SettingsProps) {
   // looking for an outage instead of at the sign-in block right below.
   const [signedOut, setSignedOut] = useState(false);
   const [chimePrefs, setChimePrefs] = useState<ChimePrefs>(() => loadChimePrefs());
+  const [audioPrefs, setAudioPrefs] = useState<AudioPrefs>(() => loadAudioPrefs()); // REQ-0370
   const [motionPrefs, setMotionPrefs] = useState<MotionPrefs>(() => loadMotionPrefs()); // REQ-0143
 
   useEffect(() => {
@@ -167,6 +169,16 @@ export function Settings({ locale }: SettingsProps) {
     });
   };
 
+  // REQ-0370: mixer prefs. saveAudioPrefs persists + fires the same-tab
+  // AUDIO_PREFS_EVENT the live bus graph (audio/bus.ts) listens on.
+  const updateAudioPrefs = (patch: Partial<AudioPrefs>) => {
+    setAudioPrefs((prev) => {
+      const next = { ...prev, ...patch };
+      saveAudioPrefs(next);
+      return next;
+    });
+  };
+
   // REQ-0143: reduced-motion. saveMotionPrefs persists + applies the document
   // attributes + fires the same-tab change event the renderer listens on.
   const updateMotionPrefs = (patch: Partial<MotionPrefs>) => {
@@ -177,7 +189,9 @@ export function Settings({ locale }: SettingsProps) {
     });
   };
 
-  const volumePct = Math.round(chimePrefs.volume * 100);
+  const masterPct = Math.round(audioPrefs.master * 100); // REQ-0370
+  const bgmPct = Math.round(audioPrefs.bgm * 100);
+  const sePct = Math.round(audioPrefs.sfx * 100);
 
   return (
     <div className="settings-page">
@@ -242,18 +256,58 @@ export function Settings({ locale }: SettingsProps) {
           </label>
           <p className="settings-hint">{t(locale, 'settings.hapticsHint')}</p>
         </div>
+        {/* REQ-0370: master/BGM/SE mixer + mute-all (audio/audioPrefs.ts ->
+            audio/bus.ts). The old chime-scoped volume slider folded into the
+            SE slider; the chime on/off checkbox above is untouched. */}
         <div className="settings-field settings-volume">
-          <span className="settings-field-label">{t(locale, 'settings.volumeLabel')}</span>
+          <span className="settings-field-label">{t(locale, 'settings.masterVolumeLabel')}</span>
           <input
             type="range"
             min={0}
             max={100}
             step={1}
-            data-testid="settings-chimes-volume"
-            value={volumePct}
-            onChange={(e) => updateChimePrefs({ volume: Number(e.target.value) / 100 })}
+            data-testid="settings-master-volume"
+            value={masterPct}
+            onChange={(e) => updateAudioPrefs({ master: Number(e.target.value) / 100 })}
           />
-          <span className="settings-field-value" data-testid="settings-chimes-volume-value">{volumePct}%</span>
+          <span className="settings-field-value" data-testid="settings-master-volume-value">{masterPct}%</span>
+        </div>
+        <div className="settings-field settings-volume">
+          <span className="settings-field-label">{t(locale, 'settings.bgmVolumeLabel')}</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            data-testid="settings-bgm-volume"
+            value={bgmPct}
+            onChange={(e) => updateAudioPrefs({ bgm: Number(e.target.value) / 100 })}
+          />
+          <span className="settings-field-value" data-testid="settings-bgm-volume-value">{bgmPct}%</span>
+        </div>
+        <div className="settings-field settings-volume">
+          <span className="settings-field-label">{t(locale, 'settings.seVolumeLabel')}</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            data-testid="settings-se-volume"
+            value={sePct}
+            onChange={(e) => updateAudioPrefs({ sfx: Number(e.target.value) / 100 })}
+          />
+          <span className="settings-field-value" data-testid="settings-se-volume-value">{sePct}%</span>
+        </div>
+        <div className="settings-field settings-toggle">
+          <label className="settings-toggle-label">
+            <input
+              type="checkbox"
+              data-testid="settings-mute-toggle"
+              checked={audioPrefs.muted}
+              onChange={(e) => updateAudioPrefs({ muted: e.target.checked })}
+            />
+            <span className="settings-field-label">{t(locale, 'settings.muteAllLabel')}</span>
+          </label>
         </div>
       </section>
 
