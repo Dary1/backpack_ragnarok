@@ -4,7 +4,7 @@ import type { Cell, GameState, Socket } from '../engine/engine.d.ts';
 import { boardIdEquals } from './drag';
 import type { BoardCommitApi, BoardId, CarryState, DropTarget } from './drag';
 import { flash } from './ghosts'; // REQ-0288: the revert cue reuses the flash mechanism (neutral grey)
-import { notifyStateChanged } from '../store';
+import { armUndo, notifyStateChanged } from '../store';
 import type { BoardRenderer } from './BoardRenderer';
 
 export function makeCommitApi(self: BoardRenderer, ): BoardCommitApi {
@@ -45,6 +45,11 @@ export function makeCommitApi(self: BoardRenderer, ): BoardCommitApi {
 export function commitPODrop(self: BoardRenderer, uid: string, originBoard: BoardId, drop: Extract<DropTarget, { type: 'grid' }> | Extract<DropTarget, { type: 'inv' }>): void {
     const state = self.lastState;
     if (!state) return;
+    // REQ-0367 (spec item 2): arm the one-step undo slot with a deep copy
+    // taken BEFORE the mutation commits. Every branch below mutates (or, in
+    // a rare stale-race refusal, leaves the state byte-identical -- in
+    // which case the armed copy simply undoes nothing).
+    armUndo();
     const { engine, ops } = self.deps;
     const sameBoard = boardIdEquals(originBoard, self.boardId);
     // REQ-0033 Phase 2: cross-board PO drops are no longer a universal
@@ -133,6 +138,7 @@ export function commitAsmDrop(self: BoardRenderer, _originBoard: BoardId, drop: 
     // never applies to an inventory BoardOps instance).
     const state = self.lastState;
     if (!state || !self.deps.ops.isCanvas) return;
+    armUndo(); // REQ-0367: see commitPODrop.
     if (drop.type === 'grid') self.deps.engine.moveAssembly(state, drop.anchor);
     else self.deps.engine.moveAssembly(state, 'inv');
     self.gCarry.removeChildren();
@@ -150,6 +156,7 @@ export function commitAsmDrop(self: BoardRenderer, _originBoard: BoardId, drop: 
 export function commitBPDrop(self: BoardRenderer, bpId: string, originBoard: BoardId, drop: Extract<DropTarget, { type: 'bp' }>): void {
     const state = self.lastState;
     if (!state) return;
+    armUndo(); // REQ-0367: see commitPODrop.
     const { engine, ops } = self.deps;
     if (boardIdEquals(originBoard, self.boardId)) {
       ops.moveBP(state, bpId, drop.origin);
@@ -172,6 +179,7 @@ export function commitBPDrop(self: BoardRenderer, bpId: string, originBoard: Boa
 export function commitSIDrop(self: BoardRenderer, uid: string, originBoard: BoardId, drop: DropTarget): void {
     const state = self.lastState;
     if (!state) return;
+    armUndo(); // REQ-0367: see commitPODrop.
     const { engine, ops } = self.deps;
     const sameBoard = boardIdEquals(originBoard, self.boardId);
     // REQ-0033 Phase 2: same three-way split as commitPODrop above (see

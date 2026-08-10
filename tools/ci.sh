@@ -423,6 +423,12 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   # arithmetic, no browser/Pixi -- same vite-ssrLoadModule rig as check_po_outline.
   stage "[5.9g/7] client squad-cell geometry convention (REQ-0286)"
   (cd client && node scripts/check_squad_cell_geom.mjs)
+  # REQ-0367: the single-step undo store driven against the REAL engine and
+  # REAL store modules (arm -> mutate -> undo -> key-order-insensitive deep
+  # equal; refused-rotate arm discipline; excluded-op clear; one-step slot
+  # consumption). Same vite-ssrLoadModule rig as check_auth.mjs above.
+  stage "[5.9h/7] client single-step undo store (REQ-0367)"
+  (cd client && node scripts/check_undo.mjs)
   # REQ-0341: there is no [6.1/7] bundle-env tripwire any more, and there is no
   # env to provision either. The client no longer reads VITE_SUPABASE_* at all
   # (client/src/auth/client.ts fetches GET /api/config at runtime), so web/app is

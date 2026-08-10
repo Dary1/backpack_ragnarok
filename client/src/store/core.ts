@@ -203,6 +203,11 @@ export interface StoreSnapshot {
    * 'offline' = the most recent PUT attempt failed (state is still safe
    * locally; the next mutation's debounce will retry the write). */
   autoSaveStatus: 'saved' | 'saving' | 'offline';
+  /** REQ-0367: whether the single-step undo slot is armed (see store/
+   * undo.ts). Drives the boardfoot undo button's disabled state. Module-
+   * store-only ephemeral UI state, never persisted -- same posture as
+   * activeInvPage below. */
+  undoAvailable: boolean;
   /** 0-based active inventory tab/page index (REQ-0030 Phase 2). Module-
    * store-only, never persisted (see module comment above). */
   activeInvPage: number;
@@ -268,6 +273,7 @@ export let snapshot: StoreSnapshot = {
   locale: 'en',
   stateVersion: 0,
   autoSaveStatus: 'saved',
+  undoAvailable: false,
   activeInvPage: 0,
   route: routeFromHash(typeof location !== 'undefined' ? location.hash : ''),
   me: null,
