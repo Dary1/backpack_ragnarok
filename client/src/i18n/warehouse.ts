@@ -47,11 +47,15 @@ export const warehouseEn = {
   'schedule.warehouse.capFull': 'Warehouse is full. New expedition rewards are being lost until you claim space.',
   'schedule.warehouse.claimAllButton': 'Claim all',
   'schedule.warehouse.claimingAll': 'Claiming all…',
-  // REQ-0328: direct warehouse->market sell.
+  // REQ-0328: direct warehouse->market sell. REQ-0366: the price prompt
+  // became the SellModal (the market's price-carve UI in a modal);
+  // sellPrompt / sellInvalidPrice are retired -- the stepper clamps to
+  // 1..999 by construction, so an invalid price can no longer be typed.
   'schedule.warehouse.sellButton': 'Sell',
   'schedule.warehouse.selling': 'Listing…',
-  'schedule.warehouse.sellPrompt': 'List this drop on the market. Enter a price in LRDST (1-999):',
-  'schedule.warehouse.sellInvalidPrice': 'Enter a whole number between 1 and 999.',
+  'schedule.warehouse.sellModalTitle': 'List on the market',
+  'schedule.warehouse.sellModalTitleEn': 'DIRECT TO MARKET',
+  'schedule.warehouse.sellCancel': 'Keep it on the shelf',
   'schedule.warehouse.sellSuccess': 'Listed on the market for {qty} LRDST — see it under My Listings.',
   'schedule.warehouse.sellFailed': 'Could not list this item: ',
 } as const;
@@ -101,11 +105,14 @@ export const warehouseJa = {
   'schedule.warehouse.capFull': '倉庫が満杯です。空きができるまで、新しい遠征報酬は失われ続けます。',
   'schedule.warehouse.claimAllButton': '一括回収',
   'schedule.warehouse.claimingAll': '一括回収中…',
-  // REQ-0328: direct warehouse->market sell.
+  // REQ-0328: direct warehouse->market sell. REQ-0366: prompt ->
+  // SellModal (sellPrompt / sellInvalidPrice retired; the stepper
+  // clamps 1..999 by construction).
   'schedule.warehouse.sellButton': '売る',
   'schedule.warehouse.selling': '出品中…',
-  'schedule.warehouse.sellPrompt': 'この戦利品を市場に出品します。価格をLRDSTで入力(1〜999):',
-  'schedule.warehouse.sellInvalidPrice': '1〜999の整数を入力してください。',
+  'schedule.warehouse.sellModalTitle': '市場に出品',
+  'schedule.warehouse.sellModalTitleEn': 'DIRECT TO MARKET',
+  'schedule.warehouse.sellCancel': '棚に置いておく',
   'schedule.warehouse.sellSuccess': '{qty} LRDSTで市場に出品しました — 「マイ出品」で確認できます。',
   'schedule.warehouse.sellFailed': 'このアイテムを出品できませんでした: ',
 } as const;
