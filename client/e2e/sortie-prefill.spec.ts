@@ -29,5 +29,15 @@ test.describe('REQ-0371 sortie attackLv prefill', () => {
     await page.reload();
     await expect(page.locator('[data-testid="sortie-entry"]')).toBeVisible({ timeout: 15000 });
     await expect(page.locator('[data-testid="sortie-level-input"]')).toHaveValue('7', { timeout: 15000 });
+    // CLEANUP: disband the recruiting troop this test opened. Fleet workers
+    // are REUSED across spec files, and a still-recruiting troop's held seat
+    // makes later slot assignments of that squad 409 'deployed elsewhere'
+    // (exactly what broke workshop.spec's LRDST run on the shared worker in
+    // this REQ's first CI run) -- same cancel the troop-host.spec.ts
+    // afterAll uses.
+    const rooms = (await (await page.request.get('/api/schedule/rooms')).json()).rooms as Array<{ id: string; status: string }>;
+    for (const r of rooms) {
+      if (r.status === 'recruiting') await page.request.post(`/api/schedule/troops/${r.id}/cancel`);
+    }
   });
 });
