@@ -20,7 +20,7 @@ UI gap analysis 2026-08-10 (Cowork). The P2 band — pre-release checklist.
    footer; add a patch-notes link (a static `web/` page is enough to start).
    Bug reports currently cannot name a build.
 3. **Theme the sign-in controls** — "Continue with Discord" / "Play as guest"
-   render as untheme d default buttons (live screenshot evidence 2026-08-10,
+   render as unthemed default buttons (live screenshot evidence 2026-08-10,
    signed-out Settings). First thing a new player clicks; apply the MJOLNIR
    button primitives (`theme/mjolnir.css`). Same for the landing sign-in row.
 4. **UI scale setting** — Accessibility block gains a text/UI scale toggle
