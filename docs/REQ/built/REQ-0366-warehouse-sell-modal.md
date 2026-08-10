@@ -1,8 +1,11 @@
 # REQ-0366 — Warehouse direct-sell price entry: replace window.prompt with the market price-carve modal
 
 ## Status
-built — all gates green 2026-08-10 (Cowork session), commit b205c82f on
-branch req-0366-warehouse-sell-modal; NOT merged/deployed.
+done — merged to master (ff-only, head 8cd0744f) and LIVE 2026-08-10;
+deploy verified end-to-end (see Outcome). Deploy ordered by the user in
+chat 2026-08-10: 「merge and deploy」.
+Was: built — all gates green 2026-08-10 (Cowork session), commit b205c82f
+on branch req-0366-warehouse-sell-modal.
 Was: todo — spec by Cowork session 2026-08-10 (gamer-lens UI gap analysis
 batch); ratified by user 2026-08-10, chat:
 「では、それらを全て、TODOのREQとして書き出してください」.
@@ -107,3 +110,21 @@ Decisions taken within the spec's degrees of freedom:
 ## Out of scope (unchanged)
 Pricing rules, burn rate, market backend, SellPane visual redesign.
 Rollout of useModalConventions to the OTHER modals stays REQ-0369's.
+
+## Outcome (2026-08-10, deploy)
+- Merged: `git merge --ff-only req-0366-warehouse-sell-modal` on the main
+  (live) checkout; master ed86ff85 -> 8cd0744f. The checkout was verified
+  clean before the merge (coordination check per PROJECT.md).
+- Runbook: `tools/predeploy_recalibrate_powerlevel.cjs` run post-merge per
+  the standing rule -> CLEAN, no-op, zero writes (no content in the diff).
+  No `backpack-api` restart: zero server/content files changed; the client
+  ships as committed `web/app` statics served from disk by backpack-web.
+- Live verification: `http://127.0.0.1:8801/app/` AND
+  `https://backpack-dev.qtie.jp/app/` (through the tunnel) both serve the
+  new bundle `index-DYMYrAGh.js` (asset 200), and that bundle contains the
+  `warehouse-sell-modal` testid -- the served artifact IS the modal build.
+  Behavior is covered by the hermetic gates (warehouse-sell 3/3, market
+  18/18, full CI GREEN receipt tree 3d5eacb5); live runs dev_mode-off /
+  signed-out (REQ-0365), so no live warehouse interaction was performed.
+- Worktree `~/backpack_ragnarok_worktrees/req-0366-warehouse-sell-modal`
+  left in place (branch fully merged; removable at the next sweep).
