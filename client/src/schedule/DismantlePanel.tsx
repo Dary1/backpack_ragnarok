@@ -39,6 +39,7 @@ import { ShapeGrid } from '../dex/ShapeGrid';
 import { t, type TranslationKey } from '../i18n';
 import { loadGame, useGameStore, type Locale } from '../store';
 import type { GameState, ItemDef, SIDef } from '../engine/engine.d.ts';
+import { useModalConventions } from '../lib/useModalConventions'; // REQ-0369
 import { useListMultiSelect } from './useListMultiSelect';
 
 interface DismantlableItem {
@@ -148,14 +149,10 @@ export function DismantlePanel({ locale, onClose }: DismantlePanelProps) {
     };
   }, []);
 
-  // ESC closes, same convention as the roll-result modal / dex card stack.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  // REQ-0369: Esc (this panel's own pre-0369 listener, aligned), overlay
+  // click, focus trap and initial focus via the shared conventions hook --
+  // the same conventions as every player-facing modal since REQ-0366/0369.
+  const { dialogRef, onScrimClick } = useModalConventions(onClose);
 
   // REQ-0090: the live, confirmable selection -- a locked (deployed-while-
   // this-modal-was-open) row can end up inside multi.selected if it fell
@@ -236,11 +233,9 @@ export function DismantlePanel({ locale, onClose }: DismantlePanelProps) {
   return (
     <div
       className="scrim workshop-dismantle-scrim"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      onClick={onScrimClick}
     >
-      <div className="modal panel ornate workshop-dismantle-modal" data-testid="workshop-dismantle-modal">
+      <div className="modal panel ornate workshop-dismantle-modal" data-testid="workshop-dismantle-modal" role="dialog" aria-modal="true" ref={dialogRef} tabIndex={-1}>
         <i className="k tl" />
         <i className="k tr" />
         <i className="k br" />
