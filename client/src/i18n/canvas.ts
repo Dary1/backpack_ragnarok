@@ -3,6 +3,12 @@
 // is gated at the barrel (see the split-commit gate record in the REQ).
 
 export const canvasEn = {
+  // REQ-0377 item 5: board zoom toggle (board/BoardZoom.tsx). Shown only
+  // under the 840px layout -- see styles/canvas.css.
+  'board.zoom.in': 'Zoom in',
+  'board.zoom.out': 'Fit',
+  'board.zoom.hint': 'Enlarge the board for easier aiming on a small screen.',
+
   'usage.usedBy': 'Used by',
   'usage.currentSquadMark': ' (current)',
   // REQ-0051 starter units: solo 4-squad play is a RELIEF measure, not best
@@ -83,6 +89,10 @@ export const canvasEn = {
 } as const;
 
 export const canvasJa = {
+  'board.zoom.in': '拡大',
+  'board.zoom.out': '全体',
+  'board.zoom.hint': '小さい画面でも狙いやすいように盤面を拡大します。',
+
   'usage.usedBy': '使用中スクアド',
   'usage.currentSquadMark': '（現在）',
   "squad.starterNudge": "4スカッドの単独運用はソロ救済策です。最強の道は、資産を1つのスカッドに集中し、仲間のトループで進むことです。",

@@ -814,6 +814,12 @@
 .mon-feed-row.tone-loot { border-left-color: var(--loot, var(--gold-hi)); }
 .mon-feed-row.tone-gimic { border-left-color: var(--frost, var(--frost-hi)); }
 .mon-feed-row.tone-system { border-left-color: var(--bone-3); }
+/* REQ-0377 item 6: a seekable feed row is a <button>, so it needs the button
+   chrome reset back to the grid row it looks like -- a button shrink-wraps and
+   centres its text by default. */
+.mon-feed-row-seek { width: 100%; text-align: left; background: none; border: 0; border-left: 2px solid transparent; color: inherit; font: inherit; cursor: pointer; }
+.mon-feed-row-seek:hover { background: rgba(201,169,89,.08); }
+.mon-feed-row-seek:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .mon-feed-jump { align-self: center; margin: 4px; cursor: pointer; border-color: var(--gold-lo); color: var(--gold-hi); }
 
 /* M5 dock --------------------------------------------------------- */
@@ -848,7 +854,13 @@
 .mon-transport-live { color: var(--ember-hi); }
 .mon-transport-clock { color: var(--bone-2); }
 .mon-scrub { flex: 1; min-width: 120px; height: 8px; border-radius: 999px; background: var(--raised); border: 1px solid var(--border-lo); position: relative; }
-.mon-scrub.is-scrub { cursor: pointer; }
+/* REQ-0377 item 6: the bar drags now. touch-action:none is REQUIRED, not
+   cosmetic -- without it the browser claims a horizontal touch drag for page
+   panning and the pointermove stream dies after a few events. */
+.mon-scrub.is-scrub { cursor: grab; touch-action: none; }
+.mon-scrub.is-scrubbing { cursor: grabbing; }
+/* An 8px bar is a small target; widen the HIT area without moving the bar. */
+.mon-scrub.is-scrub::before { content: ""; position: absolute; inset: -8px 0; }
 .mon-scrub-fill { height: 100%; border-radius: 999px; background: var(--gold-lo); }
 
 /* M6 settled summary (restyled) ---------------------------------- */

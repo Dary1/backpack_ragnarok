@@ -4,7 +4,17 @@
 
 export const navEn = {
   // Nav (Nav.tsx)
-  'nav.backpacks': 'Backpacks',
+  // REQ-0377 item 9 (user call): 'Backpacks' -> 'Squad'. The hall behind
+  // this entry is a squad's canvas PLUS its inventory pages, and Squad is
+  // exactly the engine's name for the canvas owner (REQ-0123 terminology;
+  // shared/engine.d.ts, "One squad's canvas snapshot") -- so the label now
+  // names the thing being edited instead of one kind of piece on it. The ja
+  // label is unchanged; it never had the problem. The e2e EN-label click
+  // contract moved in this same change (see Nav.tsx's header).
+  // 'nav.friends' below is KEPT even though REQ-0377 item 1 dropped Friends
+  // from the rail: App.tsx still renders PlaceholderPage titleKey=
+  // "nav.friends" for a '#/friends' deep link.
+  'nav.backpacks': 'Squad',
   'nav.schedule': 'Schedule',
   'nav.warehouse': 'Warehouse', // REQ-0086
   'nav.workshop': 'Workshop', // REQ-0042

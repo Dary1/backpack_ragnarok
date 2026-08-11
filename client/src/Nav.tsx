@@ -8,16 +8,25 @@
 //      from anywhere (REQ-0069 requirement);
 //   2. one .nav-link button per route, each a rune glyph over a short
 //      label. Selector contract kept for the E2E suite: the buttons are
-//      still .nav-link / .nav-link-active with the same EN label text
-//      REQ-0034 shipped ('Backpacks', 'Schedule', ... — see i18n.ts).
+//      still .nav-link / .nav-link-active with the EN label text from
+//      i18n.ts ('Squad', 'Schedule', ...). REQ-0377 item 9 renamed the
+//      first entry's EN label 'Backpacks' -> 'Squad' and moved every
+//      .nav-link hasText:'Backpacks' e2e selector in the same commit.
 //
 // REQ-0069 additions: '#/market' and '#/ragnarok' render PlaceholderPage
 // until their own REQs land (the mock rail shows 市場/殿堂 pages). Entry
 // ORDER follows the mock rail (canvas/expedition/warehouse/dex/workshop/
-// market/hall) with the two app-only routes (Friends, Settings) appended.
-// Rune glyphs for mock-mapped entries come straight from the mock;
-// Friends (ᚹ wunjo) and Settings (ᛟ othala) have no mock
-// counterpart and were chosen here.
+// market/hall) with the app-only Settings route appended. Rune glyphs for
+// mock-mapped entries come straight from the mock; Settings (ᛟ othala)
+// has no mock counterpart and was chosen here.
+//
+// REQ-0377 item 1 (user call: hide, not disable): Friends (ᚹ wunjo) is NO
+// LONGER a rail entry. It had no REQ and no implementation, so the rail
+// spent one of its nine slots on a door that opened onto PlaceholderPage's
+// "coming soon" -- a dead door teaches the player to distrust the rail.
+// The '#/friends' ROUTE and its PlaceholderPage (App.tsx) are deliberately
+// KEPT: hiding is a NAV_ITEMS edit, so reviving the entry when the feature
+// lands is a one-line revert, and an existing deep link still resolves.
 //
 // REQ-0086: lands the mock's 倉庫 (warehouse) rail entry that REQ-0069
 // had explicitly deferred ("the warehouse lives as a Schedule tab
@@ -56,7 +65,6 @@ const NAV_ITEMS: NavItem[] = [
   { route: 'workshop', key: 'nav.workshop', rune: 'ᛈ' }, // REQ-0042
   { route: 'market', key: 'nav.market', rune: 'ᚠ' }, // REQ-0069 placeholder
   { route: 'ragnarok', key: 'nav.ragnarok', rune: 'ᛏ' }, // REQ-0069 placeholder
-  { route: 'friends', key: 'nav.friends', rune: 'ᚹ' },
   { route: 'settings', key: 'nav.settings', rune: 'ᛟ' },
 ];
 

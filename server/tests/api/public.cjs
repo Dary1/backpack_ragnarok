@@ -14,7 +14,7 @@ module.exports.runSync = function runSync(h) {
     evictServerModuleTree, evictStorageAndPlayers, tmpHome, realHomedir,
     fakeRepoHome, repoRoot, contentDir, liveDir, batchDir, fixtureLiveDungeonDir } = h;
 
-T('api: GET /api/health returns {ok,version}', () => {
+T('api: GET /api/health returns {ok,version,build}', () => {
   const req = mockReq('GET', '/api/health');
   const res = mockRes();
   api.handle(req, res);
@@ -22,6 +22,14 @@ T('api: GET /api/health returns {ok,version}', () => {
   const parsed = JSON.parse(res.body);
   assert.strictEqual(parsed.ok, true);
   assert.strictEqual(typeof parsed.version, 'string');
+  // REQ-0377 item 2: the build identity. Asserted as a NON-EMPTY string, not
+  // as a sha: 'unknown' is a legitimate value (lib/meta.cjs degrades to it
+  // rather than throwing), and pinning a real sha here would make this test
+  // fail on every commit. What must never regress is that the field EXISTS
+  // and says something -- an absent field is what left bug reports unable to
+  // name a build in the first place.
+  assert.strictEqual(typeof parsed.build, 'string');
+  assert.ok(parsed.build.length > 0, 'build must not be empty');
 });
 
 // REQ-0341: GET /api/config. The route reads process.env on EVERY request

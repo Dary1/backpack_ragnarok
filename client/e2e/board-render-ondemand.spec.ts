@@ -146,7 +146,7 @@ test.describe('REQ-0345 -- the boards render on demand', () => {
     // (c) THE ZERO IS NOT VACUOUS. The same counter, read the same way, must
     // climb for a render that certainly happened. Without this, a probe that
     // had simply stopped working would pass (a) and (b) perfectly.
-    await page.locator('.nav-link', { hasText: 'Backpacks' }).click();
+    await page.locator('.nav-link', { hasText: 'Squad' }).click();
     await page.waitForTimeout(500);
     const c0 = await paints(page);
     await page.locator('.inv-tab').nth(1).click();

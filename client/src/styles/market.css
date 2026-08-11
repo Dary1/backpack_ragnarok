@@ -190,6 +190,18 @@
 
 /* ---- responsive ---- */
 @media (max-width:920px){ .market-sell-grid{ grid-template-columns:1fr; } }
+/* REQ-0377 item 8: the settled-price sparkline sits inline with the anchor
+   line it summarises. Direction is encoded by the LINE's shape and by the
+   aria-label; the hue is a secondary cue only (REQ-0143). */
+.market-carve-anchor { display: inline-flex; align-items: center; gap: 8px; }
+.market-anchor-spark { flex: none; overflow: visible; }
+.market-anchor-spark polyline { stroke: var(--bone-3); }
+.market-anchor-spark circle { fill: var(--bone-2); }
+.market-anchor-spark.is-up polyline { stroke: var(--state-ready, #57C77B); }
+.market-anchor-spark.is-up circle { fill: var(--state-ready, #57C77B); }
+.market-anchor-spark.is-down polyline { stroke: var(--dmg-take, #E06B5F); }
+.market-anchor-spark.is-down circle { fill: var(--dmg-take, #E06B5F); }
+
 @media (max-width:840px){
   .market-page{ padding:12px 12px 96px; }
   .market-pagehead{ padding:14px 0 0; }

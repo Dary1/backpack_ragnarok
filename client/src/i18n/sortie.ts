@@ -36,8 +36,8 @@ export const sortieEn = {
   'sortie.slot.empty': 'Assign a squad',
   'sortie.slot.unassign': 'Remove from slot',
   'sortie.shelf.title': 'Your squads',
-  'sortie.shelf.empty': 'You have no squads yet — build one on the Backpacks screen first.',
-  'sortie.shelf.goBackpacks': 'Open Backpacks',
+  'sortie.shelf.empty': 'You have no squads yet — build one on the Squad screen first.',
+  'sortie.shelf.goBackpacks': 'Open Squad',
   'sortie.squad.bp': 'BP×{n}',
   'sortie.squad.charge': '⚡{n}',
   'sortie.squad.power': '⚔{n}', // REQ-0371: the buildPower reference aggregate (tooltip = canvas.statPowerTip)

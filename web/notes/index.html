@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>backpack_ragnarok — 更新履歴 / Patch notes</title>
+<!--
+  REQ-0377 item 2. A STATIC page under web/, deliberately: web/ is the docroot
+  the :8801 static host already serves verbatim (architecture.md section 2), so
+  this page costs no route, no bundle byte and no server change, and it stays
+  readable to a player whose app build is the one that is broken.
+
+  It is hand-maintained. Generating it from docs/REQ/done/ was considered and
+  rejected for now: a REQ title is an internal work item ("Collapse
+  invalidateServedContent()'s double refresh to one"), not a player-facing
+  change note, and a generator would publish the ones that are invisible to a
+  player alongside the ones that are not. When the cadence makes hand-editing
+  hurt, the fix is a curated `player_facing:` field in the REQ front matter,
+  not a title dump.
+
+  Convention for a new entry: newest block FIRST, dated, ja line then EN line,
+  and only changes a player can actually observe.
+-->
+<style>
+  :root { --void:#0A0D12; --panel:#131820; --bone:#E9E3D3; --bone-2:#A8A193;
+          --bone-3:#6B675C; --gold:#C9A959; --gold-hi:#EBD9A4; --border-lo:#28313E; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--void); color:var(--bone);
+         font-family:"Zen Kaku Gothic New","Noto Sans JP",system-ui,sans-serif;
+         line-height:1.7; }
+  main { max-width: 720px; margin: 0 auto; padding: 48px 20px 80px; }
+  a { color: var(--gold); text-decoration: none; }
+  a:hover { color: var(--gold-hi); }
+  h1 { font-size: 26px; letter-spacing:.1em; margin:0 0 4px; color: var(--gold-hi); }
+  .sub { color: var(--bone-3); font-size: 13px; margin: 0 0 32px; }
+  .back { display:inline-block; margin-bottom: 28px; font-size: 13px; }
+  section { border:1px solid var(--border-lo); border-radius:3px; background:var(--panel);
+            padding: 18px 20px; margin: 0 0 18px; }
+  h2 { font-size: 17px; margin: 0 0 2px; color: var(--gold); }
+  .date { color: var(--bone-3); font-size: 12px; margin: 0 0 12px; letter-spacing:.06em; }
+  ul { margin: 0; padding-left: 20px; }
+  li { margin: 0 0 10px; }
+  .en { display:block; color: var(--bone-2); font-size: 13px; }
+  footer { color: var(--bone-3); font-size: 12px; margin-top: 36px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="/app/">← ゲームに戻る / Back to the game</a>
+  <h1>更新履歴 ・ Patch notes</h1>
+  <p class="sub">プレイヤーから見える変更だけを載せています。不具合報告の際は、タイトル画面右下の build 番号を添えてください。<br>
+    <span class="en">Only player-visible changes are listed here. When reporting a problem, please include the build id shown in the bottom-right corner of the title screen.</span></p>
+
+  <section>
+    <h2>リリース磨き込み / Release polish</h2>
+    <p class="date">2026-08-11</p>
+    <ul>
+      <li>タイトル画面に build 番号とこの更新履歴へのリンクを追加しました。
+        <span class="en">The title screen now shows a build id and links here.</span></li>
+      <li>未実装の「フレンズ」をナビから一旦外しました。実装時に戻ります。
+        <span class="en">The unimplemented Friends rail entry is hidden until the feature ships.</span></li>
+      <li>英語のナビ名を Backpacks から Squad に変更しました（日本語の「編成」はそのまま）。
+        <span class="en">The English rail label for the build hall is now &ldquo;Squad&rdquo;.</span></li>
+      <li>サインインのボタンが他の画面と同じ見た目になりました。
+        <span class="en">The sign-in buttons now use the same theme as the rest of the game.</span></li>
+      <li>設定に UI の大きさ（小/中/大）を追加しました。
+        <span class="en">Settings gains a UI scale control (S / M / L).</span></li>
+      <li>狭い画面で盤面を拡大できるズーム切替を追加しました。
+        <span class="en">A zoom toggle for the boards on narrow screens.</span></li>
+      <li>リプレイのシークバーをドラッグできるようになり、ログ行を押すとその時刻に飛べます。
+        <span class="en">Replay: drag the progress bar to scrub, and click a feed row to jump to that moment.</span></li>
+      <li>設定からプロフィールの書き出しとアカウント削除ができるようになりました。
+        <span class="en">Settings gains a data export and an account deletion path.</span></li>
+      <li>市場の価格欄に、直近の成約価格の推移を示すスパークラインを追加しました。
+        <span class="en">Market listings show a sparkline of recent settled prices.</span></li>
+    </ul>
+  </section>
+
+  <footer>backpack_ragnarok &copy; 2026</footer>
+</main>
+</body>
+</html>

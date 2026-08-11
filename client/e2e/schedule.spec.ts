@@ -1367,6 +1367,47 @@ test.describe('REQ-0099: settled-run replay transport', () => {
         expect(elapsed).toBeLessThanOrEqual(Math.max(3, Math.round(total * 0.1)));
       }).toPass({ timeout: 4000 });
 
+      // REQ-0377 item 6 (a): the bar DRAGS, not just clicks. Before this REQ
+      // every reposition cost a fresh aim-and-click, so finding a moment meant
+      // guessing at it repeatedly. Driven with raw pointer events rather than
+      // Playwright's drag helper because the handler uses setPointerCapture --
+      // the moves must arrive as pointermove on the captured element.
+      await scrub.hover({ position: { x: 1, y: Math.max(1, Math.floor(box.height / 2)) } });
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width * 0.5, box.y + box.height / 2, { steps: 8 });
+      await page.mouse.up();
+      await expect(async () => {
+        const m = ((await clock.textContent()) || '').match(/^(\d\d):(\d\d) \/ (\d\d):(\d\d)$/);
+        expect(m).toBeTruthy();
+        const elapsed = Number(m![1]) * 60 + Number(m![2]);
+        const total = Number(m![3]) * 60 + Number(m![4]);
+        // Landed near the middle -- the assertion is that the drag MOVED the
+        // playhead off the t=0 the click above parked it at, and landed where
+        // the pointer was released, not merely that something changed.
+        expect(elapsed).toBeGreaterThan(Math.round(total * 0.25));
+        expect(elapsed).toBeLessThan(Math.round(total * 0.75));
+      }).toPass({ timeout: 4000 });
+
+      // REQ-0377 item 6 (b): a feed row IS a timestamp -- clicking one seeks to
+      // that moment. It must be a real <button> (keyboard reachable), not a div
+      // with a click handler.
+      const feedRow = page.locator('[data-testid="schedule-detail-pane"] [data-testid="monitor-feed-row"]').first();
+      await expect(feedRow).toBeVisible({ timeout: 10000 });
+      expect(await feedRow.evaluate((el) => el.tagName)).toBe('BUTTON');
+      const rowTime = ((await feedRow.locator('.mon-feed-time').textContent()) || '').trim();
+      const rm = rowTime.match(/^(\d\d):(\d\d)\.\d$/);
+      expect(rm, 'feed row shows mm:ss.s -- got ' + rowTime).toBeTruthy();
+      const rowSecs = Number(rm![1]) * 60 + Number(rm![2]);
+      await feedRow.click();
+      await expect(async () => {
+        const m = ((await clock.textContent()) || '').match(/^(\d\d):(\d\d) \//);
+        expect(m).toBeTruthy();
+        const elapsed = Number(m![1]) * 60 + Number(m![2]);
+        // The playhead lands ON that event's time (1s of slack for the
+        // row's tenths being truncated out of the clock's mm:ss).
+        expect(Math.abs(elapsed - rowSecs)).toBeLessThanOrEqual(1);
+      }).toPass({ timeout: 4000 });
+
       await page.request.delete(`/api/schedule/rooms/${roomId}`);
     } finally {
       if (devProfileBackup !== null) fs.writeFileSync(devProfilePath, devProfileBackup);

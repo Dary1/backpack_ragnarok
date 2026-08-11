@@ -35,10 +35,28 @@ html, body {
   box-sizing: border-box;
 }
 
+/* REQ-0377 item 4: the UI scale preference (a11y/scalePrefs.ts sets
+   :root[data-ui-scale]). ONE declaration scales the whole interface --
+   layout and type together, including every pre-MJOLNIR surface that still
+   sets px font-size directly, which a text-token-only approach would have
+   left behind. Absent attribute == 1, so an untouched install and every e2e
+   run render byte-identically to before this REQ.
+   `zoom` (not transform: scale) because it is a LAYOUT scale: the page
+   reflows at the new size instead of being stretched, and it is already the
+   mechanism styles/canvas.css uses on the board stage. */
+:root { --ui-scale: 1; }
+:root[data-ui-scale="s"] { --ui-scale: 0.9; }
+:root[data-ui-scale="m"] { --ui-scale: 1; }
+:root[data-ui-scale="l"] { --ui-scale: 1.15; }
+body { zoom: var(--ui-scale); }
+
 .app-shell {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  /* vh is viewport-relative and therefore NOT divided by the body zoom, so a
+     bare 100vh would overflow by exactly the scale factor at 'l' and leave a
+     permanent scrollbar on an otherwise-empty page. Divide it back out. */
+  min-height: calc(100vh / var(--ui-scale));
 }
 
 /* REQ-0069 -- app chrome, MJOLNIR style. The header is the mock's slim
@@ -1312,6 +1330,45 @@ html, body {
 .settings-account-signedout {
   color: var(--bone-2, #b9b2a4);
   font-size: 13px;
+}
+
+/* REQ-0377 item 7: data export block. */
+.settings-data-export { margin-top: 4px; padding: 9px 18px; font-size: 14px; }
+
+/* REQ-0377 item 4: the UI-scale step control in the Accessibility block. */
+.settings-uiscale { align-items: center; }
+.settings-uiscale-steps { display: inline-flex; gap: 6px; }
+.settings-uiscale-step { cursor: pointer; }
+
+/* REQ-0377 item 3: layout for the sign-in block. The BUTTONS themselves are
+   styled by the MJOLNIR primitives (.btn / .btn-forge in theme/mjolnir.css)
+   that Settings.tsx now puts on them -- this rule owns only stacking and
+   sizing, so the primitives stay the single source of button appearance and
+   these controls cannot drift away from the rest of the game again.
+   Scoped under .settings-signin-body (specificity 0,2,0) so it beats the
+   bare .btn rule regardless of stylesheet order. */
+.settings-signin-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.settings-signin-body p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.settings-signin-body .btn {
+  /* One notch down from the mjolnir default (10px 22px / 15px): these sit in
+     a 560px settings column, not on a full-bleed hall screen. */
+  padding: 9px 18px;
+  font-size: 14px;
+}
+
+.settings-signin-body .btn-forge {
+  padding: 10px 22px;
+  font-size: 15px;
 }
 
 /* REQ-0362: renamed from .settings-logout-btn. The account block's Logout

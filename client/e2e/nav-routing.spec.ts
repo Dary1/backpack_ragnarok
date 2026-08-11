@@ -23,16 +23,21 @@ async function loadFixtureAndBoot(page: import('@playwright/test').Page) {
   await bootApp(page);
 }
 
-test('clicking through all 5 nav routes updates hash + active highlight + content', async ({ page }) => {
+test('clicking through the nav routes updates hash + active highlight + content', async ({ page }) => {
   await bootApp(page);
 
+  // REQ-0377 item 1: Friends is no longer in NAV_ITEMS, so it is not a
+  // clickable rail route and has no row below. Its '#/friends' route and
+  // PlaceholderPage still exist and still resolve on a deep link.
   // Default app locale is 'en' (store.ts's initial snapshot) -- nav
   // labels render in English unless the JA/EN toggle is clicked, which no
   // test in this file does, so labels/placeholder titles below match the
   // EN side of Nav.tsx's NAV_ITEMS / App.tsx's PlaceholderPage calls.
   const routes: Array<{ label: string; hash: string; contentCheck: () => Promise<void> }> = [
     {
-      label: 'Backpacks',
+      // REQ-0377 item 9: the EN rail label for this route is 'Squad' now
+      // (the ja label is unchanged). Rename + selector move together.
+      label: 'Squad',
       hash: '#/backpacks',
       contentCheck: async () => {
         await expect(page.locator('.backpacks-view')).not.toHaveClass(/route-hidden/);
@@ -65,13 +70,6 @@ test('clicking through all 5 nav routes updates hash + active highlight + conten
       contentCheck: async () => {
         // REQ-0086: promoted from a Schedule-page tab to its own route.
         await expect(page.locator('[data-testid="schedule-warehouse-topstrip"]')).toBeVisible({ timeout: 10000 });
-      },
-    },
-    {
-      label: 'Friends',
-      hash: '#/friends',
-      contentCheck: async () => {
-        await expect(page.locator('.placeholder-page h2')).toHaveText('Friends');
       },
     },
     {

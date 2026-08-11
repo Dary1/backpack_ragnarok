@@ -389,6 +389,17 @@ export interface ApiErrorBody {
 }
 
 
+/** GET /api/health -- the public service identity. REQ-0377 item 2 added
+ * `build`: the short commit sha of the tree the API process runs from, or
+ * the literal 'unknown' when it could not be resolved (never absent, never
+ * empty). The main checkout @ master IS live and serves web/app and this API
+ * from one tree, so this doubles as the identity of the served client. */
+export interface ApiHealth {
+  ok: true;
+  version: string;
+  build: string;
+}
+
 export interface ApiMe {
   playerId: string;
   name: string;

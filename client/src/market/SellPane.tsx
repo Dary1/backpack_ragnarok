@@ -18,7 +18,7 @@ import type { GameState } from '../engine/engine.d.ts';
 import type { Locale } from '../store';
 import { marketErrorKey } from './marketErrors';
 import { MarketThumb, PriceTag, RollBar, burnOf, dexNoLabel, referencedUidSet, MARKET_PRICE_MIN, MARKET_PRICE_MAX } from './marketShared';
-import { anchorFor, usePriceCarve, CarveAnchor, CarveStepper, CarveEst } from './priceCarve'; // REQ-0366
+import { anchorFor, historyFor, usePriceCarve, CarveAnchor, CarveStepper, CarveEst } from './priceCarve'; // REQ-0366; historyFor REQ-0377 item 8
 
 /** One sellable inventory instance (PO or SI), with display fields
  * precomputed off the right def map so the picker/carve never touch the
@@ -177,6 +177,9 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
    * first). Empty-state when never settled -- per spec, this one sub-
    * element empty-states rather than blocking the pane. */
   const anchor = useMemo(() => anchorFor(selected?.itemId ?? null, allListings), [selected, allListings]);
+  // REQ-0377 item 8: the same anchor, as a series. Filtered to the TM the
+  // price is currently being carved in, so the line and the number agree.
+  const anchorHistory = useMemo(() => historyFor(selected?.itemId ?? null, allListings, priceTm), [selected, allListings, priceTm]);
 
   function selectItem(uid: string) {
     if (deployedUids.has(uid) || listedUids.has(uid) || referencedUids.has(uid)) return;
@@ -397,7 +400,7 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
                 <span>{t(locale, 'market.sell.pieceLabel')}</span>
                 <b className="dj" data-testid="market-carve-name">{locale === 'ja' ? selected.nameJa || selected.name : selected.name}</b>
                 <span className="chip dexno">{dexNoLabel(dexNoOf(selected.itemId, allListings))}</span>
-                <CarveAnchor locale={locale} anchor={anchor} />
+                <CarveAnchor locale={locale} anchor={anchor} entries={anchorHistory} />
                 {/* REQ-0198 (A): the selected instance's roll bar in the carve header. */}
                 <RollBar kind={sellKind} rollPct={selected.rollPct} locale={locale} />
               </div>

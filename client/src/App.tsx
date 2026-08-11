@@ -86,6 +86,7 @@ import { Board } from './board/Board';
 import { InventoryBoard } from './board/InventoryBoard';
 import { useInventorySlot } from './board/inventorySlot';
 import { BoardCoords, CanvasStatsChip, EmbarkDock, SaveSeal, UndoButton } from './CanvasChrome';
+import { BoardZoom } from './board/BoardZoom'; // REQ-0377 item 5
 import { CanvasSidePanel } from './canvas/CanvasSidePanel'; // REQ-0140
 import { CanvasSelectionOverlay } from './canvas/CanvasSelectionOverlay'; // REQ-0140
 import { CanvasEmptyState } from './canvas/CanvasEmptyState'; // REQ-0140/0141
@@ -287,6 +288,10 @@ function App() {
                 <SaveSeal locale={snapshot.locale} status={snapshot.autoSaveStatus} />
                 {/* REQ-0367: single-step undo, beside the auto-save seal. */}
                 <UndoButton locale={snapshot.locale} />
+                {/* REQ-0377 item 5: two-step board zoom. CSS hides it above the
+                    840px breakpoint -- on a desktop the stage already fits, and
+                    a control that does nothing is worse than no control. */}
+                <BoardZoom locale={snapshot.locale} />
               </div>
               {/* REQ-0032: trash-drop-zone overlay, ONLY visible while a
                   SQUAD tab is being dragged (see SquadTrashZone.tsx's own

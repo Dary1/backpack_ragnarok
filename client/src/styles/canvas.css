@@ -471,8 +471,48 @@
     display: none;
   }
 }
+/* REQ-0377 item 5: the canvas stage's zoom is now the PRODUCT of two
+   independent factors, because two separate things want to scale it and a
+   second bare `zoom` declaration would simply have overwritten the first:
+
+     --board-fit   the automatic short-viewport fit below (REQ-0140's 0.75)
+     --board-zoom  the player's explicit two-step toggle (board/BoardZoom.tsx,
+                   written as data-board-zoom on this element)
+
+   Both default to 1, so a desktop viewport with an untouched toggle computes
+   zoom: 1 -- identical to before this REQ, including for every e2e drag whose
+   coordinates assume an unscaled board. */
+.board-wrap-canvas {
+  zoom: calc(var(--board-fit, 1) * var(--board-zoom, 1));
+}
+.board-wrap-canvas[data-board-zoom="in"] {
+  --board-zoom: 1.4;
+}
+
 @media (max-width: 1500px) and (max-height: 840px) {
   .board-wrap-canvas {
-    zoom: 0.75;
+    --board-fit: 0.75;
+  }
+}
+
+/* The toggle itself. It exists only where it does something: above the 840px
+   breakpoint the stage already fits the viewport, and an inert control in the
+   boardfoot would be the same dead-door defect item 1 removed from the rail.
+   display:none (not visibility) so it takes no space in the flex row. */
+.board-zoom-toggle {
+  display: none;
+  cursor: pointer;
+  gap: 5px;
+}
+
+@media (max-width: 840px) {
+  .board-zoom-toggle {
+    display: inline-flex;
+  }
+  /* Zoomed IN the stage is deliberately wider than the screen -- that is the
+     point -- so the column it lives in must be able to pan to reach the far
+     cells instead of clipping them. */
+  .board-column {
+    overflow-x: auto;
   }
 }

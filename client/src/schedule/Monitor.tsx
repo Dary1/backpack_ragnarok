@@ -11,7 +11,7 @@
 // array, gated on pt); every kept data-testid still works; the __monitorDebug
 // e2e seam is preserved. The old Field/Log tabs retire (the feed IS the log,
 // humanized; raw JSONL moves to the admin ⋯ menu).
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   fetchContent, fetchDungeons, fetchRun, fetchWarehouse,
   type ApiContentPayload, type ApiRoom, type ApiRunEvent, type ApiWarehouseItem,
@@ -380,11 +380,52 @@ export function Monitor({ room, locale, dungeonName, dungeonTheme, isAdmin, onRu
     return () => window.removeEventListener('keydown', onKey);
   }, [settled, onPlayPause]);
   const onSkipEnd = useCallback(() => { if (settled && run) seekMs(durationMs); }, [settled, run, durationMs, seekMs]);
-  const onScrubClick = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
-    if (!settled || !run) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const frac = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0;
+
+  // REQ-0377 item 6: the transport bar was CLICK-only -- every reposition
+  // cost a fresh aim-and-click, so finding a moment meant guessing at it
+  // repeatedly instead of sliding to it and watching. It now drags.
+  //
+  // Pointer events + setPointerCapture (not mousedown + a window listener):
+  // capture keeps the moves coming when the pointer leaves this 8px-tall
+  // bar -- which it does immediately, because dragging horizontally along
+  // something that thin is mostly done OUTSIDE it -- and it releases
+  // automatically on pointercancel, so a touch interrupted by a system
+  // gesture cannot strand the bar in a dragging state. One handler set
+  // covers mouse, touch and pen.
+  //
+  // The plain CLICK path is preserved: a pointerdown that never moves still
+  // seeks on the way down, so the old interaction is a zero-distance drag.
+  const [scrubbing, setScrubbing] = useState(false);
+  const seekToClientX = useCallback((el: HTMLElement, clientX: number) => {
+    const rect = el.getBoundingClientRect();
+    const frac = rect.width > 0 ? (clientX - rect.left) / rect.width : 0;
     seekMs(Math.max(0, Math.min(1, frac)) * durationMs);
+  }, [durationMs, seekMs]);
+  const onScrubPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!settled || !run) return;
+    // Left button / touch / pen only -- a right-click must not seek.
+    if (e.button !== 0) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setScrubbing(true);
+    seekToClientX(e.currentTarget, e.clientX);
+  }, [settled, run, seekToClientX]);
+  const onScrubPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!scrubbing) return;
+    seekToClientX(e.currentTarget, e.clientX);
+  }, [scrubbing, seekToClientX]);
+  const endScrub = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!scrubbing) return;
+    setScrubbing(false);
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* already released */ }
+  }, [scrubbing]);
+
+  // REQ-0377 item 6: a feed row IS a timestamp -- clicking one jumps the
+  // playhead to that event. Guarded on `settled` for the same reason the
+  // scrub bar is: seeking a LIVE run would fight useRunPlayhead's
+  // presentation cadence, which is deliberately 2.5s behind the sim.
+  const onFeedSeek = useCallback((ptMs: number) => {
+    if (!settled || !run) return;
+    seekMs(Math.max(0, Math.min(durationMs, ptMs)));
   }, [settled, run, durationMs, seekMs]);
 
   // ---- derived view data (released slice drives feed/dock/rail passed-state) ----
@@ -455,7 +496,7 @@ export function Monitor({ room, locale, dungeonName, dungeonTheme, isAdmin, onRu
         <div className="mon-stage" data-testid="monitor-stage">
           <canvas ref={setCanvasEl} className="schedule-monitor-canvas" data-testid="schedule-monitor-canvas" />
         </div>
-        <EventFeed locale={locale} rows={feedRows} live={isLive} />
+        <EventFeed locale={locale} rows={feedRows} live={isLive} onSeek={settled ? onFeedSeek : undefined} />
       </div>
 
       <SquadDock locale={locale} squads={rosterState.squads} names={squadNames} />
@@ -482,7 +523,19 @@ export function Monitor({ room, locale, dungeonName, dungeonTheme, isAdmin, onRu
         <span className="mon-transport-clock tnum" data-testid="schedule-monitor-clock">
           {run ? `${formatClock(playheadMs / 1000)} / ${formatClock(durationMs / 1000)}` : '--:-- / --:--'}
         </span>
-        <div className={`mon-scrub${settled ? ' is-scrub' : ''}`} data-testid="schedule-monitor-scrub" onClick={settled ? onScrubClick : undefined}>
+        <div
+          className={`mon-scrub${settled ? ' is-scrub' : ''}${scrubbing ? ' is-scrubbing' : ''}`}
+          data-testid="schedule-monitor-scrub"
+          role={settled ? 'slider' : undefined}
+          aria-label={settled ? t(locale, 'schedule.monitor.replay.scrub') : undefined}
+          aria-valuemin={settled ? 0 : undefined}
+          aria-valuemax={settled ? Math.round(durationMs / 1000) : undefined}
+          aria-valuenow={settled ? Math.round(playheadMs / 1000) : undefined}
+          onPointerDown={settled ? onScrubPointerDown : undefined}
+          onPointerMove={settled ? onScrubPointerMove : undefined}
+          onPointerUp={settled ? endScrub : undefined}
+          onPointerCancel={settled ? endScrub : undefined}
+        >
           <div className="mon-scrub-fill" style={{ width: `${Math.max(0, Math.min(100, progressPct))}%` }} />
         </div>
       </div>

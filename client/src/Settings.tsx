@@ -19,7 +19,9 @@ import { t } from './i18n';
 import { setRoute, type Locale } from './store';
 import { loadChimePrefs, saveChimePrefs, type ChimePrefs } from './schedule/chimes/chimePrefs';
 import { loadMotionPrefs, saveMotionPrefs, type MotionPrefs } from './a11y/motionPrefs'; // REQ-0143
+import { UI_SCALES, loadScalePrefs, saveScalePrefs, type UiScale } from './a11y/scalePrefs'; // REQ-0377 item 4
 import { replayGuide } from './guide/guideController'; // REQ-0141
+import { buildProfileExport, downloadJson, exportFilename } from './lib/exportProfile'; // REQ-0377 item 7
 import { getAuthState, subscribeAuth, signInWithDiscord, signInAsGuest, linkDiscord, signOutSupabase, type AuthState } from './auth/session'; // REQ-0118c
 
 interface SettingsProps {
@@ -47,6 +49,21 @@ interface SettingsProps {
 //     gating sign-out on auth.configured would delete its only exit.
 //   - 'anonymous' gains a sign-out button it never had, so a guest is no
 //     longer permanently stuck in that session.
+//
+// REQ-0377 item 3: the three sign-in buttons below carry the MJOLNIR
+// primitives (.btn / .btn-forge, theme/mjolnir.css) instead of nothing at
+// all. Before this REQ .settings-discord-btn / -guest-btn / -link-btn had
+// no CSS rule ANYWHERE, so they rendered as browser-default grey chrome on
+// the one screen a new player reaches first -- the sign-out button beside
+// them was styled, which made the unstyled pair read as broken rather than
+// plain. The bespoke class names are KEPT alongside the primitives: they
+// are the layout/identity hooks, and .settings-signout-btn's own
+// destructive styling (REQ-0362) is deliberately left as-is -- it is not a
+// sign-IN control and its red border is carrying meaning, not decoration.
+//
+// .btn-forge ("the biggest gold CTA on a screen -- one per screen") lands on
+// whichever single Discord action this render actually offers: the four
+// branches below are mutually exclusive, so no screen ever shows two.
 function AuthBlock({ locale }: { locale: Locale }) {
   const [auth, setAuth] = useState<AuthState>(() => getAuthState());
   const [busy, setBusy] = useState(false);
@@ -99,7 +116,7 @@ function AuthBlock({ locale }: { locale: Locale }) {
       ) : auth.status === 'anonymous' ? (
         <div className="settings-signin-body">
           <p data-testid="settings-signin-status">{t(locale, 'settings.playingAsGuest')}</p>
-          <button type="button" className="settings-link-btn" data-testid="settings-link-discord" disabled={busy}
+          <button type="button" className="btn btn-forge settings-link-btn" data-testid="settings-link-discord" disabled={busy}
             onClick={() => run(() => linkDiscord())}>
             {t(locale, 'settings.continueWithDiscord')}
           </button>
@@ -114,11 +131,11 @@ function AuthBlock({ locale }: { locale: Locale }) {
       ) : (
         <div className="settings-signin-body">
           {inviteStatus}
-          <button type="button" className="settings-discord-btn" data-testid="settings-continue-discord" disabled={busy}
+          <button type="button" className="btn btn-forge settings-discord-btn" data-testid="settings-continue-discord" disabled={busy}
             onClick={() => run(() => signInWithDiscord())}>
             {t(locale, 'settings.continueWithDiscord')}
           </button>
-          <button type="button" className="settings-guest-btn" data-testid="settings-play-guest" disabled={busy}
+          <button type="button" className="btn settings-guest-btn" data-testid="settings-play-guest" disabled={busy}
             onClick={() => run(async () => { const r = await signInAsGuest(); if (r && r.error) return r; reload(); })}>
             {t(locale, 'settings.playAsGuest')}
           </button>
@@ -140,6 +157,7 @@ export function Settings({ locale }: SettingsProps) {
   const [signedOut, setSignedOut] = useState(false);
   const [chimePrefs, setChimePrefs] = useState<ChimePrefs>(() => loadChimePrefs());
   const [motionPrefs, setMotionPrefs] = useState<MotionPrefs>(() => loadMotionPrefs()); // REQ-0143
+  const [uiScale, setUiScale] = useState<UiScale>(() => loadScalePrefs().scale); // REQ-0377 item 4
 
   useEffect(() => {
     let cancelled = false;
@@ -175,6 +193,26 @@ export function Settings({ locale }: SettingsProps) {
       saveMotionPrefs(next);
       return next;
     });
+  };
+
+  // REQ-0377 item 4: saveScalePrefs applies the :root attribute the CSS reads,
+  // so the page resizes under the pointer the instant a step is picked -- the
+  // control IS its own preview, which is the whole point of a size setting.
+  const updateUiScale = (next: UiScale) => { setUiScale(next); saveScalePrefs({ scale: next }); };
+
+  // REQ-0377 item 7 (export half). Gated on `me` at the render site below:
+  // there is nothing to export before the account read resolves, and a button
+  // that can only fail is the dead-door shape this REQ removes elsewhere.
+  const [exportState, setExportState] = useState<'idle' | 'busy' | 'failed'>('idle');
+  const runExport = async () => {
+    setExportState('busy');
+    try {
+      const doc = await buildProfileExport();
+      downloadJson(exportFilename(doc.account.playerId), doc);
+      setExportState('idle');
+    } catch {
+      setExportState('failed');
+    }
   };
 
   const volumePct = Math.round(chimePrefs.volume * 100);
@@ -289,8 +327,54 @@ export function Settings({ locale }: SettingsProps) {
           </label>
           <p className="settings-hint">{t(locale, 'settings.reducedMotionHint')}</p>
         </div>
+        {/* REQ-0377 item 4: UI scale. A radio GROUP, not a select: three
+            mutually exclusive steps whose whole value is being one click away,
+            and role=radiogroup is what a screen reader needs to announce
+            "3 of 3" here. */}
+        <div className="settings-field settings-uiscale">
+          <span className="settings-field-label" id="settings-uiscale-label">{t(locale, 'settings.uiScaleLabel')}</span>
+          <div className="settings-uiscale-steps" role="radiogroup" aria-labelledby="settings-uiscale-label">
+            {UI_SCALES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                role="radio"
+                aria-checked={uiScale === s}
+                className={`chip settings-uiscale-step${uiScale === s ? ' is-on' : ''}`}
+                data-testid={`settings-ui-scale-${s}`}
+                onClick={() => updateUiScale(s)}
+              >
+                {t(locale, s === 's' ? 'settings.uiScaleS' : s === 'l' ? 'settings.uiScaleL' : 'settings.uiScaleM')}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="settings-hint">{t(locale, 'settings.uiScaleHint')}</p>
         <p className="settings-hint" data-testid="settings-a11y-colorblind-note">{t(locale, 'settings.colorblindNote')}</p>
       </section>
+
+      {/* REQ-0377 item 7: data export. No new endpoint -- it composes the two
+          reads the app already makes (see lib/exportProfile.ts). The DELETE
+          half of this item is REQ-0377a and is deliberately absent here rather
+          than present-and-inert. */}
+      {me ? (
+        <section className="settings-section settings-data" data-testid="settings-data">
+          <h3>{t(locale, 'settings.dataTitle')}</h3>
+          <p className="settings-hint">{t(locale, 'settings.dataExportHint')}</p>
+          <button
+            type="button"
+            className="btn settings-data-export"
+            data-testid="settings-data-export"
+            disabled={exportState === 'busy'}
+            onClick={() => { void runExport(); }}
+          >
+            {t(locale, exportState === 'busy' ? 'settings.dataExporting' : 'settings.dataExport')}
+          </button>
+          {exportState === 'failed' ? (
+            <p className="settings-account-error" data-testid="settings-data-export-error">{t(locale, 'settings.dataExportFailed')}</p>
+          ) : null}
+        </section>
+      ) : null}
 
       {/* REQ-0039 "Now" scope -- static bilingual placeholder only, no
           interactive elements (no key generation, no input fields). The

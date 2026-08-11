@@ -321,6 +321,11 @@ module.exports.run = async function run(h) {
     assert.strictEqual(settledRow.state, 'settled');
     assert.strictEqual(settledRow.buyerId, mktBuyer.playerId);
     assert.deepStrictEqual(settledRow.priceHistory, [{ qty: 46, tm: 'lrdst', t: hist.entries[0].t }], 'DTO exposes the engraved history (with its price TM)');
+    // REQ-0377 item 8: the retention DECISION, pinned. The sparkline reads the
+    // whole series (not just entries[0] the way the anchor line does), so the
+    // depth is now a product decision rather than an implementation detail --
+    // lowering it silently would flatten the chart without failing anything.
+    assert.strictEqual(require('../../market.cjs').DEX_PRICE_HISTORY_MAX, 12, 'settled-price retention depth (REQ-0377 item 8)');
   });
 
   await AT('REQ-0368: a settled trade notifies the SELLER (net/burn + the resolved item name) and nobody else -- the buyer already holds the receipt, and the entry is idempotent per listing', async () => {

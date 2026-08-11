@@ -218,21 +218,17 @@
   line-height: 1.7;
 }
 
-.landing-signin-btn {
-  background: transparent;
-  border: 1px solid rgba(201, 169, 89, 0.55);
-  border-radius: 2px;
+/* REQ-0377 item 3: was a full bespoke button rule that happened to look
+   MJOLNIR-ish. It now carries the real .btn primitive (LandingPage.tsx) and
+   this rule is reduced to the SIZE override the landing menu needs -- the
+   title-screen row is 11.5px type, the hall default is 15px. Scoped under
+   .landing-signin-cta (specificity 0,2,0) so it wins over .btn no matter how
+   the two stylesheets end up ordered in the bundle. */
+.landing-signin-cta .landing-signin-btn {
   padding: 5px 14px;
-  color: var(--gold-hi);
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.1em;
-  cursor: pointer;
-}
-
-.landing-signin-btn:hover,
-.landing-signin-btn:focus-visible {
-  background: rgba(201, 169, 89, 0.12);
 }
 
 .landing-savechip {
@@ -257,6 +253,14 @@
 
 .landing-corner-tr { right: 14px; top: 12px; }
 .landing-corner-br { right: 14px; bottom: 10px; text-align: right; }
+
+/* REQ-0377 item 2: build identity + patch-notes link, stacked under the
+   copyright in the same corner. Kept at the corner's own muted weight --
+   this is provenance for a bug report, not a call to action. */
+.landing-footer-links { margin-bottom: 2px; }
+.landing-notes-link { color: rgba(201, 169, 89, 0.75); letter-spacing: 0.08em; }
+.landing-notes-link:hover { color: var(--gold-hi); }
+.landing-build { color: rgba(107, 103, 92, 0.9); font-size: 10px; letter-spacing: 0.06em; }
 
 .landing-langchip {
   border: 1px solid rgba(201, 169, 89, 0.3);

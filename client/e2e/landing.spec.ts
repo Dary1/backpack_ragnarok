@@ -49,6 +49,30 @@ async function assertBoardsInteractive(page: import('@playwright/test').Page) {
   expect(po.cell).toEqual([6, 3]);
 }
 
+// REQ-0377 item 2. The regression this guards: before it, NOTHING in the
+// product named its own build, so a bug report could not say which one it
+// came from. The readout is SERVED (GET /api/health), never baked into the
+// bundle -- see server/lib/meta.cjs for why -- so the assertion below is
+// that the client actually renders what the server said, not that some
+// build-time constant survived bundling.
+test('the landing footer carries the served build id and a patch-notes link', async ({ page, request }) => {
+  const served = (await (await request.get('/api/health')).json()).build as string;
+  expect(served.length).toBeGreaterThan(0);
+
+  await page.goto('/app/');
+  await expect(page.locator('.landing-stage')).toBeVisible();
+  await expect(page.locator('[data-testid="landing-build"]')).toContainText(served);
+
+  // The notes link is a REAL href (leaving the SPA is the intent), and the
+  // page it points at must actually be served -- a dead link in the footer
+  // would be the same 'dead door' defect REQ-0377 item 1 removed from the rail.
+  const notes = page.locator('[data-testid="landing-patch-notes"]');
+  await expect(notes).toHaveAttribute('href', '/notes/');
+  const notesRes = await request.get('/notes/');
+  expect(notesRes.status()).toBe(200);
+  expect(await notesRes.text()).toContain('Patch notes');
+});
+
 test('empty hash renders the landing; menu deep-links; boards stay mounted (hidden)', async ({ page }) => {
   await page.goto('/app/');
 

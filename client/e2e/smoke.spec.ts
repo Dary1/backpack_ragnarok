@@ -16,6 +16,11 @@ test.describe('smoke', () => {
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(typeof body.version).toBe('string');
+    // REQ-0377 item 2: the build identity a bug report names. Non-empty
+    // string, not a sha match -- server/lib/meta.cjs degrades to 'unknown'
+    // rather than throwing, and that is still a valid answer.
+    expect(typeof body.build).toBe('string');
+    expect(body.build.length).toBeGreaterThan(0);
   });
 
   test('app boots and shows the live data-source badge', async ({ page }) => {

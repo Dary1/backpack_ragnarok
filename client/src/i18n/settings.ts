@@ -25,6 +25,12 @@ export const settingsEn = {
   // four states.
   'settings.signedInWithInvite': 'Signed in with an invite link.',
   'settings.signOut': 'Sign out',
+  // REQ-0377 item 7 (EXPORT half only; the delete path is REQ-0377a).
+  'settings.dataTitle': 'Your data',
+  'settings.dataExportHint': 'Download your account details and saved canvas as a JSON file.',
+  'settings.dataExport': 'Export my data',
+  'settings.dataExporting': 'Preparing…',
+  'settings.dataExportFailed': 'Export failed',
   'settings.botTitle': 'API / Bot mode',
   'settings.botComingSoon': 'Coming soon',
   'settings.botNote': 'Programmatic access for bots/automation will land in a future update.',
@@ -41,6 +47,12 @@ export const settingsEn = {
   'settings.a11yTitle': 'Accessibility',
   'settings.reducedMotionLabel': 'Reduced motion',
   'settings.reducedMotionHint': 'Suppress the Ragnarok Frame slow-motion, beam animations and charge pulses across the app. Seeded from your system setting; toggle to override.',
+  // REQ-0377 item 4: UI scale.
+  'settings.uiScaleLabel': 'Interface size',
+  'settings.uiScaleHint': 'Scales the whole interface. Applies immediately and is remembered on this device.',
+  'settings.uiScaleS': 'Small',
+  'settings.uiScaleM': 'Medium',
+  'settings.uiScaleL': 'Large',
   'settings.colorblindNote': 'Gameplay overlays (team/enemy, elements, damage, charge) use a colourblind-safe palette and never rely on colour alone -- each also carries a shape or pattern cue.',
 } as const;
 
@@ -62,6 +74,11 @@ export const settingsJa = {
   'settings.signedInDiscord': 'Discordで{name}としてサインイン中',
   'settings.signedInWithInvite': '招待リンクでサインイン中です。',
   'settings.signOut': 'サインアウト',
+  'settings.dataTitle': 'あなたのデータ',
+  'settings.dataExportHint': 'アカウント情報と保存済みの編成を JSON ファイルとして書き出します。',
+  'settings.dataExport': 'データを書き出す',
+  'settings.dataExporting': '準備中…',
+  'settings.dataExportFailed': '書き出しに失敗しました',
   'settings.botTitle': 'API・ボットモード',
   'settings.botComingSoon': '近日公開予定',
   'settings.botNote': 'ボットや自動化向けのプログラム的アクセスは今後追加予定です。',
@@ -78,5 +95,10 @@ export const settingsJa = {
   'settings.a11yTitle': 'アクセシビリティ',
   'settings.reducedMotionLabel': 'モーションを減らす',
   'settings.reducedMotionHint': 'ラグナロクフレームのスローモーション、ビームアニメーション、チャージの脈動をアプリ全体で抑制します。システム設定を初期値とし、切り替えで上書きできます。',
+  'settings.uiScaleLabel': '表示サイズ',
+  'settings.uiScaleHint': 'インターフェース全体の大きさを変更します。すぐに反映され、この端末に記憶されます。',
+  'settings.uiScaleS': '小',
+  'settings.uiScaleM': '中',
+  'settings.uiScaleL': '大',
   'settings.colorblindNote': 'ゲームプレイのオーバーレイ（味方・敵、属性、ダメージ、チャージ）は色覚多様性に配慮したパレットを使用し、色だけに頼りません。それぞれ形状やパターンの手がかりも備えています。',
 } as const;

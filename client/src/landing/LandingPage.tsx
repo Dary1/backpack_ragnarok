@@ -30,8 +30,8 @@
 //    document-level pointermove listener; skipped for now.
 //  - Settings rune is ᛟ (matching the rail) instead of the mock's ᛈ,
 //    which the rail already uses for Workshop.
-import { useEffect, useRef } from 'react';
-import type { ApiMe } from '../api';
+import { useEffect, useRef, useState } from 'react';
+import { fetchHealth, type ApiMe } from '../api';
 import { t, type TranslationKey } from '../i18n';
 import type { Locale, Route } from '../store';
 import { setLocale, setRoute } from '../store';
@@ -40,6 +40,12 @@ import './landing.css';
 
 /** Served by the :8801 static host (and the tunnel) from web/redesign/. */
 const ASSET_BASE = '/redesign/assets';
+
+/** REQ-0377 item 2: the patch notes page. A plain static page under web/
+// (the same docroot that serves /app and /redesign), so it needs no route,
+// no bundle and no server change -- and it is a real <a href>, i.e. the one
+// place in this SPA where LEAVING the app is the intended outcome. */
+const NOTES_HREF = '/notes/';
 
 interface MenuEntry {
   route: Route;
@@ -72,6 +78,18 @@ interface LandingPageProps {
 
 export function LandingPage({ locale, me, signedOut = false }: LandingPageProps) {
   const pfxRef = useRef<HTMLCanvasElement | null>(null);
+  // REQ-0377 item 2: the build identity, SERVED (see server/lib/meta.cjs for
+  // why it is not baked into this bundle). Failure is silent and renders
+  // nothing: a title screen must not grow an error because a footer readout
+  // could not load, and the copyright line beside it still stands alone.
+  const [build, setBuild] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchHealth()
+      .then((h) => { if (!cancelled) setBuild(h.build); })
+      .catch(() => { /* footer readout only -- never surfaced */ });
+    return () => { cancelled = true; };
+  }, []);
 
   // Perf-gated, E2E-off ember/snow field (see particles.ts's gating
   // notes). The disposer returned by startEmberField() is the effect
@@ -127,7 +145,11 @@ export function LandingPage({ locale, me, signedOut = false }: LandingPageProps)
         {signedOut ? (
           <div className="landing-signin-cta" data-testid="landing-signed-out">
             <span>{t(locale, 'landing.signInRequired')}</span>
-            <button type="button" className="landing-signin-btn" data-testid="landing-signin"
+            {/* REQ-0377 item 3: the landing sign-in row takes the same .btn
+                primitive the Settings sign-in block now uses, with only its
+                size overridden below in landing.css -- one appearance source
+                for every sign-in control in the product. */}
+            <button type="button" className="btn landing-signin-btn" data-testid="landing-signin"
               onClick={() => setRoute('settings')}>
               {t(locale, 'landing.signIn')}
             </button>
@@ -144,7 +166,17 @@ export function LandingPage({ locale, me, signedOut = false }: LandingPageProps)
           {t(locale, 'header.langToggle')}
         </button>
       </div>
-      <div className="landing-corner landing-corner-br">{t(locale, 'landing.copyright')}</div>
+      <div className="landing-corner landing-corner-br" data-testid="landing-footer">
+        <div className="landing-footer-links">
+          <a className="landing-notes-link" href={NOTES_HREF} data-testid="landing-patch-notes">
+            {t(locale, 'landing.patchNotes')}
+          </a>
+        </div>
+        <div>{t(locale, 'landing.copyright')}</div>
+        {build ? (
+          <div className="landing-build tnum" data-testid="landing-build">{t(locale, 'landing.build', { sha: build })}</div>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -180,7 +180,7 @@ test.describe('REQ-0369: input conventions', () => {
     await seal.click();
     await seal.press('3');
     await expect(seal).toHaveValue('3'); // the keystroke typed, it did not shortcut
-    await page.locator('.nav-link', { hasText: 'Backpacks' }).click();
+    await page.locator('.nav-link', { hasText: 'Squad' }).click();
     await expect(page.locator('.squad-tab-active')).toHaveText('Squad 2'); // unchanged
   });
 

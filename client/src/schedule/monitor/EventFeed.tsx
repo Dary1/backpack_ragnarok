@@ -6,7 +6,16 @@ import { t } from '../../i18n';
 import type { Locale } from '../../store';
 import type { FeedRow, FeedCategory } from './feedCopy';
 
-interface Props { locale: Locale; rows: FeedRow[]; live: boolean; }
+interface Props {
+  locale: Locale;
+  rows: FeedRow[];
+  live: boolean;
+  /** REQ-0377 item 6: seek the playhead to a row's event time. Present only
+   * on a SETTLED run (Monitor.tsx passes undefined while live) -- when it is
+   * undefined the rows render as the plain divs they always were, so a live
+   * feed grows no affordance it cannot honour. */
+  onSeek?: (ptMs: number) => void;
+}
 
 const FILTERS: { key: FeedCategory; label: string }[] = [
   { key: 'all', label: 'schedule.monitor.feed.filterAll' },
@@ -22,7 +31,7 @@ function fmtTime(ptMs: number): string {
   return `${String(m).padStart(2, '0')}:${r.toFixed(1).padStart(4, '0')}`;
 }
 
-export function EventFeed({ locale, rows, live }: Props) {
+export function EventFeed({ locale, rows, live, onSeek }: Props) {
   const [filter, setFilter] = useState<FeedCategory>('all');
   const [pinned, setPinned] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -62,13 +71,36 @@ export function EventFeed({ locale, rows, live }: Props) {
         {shown.length === 0 ? (
           <div className="mon-feed-empty" data-testid="monitor-feed-empty">{t(locale, 'schedule.monitor.feedWaiting')}</div>
         ) : (
-          shown.map((r) => (
-            <div key={r.index} className={`mon-feed-row tone-${r.tone}`} data-testid="monitor-feed-row" data-category={r.category}>
-              <span className="mon-feed-time t-micro tnum">{fmtTime(r.ptMs)}</span>
-              <span className="mon-feed-icon" aria-hidden="true">{r.icon}</span>
-              <span className="mon-feed-text">{r.text}</span>
-            </div>
-          ))
+          shown.map((r) => {
+            const body = (
+              <>
+                <span className="mon-feed-time t-micro tnum">{fmtTime(r.ptMs)}</span>
+                <span className="mon-feed-icon" aria-hidden="true">{r.icon}</span>
+                <span className="mon-feed-text">{r.text}</span>
+              </>
+            );
+            // A real <button> when it seeks, so keyboard and screen-reader
+            // users get the affordance too -- a div with onClick would hand
+            // this only to the mouse. Same class list and same testid either
+            // way, so every existing selector and tone rule still applies.
+            return onSeek ? (
+              <button
+                key={r.index}
+                type="button"
+                className={`mon-feed-row mon-feed-row-seek tone-${r.tone}`}
+                data-testid="monitor-feed-row"
+                data-category={r.category}
+                title={t(locale, 'schedule.monitor.replay.seekToEvent')}
+                onClick={() => onSeek(r.ptMs)}
+              >
+                {body}
+              </button>
+            ) : (
+              <div key={r.index} className={`mon-feed-row tone-${r.tone}`} data-testid="monitor-feed-row" data-category={r.category}>
+                {body}
+              </div>
+            );
+          })
         )}
       </div>
       {!pinned ? (

@@ -90,6 +90,9 @@ export const marketEn = {
   'market.sell.carveEn': 'Carve the price',
   'market.sell.pieceLabel': 'The piece to be listed:',
   'market.sell.anchor': "The codex's last engraving: ᚠ{n}",
+  // REQ-0377 item 8: the sparkline's screen-reader text. The trend must be
+  // readable without seeing the line at all (REQ-0143: never colour alone).
+  'market.sell.sparkAria': 'Recent settled prices: {n} sales, low {lo}, high {hi}',
   'market.sell.anchorNone': 'No engraving in the codex yet',
   'market.sell.priceDown': 'Lower the price',
   'market.sell.priceUp': 'Raise the price',
@@ -245,6 +248,7 @@ export const marketJa = {
   'market.sell.carveEn': 'Carve the price',
   'market.sell.pieceLabel': '出品する品:',
   'market.sell.anchor': '図鑑の直近刻銘 ᚠ{n}',
+  'market.sell.sparkAria': '直近の成約価格: {n} 件、最安 {lo}、最高 {hi}',
   'market.sell.anchorNone': '図鑑にまだ刻銘は無い',
   'market.sell.priceDown': '値を下げる',
   'market.sell.priceUp': '値を上げる',

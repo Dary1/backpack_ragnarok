@@ -30,6 +30,10 @@ export const commonEn = {
   'landing.signInRequired': 'Sign in to play.',
   'landing.signIn': 'Sign in',
   'landing.copyright': 'backpack_ragnarok © 2026',
+  // REQ-0377 item 2. `sha` is the served /api/health build field, or absent
+  // entirely when that fetch failed (the line is not rendered at all then).
+  'landing.build': 'build {sha}',
+  'landing.patchNotes': 'Patch notes',
 
   // Invite banner (InviteBanner.tsx)
   'invite.welcome': 'Welcome, {name}!',
@@ -46,8 +50,8 @@ export const commonEn = {
   // GLYPHS are hardcoded in the component; only prose is localized.
   'shortcuts.title': 'Keyboard shortcuts',
   'shortcuts.escDesc': 'Close the open dialog or tooltip',
-  'shortcuts.rDesc': 'Rotate the piece under drag or float (Backpacks)',
-  'shortcuts.digitsDesc': 'Switch the active squad tab (Backpacks)',
+  'shortcuts.rDesc': 'Rotate the piece under drag or float (Squad)',
+  'shortcuts.digitsDesc': 'Switch the active squad tab (Squad)',
   'shortcuts.spaceDesc': 'Play / pause an expedition replay',
   'shortcuts.helpDesc': 'Open this shortcut reference',
   'shortcuts.close': 'Close',
@@ -74,6 +78,8 @@ export const commonJa = {
   'landing.signInRequired': 'プレイするにはサインインが必要です。',
   'landing.signIn': 'サインイン',
   'landing.copyright': 'backpack_ragnarok © 2026',
+  'landing.build': 'ビルド {sha}',
+  'landing.patchNotes': '更新履歴',
 
   'invite.welcome': 'ようこそ、{name} さん！',
   'invite.dismiss': '閉じる',

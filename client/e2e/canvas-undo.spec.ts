@@ -136,7 +136,7 @@ test.describe('REQ-0367 -- single-step undo', () => {
         expect(canvasPO(after, 'u_po').cell).toEqual([4, 4]);
 
         // Back on the canvas page the button agrees: the slot is empty.
-        await page.locator('.nav-link', { hasText: 'Backpacks' }).click();
+        await page.locator('.nav-link', { hasText: 'Squad' }).click();
         await expect(page.locator(UNDO_BTN)).toBeDisabled();
       } finally {
         if (origCanvas) await page.request.put('/api/profile/default/canvas', { data: origCanvas });

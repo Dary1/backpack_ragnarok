@@ -57,7 +57,7 @@ test.describe('REQ-0070 canvas page chrome (MJOLNIR)', () => {
     // The dock is canvas-page chrome -- hidden along with the route.
     await expect(page.locator('.embark-dock')).not.toBeVisible();
     // Back to backpacks: both boards still present (never torn down).
-    await page.locator('.nav-link', { hasText: 'Backpacks' }).click();
+    await page.locator('.nav-link', { hasText: 'Squad' }).click();
     await expect(page).toHaveURL(/#\/backpacks$/);
     await expect(page.locator('canvas.board-canvas')).toHaveCount(2);
     await expect(page.locator('.embark-dock .btn-forge')).toBeVisible();

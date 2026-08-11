@@ -31,7 +31,27 @@ const MARKET_BURN_RATE = 0.08; // law 2 -- the furnace tithe
 const MARKET_PRICE_MIN = 1; // mock stepper: integer, min 1
 const MARKET_PRICE_MAX = 999; // mock stepper: cap 999
 const MARKET_LISTING_TTL_MS = 7 * 24 * 60 * 60 * 1000; // [TUNABLE] 7d shelf life, lazy expiry (mock: "counted out its seven days")
-const DEX_PRICE_HISTORY_MAX = 5; // rolling last-5 settled prices per itemId (storage side; full REQ-0052 dex-card integration deferred)
+// REQ-0377 item 8 -- THE RETENTION DECISION this item was parked on.
+//
+// Was 5, chosen when the history had exactly one consumer: the sell pane's
+// anchor LINE, which reads entries[0] and ignores the rest. A sparkline reads
+// the whole series, and five points cannot show a trend -- with the tm filter
+// applied (prices in different TMs never mix, see shared/dto.ts) a busy item
+// can easily leave two or three usable points.
+//
+// 12 is chosen against the cost, not by feel. The cost is one jsonb doc per
+// itemId holding N objects of four small fields -- roughly 90 bytes each, so
+// this trades ~600 bytes per traded item for a readable trend. It is a
+// ROLLING slice (trade.cjs unshifts then slices), so existing docs converge
+// on the new depth as they settle and nothing needs migrating: a doc written
+// under the old cap is a valid short series, which the sparkline already has
+// to handle anyway (a never-settled item has none at all).
+//
+// This is deliberately NOT tied to the item 7 storage review the REQ text
+// suggested. That review is about deleting a PLAYER's data; the dex price
+// history is per-ITEM and carries no player id -- a settled price is market
+// history, not personal data, so the two questions never actually met.
+const DEX_PRICE_HISTORY_MAX = 12;
 const MARKET_DTO_VERSION = 2; // REQ-0195a: wire-shape v2 -- listing kind field, tms[] envelope, per-tm furnace, dex-history tm (shared/dto.ts ApiMarket*)
 
 // burnOf: THE burn function (law 2). Byte-identical math to the mock's

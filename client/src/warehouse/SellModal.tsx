@@ -21,7 +21,7 @@ import { t } from '../i18n';
 import { localizedItemName } from '../lib/itemContent';
 import { useModalConventions } from '../lib/useModalConventions';
 import { itemKindOf } from '../../../shared/player_actions.mjs';
-import { anchorFor, usePriceCarve, CarveAnchor, CarveStepper, CarveEst } from '../market/priceCarve';
+import { anchorFor, historyFor, usePriceCarve, CarveAnchor, CarveStepper, CarveEst } from '../market/priceCarve'; // historyFor: REQ-0377 item 8
 import { MarketThumb } from '../market/marketShared';
 import { useGameStore, type Locale } from '../store';
 import { SELL_TM_ID, type WarehouseRow } from './useWarehouseData';
@@ -68,6 +68,8 @@ export function SellModal({ row, content, locale, busy, onConfirm, onClose }: Se
   }, []);
 
   const anchor = useMemo(() => anchorFor(row.itemId, listings), [row.itemId, listings]);
+  // REQ-0377 item 8: the settled-price series behind that anchor number.
+  const anchorHistory = useMemo(() => historyFor(row.itemId, listings, SELL_TM_ID), [row.itemId, listings]);
 
   // Seed the stepper from the anchor ONCE when it becomes known --
   // exactly like SellPane's selectItem seeding -- but only while the
@@ -98,7 +100,7 @@ export function SellModal({ row, content, locale, busy, onConfirm, onClose }: Se
           <div>
             <div className="dj market-modal-name" data-testid="warehouse-sell-name">{localizedItemName(locale, content, row.itemId)}</div>
             <div className="t-micro market-modal-sub">
-              <CarveAnchor locale={locale} anchor={anchor} />
+              <CarveAnchor locale={locale} anchor={anchor} entries={anchorHistory} />
             </div>
           </div>
         </div>

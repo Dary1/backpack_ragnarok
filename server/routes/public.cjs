@@ -6,7 +6,7 @@
 // falls through), anything else = handled.
 const { sendJSON } = require('../lib/http_util.cjs');
 const { getContent } = require('../lib/content.cjs');
-const { VERSION } = require('../lib/meta.cjs');
+const { VERSION, BUILD_SHA } = require('../lib/meta.cjs');
 const schedule = require('../schedule.cjs');
 
 // REQ-0341: the PUBLIC client config the browser needs before it can build
@@ -62,8 +62,16 @@ function publicClientConfig() {
 }
 
 function tryPublicRoutes(req, res, url, p) {
+  // REQ-0377 item 2: `build` is the short commit sha of the tree THIS
+  // process is running from (lib/meta.cjs, resolved once at load), so a bug
+  // report can name a build. It rides /api/health rather than /api/config
+  // deliberately: health is already the service-IDENTITY endpoint, and
+  // /api/config's body is asserted with deepStrictEqual in three places
+  // (server/tests/api/public.cjs) precisely so it stays byte-for-byte what
+  // REQ-0341 shipped -- REQ-0344 leaned on that guard, and an always-present
+  // field there would spend it. Never absent: 'unknown' is the floor.
   if (p === '/api/health' && req.method === 'GET') {
-    sendJSON(res, 200, { ok: true, version: VERSION });
+    sendJSON(res, 200, { ok: true, version: VERSION, build: BUILD_SHA });
     return;
   }
 

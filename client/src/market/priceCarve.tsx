@@ -14,7 +14,7 @@
 // selectors stay unambiguous per page (warehouse e2e scopes through its
 // own modal testid anyway).
 import { useState } from 'react';
-import type { ApiMarketListing, GameData } from '../api';
+import type { ApiMarketListing, ApiMarketPriceHistoryEntry, GameData } from '../api';
 import { t } from '../i18n';
 import type { Locale } from '../store';
 import { PriceTag, burnOf, MARKET_PRICE_MIN, MARKET_PRICE_MAX } from './marketShared';
@@ -70,12 +70,78 @@ export function anchorFor(itemId: string | null, listings: ApiMarketListing[]): 
   return null;
 }
 
-/** 図鑑の直近刻銘 -- the dex anchor line (empty-states to anchorNone per
- * the REQ-0064 spec rather than blocking the pane). */
-export function CarveAnchor({ locale, anchor }: { locale: Locale; anchor: number | null }) {
+/** REQ-0377 item 8: the anchor's SERIES, not just its head. Same walk as
+ * anchorFor (first listing that knows this itemId wins), but returns the
+ * whole rolling history filtered to ONE tm -- prices denominated in different
+ * TMs are different numbers about different things, and a line drawn through
+ * both would be a lie (shared/dto.ts states the same rule for the anchor).
+ * Oldest-first, because that is left-to-right on a chart; the DTO stores
+ * newest-first. */
+export function historyFor(itemId: string | null, listings: ApiMarketListing[], tm: string): ApiMarketPriceHistoryEntry[] {
+  if (!itemId) return [];
+  for (const l of listings) {
+    if (l.itemId === itemId && l.priceHistory && l.priceHistory.length > 0) {
+      return l.priceHistory.filter((e) => e.tm === tm).slice().reverse();
+    }
+  }
+  return [];
+}
+
+/** REQ-0377 item 8: a bare-SVG sparkline of the settled-price series.
+ *
+ * Inline SVG and no charting dependency on purpose -- this is ~90px wide and
+ * has at most DEX_PRICE_HISTORY_MAX points; a library would cost more than
+ * the feature. Renders NOTHING below two points: one point is not a trend,
+ * and a flat stub beside the anchor number would imply a stability the data
+ * does not show.
+ *
+ * Never colour alone (REQ-0143): the direction is carried by the line's shape
+ * and restated in the aria-label, so the readout survives both a screen
+ * reader and a colourblind eye. */
+export function AnchorSparkline({ locale, entries }: { locale: Locale; entries: ApiMarketPriceHistoryEntry[] }) {
+  if (entries.length < 2) return null;
+  const W = 88;
+  const H = 18;
+  const PADY = 2;
+  const qtys = entries.map((e) => e.qty);
+  const lo = Math.min(...qtys);
+  const hi = Math.max(...qtys);
+  // A flat series would divide by zero; draw it down the middle instead.
+  const span = hi - lo;
+  const x = (i: number) => (entries.length === 1 ? W / 2 : (i / (entries.length - 1)) * W);
+  const y = (q: number) => (span === 0 ? H / 2 : PADY + (1 - (q - lo) / span) * (H - PADY * 2));
+  const pts = entries.map((e, i) => `${x(i).toFixed(1)},${y(e.qty).toFixed(1)}`).join(' ');
+  const first = qtys[0];
+  const last = qtys[qtys.length - 1];
+  const dir = last > first ? 'up' : last < first ? 'down' : 'flat';
   return (
-    <span className="t-micro" data-testid="market-carve-anchor">
+    <svg
+      className={`market-anchor-spark is-${dir}`}
+      data-testid="market-anchor-sparkline"
+      data-points={entries.length}
+      data-dir={dir}
+      width={W}
+      height={H}
+      viewBox={`0 0 ${W} ${H}`}
+      role="img"
+      aria-label={t(locale, 'market.sell.sparkAria', { n: String(entries.length), lo: String(lo), hi: String(hi) })}
+    >
+      <polyline points={pts} fill="none" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" />
+      {/* the newest point, marked -- it is the one the anchor number quotes */}
+      <circle cx={x(entries.length - 1)} cy={y(last)} r="1.9" />
+    </svg>
+  );
+}
+
+/** 図鑑の直近刻銘 -- the dex anchor line (empty-states to anchorNone per
+ * the REQ-0064 spec rather than blocking the pane). REQ-0377 item 8 adds the
+ * optional series beside it; passing no `entries` renders exactly the
+ * pre-REQ line, which is what keeps every existing caller honest. */
+export function CarveAnchor({ locale, anchor, entries }: { locale: Locale; anchor: number | null; entries?: ApiMarketPriceHistoryEntry[] }) {
+  return (
+    <span className="t-micro market-carve-anchor" data-testid="market-carve-anchor">
       {anchor != null ? t(locale, 'market.sell.anchor', { n: anchor }) : t(locale, 'market.sell.anchorNone')}
+      {entries && entries.length > 1 ? <AnchorSparkline locale={locale} entries={entries} /> : null}
     </span>
   );
 }
