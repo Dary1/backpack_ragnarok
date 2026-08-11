@@ -38,6 +38,13 @@ export const marketEn = {
   'market.buy.listingsEn': 'Listings',
   'market.buy.countNote': '{n} listings ・ carved prices only -- no contest of calls',
   'market.buy.dexBound': 'The menu is bound to the codex -- type a No. and that page opens.',
+  // REQ-0375: sort control + incremental reveal on the buy pane.
+  'market.buy.sortLabel': 'Order of the menu',
+  'market.buy.sortNewest': 'Newest first',
+  'market.buy.sortPriceAsc': 'Price: least first',
+  'market.buy.sortPriceDesc': 'Price: greatest first',
+  'market.buy.showMore': 'Read {n} more',
+  'market.buy.shownOf': '{shown} of {total} shown',
   'market.buy.emptyJa': 'The hearth stands bare -- until someone returns bearing fruit.',
   'market.buy.emptyEn': "The hearth stands bare -- until someone's expedition returns bearing fruit.",
   // chips
@@ -196,6 +203,13 @@ export const marketJa = {
   'market.buy.listingsEn': 'Listings',
   'market.buy.countNote': '{n}件 ・ 刻まれた値のみ — 競りは無い',
   'market.buy.dexBound': '品書きは図鑑と結ばれている — No.を打てば、その品の頁が開く。',
+  // REQ-0375: 並び替えと段階表示。
+  'market.buy.sortLabel': '品書きの並び',
+  'market.buy.sortNewest': '新しい順',
+  'market.buy.sortPriceAsc': '安い順',
+  'market.buy.sortPriceDesc': '高い順',
+  'market.buy.showMore': 'さらに{n}件を読む',
+  'market.buy.shownOf': '{total}件中 {shown}件を表示',
   'market.buy.emptyJa': '火床に品は無い — 誰かの遠征が実りを持ち帰るまで。',
   'market.buy.emptyEn': "The hearth stands bare -- until someone's expedition returns bearing fruit.",
   'market.chip.all': 'すべて',

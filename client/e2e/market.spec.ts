@@ -174,10 +174,19 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     await gotoMarket(page);
 
     // Cards present, price + burn breakdown line rendered.
+    //
+    // REQ-0375: scoped to the uids THIS test seeded, not an absolute
+    // market-wide count. A fleet worker is shared by every spec file it is
+    // handed, in sequence, so "the hearth holds exactly my two listings"
+    // was only ever true when this file happened to be its worker's FIRST
+    // -- and it stopped being true the moment input-conventions.spec.ts
+    // (REQ-0369) started leaving one standing. That spec now withdraws its
+    // own listing; this assertion no longer depends on it having done so.
     const grid = page.locator('[data-testid="market-grid"]');
     await expect(grid).toBeVisible();
-    await expect(page.locator('[data-testid="market-listing-row"]')).toHaveCount(2);
     const cleaver = page.locator('[data-testid="market-listing-row"][data-item-uid="e2e_browse_1"]');
+    await expect(cleaver).toBeVisible();
+    await expect(page.locator('[data-testid="market-listing-row"][data-item-uid="e2e_browse_2"]')).toBeVisible();
     await expect(cleaver).toContainText('×46');
     await expect(cleaver.locator('.burn')).toContainText('4'); // burn of 46 = 4
 
@@ -187,8 +196,8 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     const dexText = (await cleaver.locator('[data-testid="market-dexno"]').textContent())?.trim() ?? '';
     const dexDigits = dexText.replace(/[^\d]/g, '').replace(/^0+/, '');
     await page.locator('[data-testid="market-search"]').fill(dexDigits);
-    await expect(page.locator('[data-testid="market-listing-row"]')).toHaveCount(1);
     await expect(page.locator('[data-testid="market-listing-row"][data-item-uid="e2e_browse_1"]')).toBeVisible();
+    await expect(page.locator('[data-testid="market-listing-row"][data-item-uid="e2e_browse_2"]')).toHaveCount(0);
 
     // Name substring (EN) -> filters to the Dagger card.
     await page.locator('[data-testid="market-search"]').fill('dagger');
@@ -625,5 +634,209 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     const chipAfter = page.locator('[data-testid="tm-hud-chip"][data-tm-id="lrdst"]');
     await expect(chipAfter).toBeVisible();
     await expect(chipAfter).toContainText('\u00d720');
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// REQ-0375 -- buy-pane sort controls + scale-ready (incremental) render.
+//
+// Two gates with deliberately different data strategies:
+//  - ORDERING runs on the REAL backend (same mintInvite/seedSellerListing
+//    posture as the REQ-0064 block above), because the thing under test is
+//    that the pane re-orders listings the server handed it in ITS own
+//    (createdAt-descending) order -- a stub could not prove that.
+//  - The 200-listing SCALE gate stubs the browse response instead. Seeding
+//    200 real listings would mean 200 canvas PUT + POST round trips per run
+//    for a payload whose SHAPE is the whole point; warehouse-mjolnir.spec's
+//    '**/api/warehouse' stub is the standing precedent for synthesising a
+//    payload the backend would take minutes to produce honestly. The 'mine'
+//    request and every other market route still hit the real api.
+// ---------------------------------------------------------------------------
+
+/** The grid's card order, as data-item-uid values, narrowed to the uids
+ * THIS test seeded. The hermetic fleet worker's market is shared across
+ * the tests in this file (listings are never swept between them), so an
+ * absolute order assertion would be hostage to earlier tests' debris --
+ * relative order among our own uids is the honest invariant. */
+async function orderedUidsAmong(page: Page, mine: string[]): Promise<string[]> {
+  const all = await page
+    .locator('[data-testid="market-listing-row"]')
+    .evaluateAll((els) => els.map((el) => el.getAttribute('data-item-uid')));
+  const want = new Set(mine);
+  return all.filter((u): u is string => u != null && want.has(u));
+}
+
+/** N synthetic ACTIVE browse listings. Price runs 200..1 as the index
+ * rises while createdAt runs newest..oldest, so "newest first" and "price
+ * ascending" are EXACT reverses of each other -- an order assertion can
+ * therefore never pass by accident on an unsorted list. */
+function syntheticListings(n: number) {
+  const now = Date.now();
+  return Array.from({ length: n }, (_, i) => ({
+    id: `r375_perf_${i}`,
+    sellerId: `r375_seller_${i % 7}`,
+    sellerName: `Hearth Hand ${i % 7}`,
+    itemUid: `r375_uid_${i}`,
+    kind: 'po',
+    itemId: 'dagger',
+    itemName: `Perf Dagger ${i}`,
+    itemNameJa: null,
+    rarity: 'common',
+    tags: ['weapon'],
+    dexNo: null,
+    rollPct: 0.5,
+    price: { tm: 'lrdst', qty: n - i },
+    burn: Math.max(1, Math.ceil((n - i) * 0.08)),
+    sellerReceives: n - i - Math.max(1, Math.ceil((n - i) * 0.08)),
+    createdAt: new Date(now - i * 1000).toISOString(),
+    expiresAt: new Date(now + 7 * 86400000).toISOString(),
+    state: 'active',
+    suspended: false,
+    priceHistory: [],
+  }));
+}
+
+test.describe('REQ-0375: buy-pane sort + scale-ready render', () => {
+  let devProfileBackup: string | null = null;
+  let origCanvas: unknown = null;
+
+  test.beforeEach(async ({ page }) => {
+    devProfileBackup = existsSync(DEV_PROFILE_PATH) ? readFileSync(DEV_PROFILE_PATH, 'utf8') : null;
+    const resp = await page.request.get('/api/profile/default/canvas');
+    origCanvas = resp.ok() ? (await resp.json()).canvas : null;
+  });
+
+  test.afterEach(async ({ page }) => {
+    if (origCanvas) await page.request.put('/api/profile/default/canvas', { data: origCanvas });
+    if (devProfileBackup !== null) writeFileSync(DEV_PROFILE_PATH, devProfileBackup);
+    else if (existsSync(DEV_PROFILE_PATH)) rmSync(DEV_PROFILE_PATH);
+    await page.request.post('/api/warehouse/dev/clear-debris').catch(() => {});
+  });
+
+  test('SORT: price ascending renders 1/5/9, descending reverses it, the choice survives a pane switch, and newest floats a just-carved listing to the front', async ({ page }) => {
+    const seller = mintInvite('MarketSellerSort');
+    // Carved 5 -> 1 -> 9, so the newest order and BOTH price orders
+    // disagree with each other and with the carve order: no assertion
+    // below can pass by echoing the wire.
+    await seedSellerListing(page, seller, 'e2e_sort_5', 'dagger', 5);
+    await seedSellerListing(page, seller, 'e2e_sort_1', 'tower_shield', 1);
+    await seedSellerListing(page, seller, 'e2e_sort_9', 'beast_jaw', 9);
+    const seeded = ['e2e_sort_5', 'e2e_sort_1', 'e2e_sort_9'];
+
+    await page.request.put('/api/profile/default/canvas', { data: devBuyerCanvas(500, []) });
+    await gotoMarket(page);
+
+    // spec 3: the default is newest -> the LAST carved listing leads.
+    const sortSel = page.locator('[data-testid="market-sort"]');
+    await expect(sortSel).toHaveValue('newest');
+    expect(await orderedUidsAmong(page, seeded)).toEqual(['e2e_sort_9', 'e2e_sort_1', 'e2e_sort_5']);
+
+    // spec 1: price ascending -> 1, 5, 9 (the REQ's own gate wording).
+    await sortSel.selectOption('priceAsc');
+    expect(await orderedUidsAmong(page, seeded)).toEqual(['e2e_sort_1', 'e2e_sort_5', 'e2e_sort_9']);
+
+    await sortSel.selectOption('priceDesc');
+    expect(await orderedUidsAmong(page, seeded)).toEqual(['e2e_sort_9', 'e2e_sort_5', 'e2e_sort_1']);
+
+    // spec 3: the choice persists across a pane switch (the pane unmounts,
+    // module state carries it) -- and the grid comes back in that order.
+    await page.locator('[data-testid="market-tab-mine"]').click();
+    await expect(page.locator('[data-testid="market-pane-buy"]')).toHaveCount(0);
+    await page.locator('[data-testid="market-tab-buy"]').click();
+    await expect(page.locator('[data-testid="market-sort"]')).toHaveValue('priceDesc');
+    expect(await orderedUidsAmong(page, seeded)).toEqual(['e2e_sort_9', 'e2e_sort_5', 'e2e_sort_1']);
+
+    // spec 1 (newest): a listing carved AFTER the others leads under the
+    // default order.
+    await seedSellerListing(page, seller, 'e2e_sort_7', 'dagger', 7);
+    await gotoMarket(page);
+    // bootApp's goto only moves the HASH, so this is a same-document
+    // navigation and the module state is still alive -- which is precisely
+    // the "session" spec 3 scopes the choice to. Assert that, then take the
+    // newest order deliberately.
+    const sortAfterRoute = page.locator('[data-testid="market-sort"]');
+    await expect(sortAfterRoute).toHaveValue('priceDesc');
+    await sortAfterRoute.selectOption('newest');
+    expect(await orderedUidsAmong(page, [...seeded, 'e2e_sort_7'])).toEqual([
+      'e2e_sort_7', 'e2e_sort_9', 'e2e_sort_1', 'e2e_sort_5',
+    ]);
+
+    // ...and a REAL document reload ends that session: the pane comes back
+    // on the newest default, proving the choice was never written anywhere
+    // wider than memory (spec 3's scope, pinned from both sides).
+    await page.reload();
+    await gotoMarket(page);
+    await expect(page.locator('[data-testid="market-sort"]')).toHaveValue('newest');
+    expect((await orderedUidsAmong(page, [...seeded, 'e2e_sort_7']))[0]).toBe('e2e_sort_7');
+  });
+
+  test('SCALE: a 200-listing payload mounts one 50-card batch, reveals the next on demand, and re-sorts the WHOLE list (not just the mounted batch)', async ({ page }) => {
+    const TOTAL = 200;
+    const BATCH = 50;
+    const listings = syntheticListings(TOTAL);
+    // Stub the BROWSE request only; ?filter=mine and every other market
+    // route keep hitting the real hermetic api.
+    await page.route(
+      (url) => url.pathname === '/api/market/listings',
+      async (route, request) => {
+        if (new URL(request.url()).searchParams.get('filter') === 'mine') return route.continue();
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: true, dtoVersion: 2, tms: ['lrdst'], listings }),
+        });
+      }
+    );
+
+    await page.request.put('/api/profile/default/canvas', { data: devBuyerCanvas(500, []) });
+    await gotoMarket(page);
+
+    const cards = page.locator('[data-testid="market-listing-row"]');
+    // THE anti-jank invariant, and the load-independent half of this gate
+    // (REQ-0230's lesson: the load-bearing assertion must not be a clock):
+    // 200 listings on the wire, exactly one batch MOUNTED.
+    await expect(cards).toHaveCount(BATCH);
+    await expect(page.locator('[data-testid="market-buy-count"]')).toContainText(String(TOTAL));
+    await expect(page.locator('[data-testid="market-shown-of"]')).toContainText(String(BATCH));
+    await expect(page.locator('[data-testid="market-shown-of"]')).toContainText(String(TOTAL));
+
+    // The sort spans the FULL list, not the mounted batch: under price
+    // ascending the cheapest listing (qty 1, the OLDEST and so the very
+    // last card of the newest order) must become card #1.
+    const sortSel = page.locator('[data-testid="market-sort"]');
+    await expect(cards.first()).toHaveAttribute('data-item-uid', 'r375_uid_0'); // newest = dearest (qty 200)
+    await sortSel.selectOption('priceAsc');
+    await expect(cards.first()).toHaveAttribute('data-item-uid', `r375_uid_${TOTAL - 1}`); // qty 1
+    await expect(cards).toHaveCount(BATCH); // a re-sort re-batches from the top
+
+    // Reveal the next batch.
+    await page.locator('[data-testid="market-show-more"]').click();
+    await expect(cards).toHaveCount(BATCH * 2);
+    // ...and keep revealing until the list is exhausted, at which point the
+    // control retires itself.
+    await page.locator('[data-testid="market-show-more"]').click();
+    await page.locator('[data-testid="market-show-more"]').click();
+    await expect(cards).toHaveCount(TOTAL);
+    await expect(page.locator('[data-testid="market-more"]')).toHaveCount(0);
+
+    // Responsiveness, BEST-OF-3 wall clock against a fat budget -- the
+    // REQ-0230 shape (a wall clock measures the BOX, so the timing half of
+    // a perf gate takes the best sample and leaves generous headroom;
+    // the hard assertion is the structural one above).
+    const budgetMs = 1500; // [TUNABLE]
+    const samples: number[] = [];
+    const rounds: Array<['newest' | 'priceAsc' | 'priceDesc', string]> = [
+      ['newest', 'r375_uid_0'],
+      ['priceAsc', `r375_uid_${TOTAL - 1}`],
+      ['priceDesc', 'r375_uid_0'],
+    ];
+    for (const [order, headUid] of rounds) {
+      const started = Date.now();
+      await sortSel.selectOption(order);
+      await expect(cards.first()).toHaveAttribute('data-item-uid', headUid);
+      samples.push(Date.now() - started);
+    }
+    expect(Math.min(...samples)).toBeLessThan(budgetMs);
   });
 });

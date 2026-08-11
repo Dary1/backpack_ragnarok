@@ -67,6 +67,18 @@
 .market-search input::placeholder{ color:var(--bone-3); }
 .market-search:focus-within{ border-color:var(--gold-lo); box-shadow:0 0 8px rgba(201,169,89,.2); }
 .market-toolrow .strip-note{ flex-basis:100%; letter-spacing:.1em; }
+/* REQ-0375: the sort selector rides the toolrow beside the search field
+   and borrows its well styling verbatim, so the two controls read as one
+   instrument rather than two. */
+.market-sort{ display:flex; align-items:center; gap:9px; flex:none;
+  padding:7px 13px; background:rgba(10,13,18,.72); border:1px solid var(--border-lo); border-radius:2px; }
+.market-sort .rune{ color:var(--bone-3); font-size:14px; }
+.market-sort select{ background:none; border:none; outline:none; color:var(--bone);
+  font-family:var(--f-ui); font-size:13px; letter-spacing:.04em; cursor:pointer; }
+.market-sort select option{ background:#10141b; color:var(--bone); }
+.market-sort:focus-within{ border-color:var(--gold-lo); box-shadow:0 0 8px rgba(201,169,89,.2); }
+/* REQ-0375: the incremental-reveal footer under the grid. */
+.market-more{ display:flex; align-items:center; justify-content:center; gap:12px; margin-top:14px; }
 
 /* ---- listing cards ---- */
 .market-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:12px; margin-top:14px; }
@@ -198,6 +210,8 @@
   .market-laws .law + .law{ border-left:none; border-top:1px solid rgba(201,169,89,.16); padding-top:12px; }
   .market-grid{ grid-template-columns:1fr; }
   .market-search{ max-width:none; flex-basis:100%; margin-left:0; }
+  .market-sort{ flex-basis:100%; }
+  .market-sort select{ flex:1; min-width:0; }
   .lrow{ flex-wrap:wrap; }
   .lrow .lp{ margin-left:60px; text-align:left; }
   .market-stepper{ flex-wrap:wrap; }
