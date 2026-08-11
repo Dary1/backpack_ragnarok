@@ -91,6 +91,7 @@ export const dexEn = {
   'dex.packRoleLabel': 'Pack role',
   // REQ-0211: Gimics tab (trap / treasure box / hidden door interactables).
   'dex.tabGimics': 'Gimics',
+  'dex.tabTerms': 'Terms', // REQ-0376: the glossary + dry-rules tab
   'dex.gimicCatalogTitle': 'Contraptions',
   'dex.gimicCatalogDen': 'CONTRAPTIONS',
   'dex.gimicCatalogNote': 'Traps, treasure boxes & hidden doors ・ footprints in cells',
@@ -225,6 +226,7 @@ export const dexJa = {
   'dex.packRoleLabel': '編成役割',
   // REQ-0211: Gimics tab (trap / treasure box / hidden door interactables).
   'dex.tabGimics': 'ギミック',
+  'dex.tabTerms': '用語', // REQ-0376
   'dex.gimicCatalogTitle': 'ギミック図譜',
   'dex.gimicCatalogDen': 'CONTRAPTIONS',
   'dex.gimicCatalogNote': '罠・宝箱・隠し扉 ・ 占有マスはセル数で記す',

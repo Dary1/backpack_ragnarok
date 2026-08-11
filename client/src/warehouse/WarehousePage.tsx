@@ -106,6 +106,7 @@ import { SellModal } from './SellModal'; // REQ-0366
 import { TtlRing } from './TtlRing';
 import { useWarehouseData, type WarehouseRow } from './useWarehouseData';
 import { WAREHOUSE_CAP } from '../../../shared/constants.json';
+import { HallCard } from '../guide/HallCard'; // REQ-0376
 
 interface WarehousePageProps {
   locale: Locale;
@@ -357,6 +358,9 @@ export function WarehousePage({ locale }: WarehousePageProps) {
       <div className="rune-divider schedule-pagehead-divider" aria-hidden="true">
         ᚷ
       </div>
+
+      {/* REQ-0376: the hall's laws on first visit (guide/HallCard.tsx). */}
+      <HallCard hall="warehouse" />
 
       <div className="schedule-warehouse-tab">
       {/* mock .topstrip: capacity meter / near-expiry chip / filters /
