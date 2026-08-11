@@ -116,6 +116,7 @@ import { RagnarokPage } from './ragnarok/RagnarokPage'; // REQ-0066
 import { SquadTabs } from './SquadTabs';
 import { SquadTrashZone } from './SquadTrashZone';
 import { Settings } from './Settings';
+import { setBgmScene } from './audio/bgm'; // REQ-0370
 import { FirstRunGuide } from './guide/FirstRunGuide'; // REQ-0141
 import { ContextualHint } from './guide/ContextualHint'; // REQ-0141
 import { Tabs } from './Tabs';
@@ -191,6 +192,11 @@ function App() {
   // game state and no Pixi surface; everything below (crucially the
   // always-mounted backpacks-view) renders exactly as before.
   const onLanding = route === 'landing';
+
+  // REQ-0370: BGM scene follows the route -- 'title' on the landing, the
+  // shared 'hall' loop everywhere else. Same-track scenes never restart
+  // the loop (audio/bgm.ts guards); under webdriver this is a no-op.
+  useEffect(() => { setBgmScene(onLanding ? 'title' : 'hall'); }, [onLanding]);
   // REQ-0365: signed out (server said 401 to /api/me -- only reachable with
   // dev_mode OFF). There is no engine, no state and no profile, so every route
   // except the landing and Settings would render an empty shell; Settings is

@@ -26,19 +26,15 @@ test.describe('REQ-0059 circuit-chime settings', () => {
 
     const chimes = page.getByTestId('settings-chimes-toggle');
     const haptics = page.getByTestId('settings-haptics-toggle');
-    const volume = page.getByTestId('settings-chimes-volume');
 
-    // Defaults: chimes ON, haptics ON, volume a low non-zero mix.
+    // Defaults: chimes ON, haptics ON. (REQ-0370: the chime-scoped volume
+    // slider folded into the SE slider -- covered by audio-mixer.spec.ts.)
     await expect(chimes).toBeChecked();
     await expect(haptics).toBeChecked();
-    const defaultVol = Number(await volume.inputValue());
-    expect(defaultVol).toBeGreaterThan(0);
-    expect(defaultVol).toBeLessThanOrEqual(50);
 
     // Change every control.
     await chimes.uncheck();
     await haptics.uncheck();
-    await volume.fill('12');
 
     // The change is persisted to localStorage immediately (no Save button).
     const stored = await page.evaluate((k) => localStorage.getItem(k), STORAGE_KEY);
@@ -46,14 +42,12 @@ test.describe('REQ-0059 circuit-chime settings', () => {
     const parsed = JSON.parse(stored as string);
     expect(parsed.chimes).toBe(false);
     expect(parsed.haptics).toBe(false);
-    expect(Math.round(parsed.volume * 100)).toBe(12);
 
     // And it survives a full reload.
     await page.reload();
     await expect(page.getByTestId('settings-sound')).toBeVisible();
     await expect(page.getByTestId('settings-chimes-toggle')).not.toBeChecked();
     await expect(page.getByTestId('settings-haptics-toggle')).not.toBeChecked();
-    expect(Number(await page.getByTestId('settings-chimes-volume').inputValue())).toBe(12);
 
     // Re-enabling writes the flag back true (round-trips both ways).
     await page.getByTestId('settings-chimes-toggle').check();

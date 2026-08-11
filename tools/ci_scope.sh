@@ -137,7 +137,7 @@ ci_scope_classify() {
 KNOWN_TOPLEVEL='.gitignore bot client content deploy docs mock-src package.json
 pnpm-lock.yaml server shared sim tools tsconfig.server.json types web'
 
-KNOWN_CLIENT_SRC='a11y api artadmin auth board canvas contentadmin dex engine
+KNOWN_CLIENT_SRC='a11y api artadmin audio auth board canvas contentadmin dex engine
 guide i18n landing lib market notify ragnarok render schedule sortie store styles
 theme warehouse'
 KNOWN_CLIENT_SRC_ADMIN='artadmin contentadmin'

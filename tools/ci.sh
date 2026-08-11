@@ -397,6 +397,9 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   # rig as the two gates above, so it sits beside them in front of the build.
   stage "[5.8/7] client circuit-chime mapping (REQ-0059)"
   (cd client && node scripts/check_chime_mapping.mjs)
+  # REQ-0370: audio mixer prefs normaliser (pure module, same ssr rig).
+  stage "[5.85/7] client audio mixer prefs (REQ-0370)"
+  (cd client && node scripts/check_audio_prefs.mjs)
   # REQ-0118c: Supabase auth wiring (session token accessor + Bearer header
   # assembly + OAuth redirect construction + guest/discord/link dispatch),
   # driven against the REAL modules with an injected fake supabase client.
