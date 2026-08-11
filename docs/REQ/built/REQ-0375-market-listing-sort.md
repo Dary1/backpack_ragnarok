@@ -116,7 +116,9 @@ Observe with `GET /api/market/listings` (default filter = active + suspended).
   admin surface, so [6.5/8] admin trio and [6.6/8] registry-first self-skipped
   per REQ-0339/REQ-0238; 238 e2e passed / 0 failed / 1 skipped). Receipt tree
   854ebe64a7acdd9a67eee61e667782f3f3df42f5.
-- Commits: b78bca9e (implementation + e2e + the incidental fix below).
+- Re-gated twice more as master moved under this branch (REQ-0371 docs, then
+  REQ-0376): CI GREEN on the master-merged tree 423e0ac7 (281s), and again on
+  the tree that actually became master — see the Outcome section.
 
 ## Incidental fix (found by this REQ's full-suite run, kept in the same commit)
 The full run failed `market.spec.ts:166` with *expected 2, received 3*. Cause:
@@ -131,10 +133,27 @@ gate and neither is to be memorized (REQ-0159): input-conventions.spec.ts now
 withdraws its listing in `afterEach` (the warehouse-sell.spec.ts convention
 since REQ-0366), and market.spec.ts's browse test asserts its own two seeded
 cards plus the search's include/exclude rather than a global count.
-Two further reds seen on an unlocked full-suite run at load average 20–28
-(three concurrent CI sessions on the box) did NOT reproduce: `sortie-prefill`
-and `board-render-ondemand` both pass in isolation and both passed in the
-locked CI GREEN run — the REQ-0230 contention class, no action taken.
+`board-render-ondemand` also went red once on an unlocked full-suite run at
+load average 20–28 (three concurrent CI sessions on the box) and did NOT
+reproduce: it passes in isolation and passed in every locked CI GREEN run —
+the REQ-0230 contention class, no action taken.
+
+**Second cross-spec leak, found at merge time (2026-08-11).** After merging
+REQ-0376 (which adds `hall-guidance.spec.ts` and so redeals the file→worker
+distribution), the merged tree went red on `sortie-prefill.spec.ts` (REQ-0371):
+the launch button never enabled. Not contention — reproduced every time with
+`playwright test market.spec.ts sortie-prefill.spec.ts` on ONE worker, and
+still reproduced with this REQ's own tests excluded (`--grep-invert REQ-0375`),
+i.e. pre-existing between REQ-0064 and REQ-0371 and merely re-dealt onto the
+same worker. Probed the worker's dev profile after the market file: board
+empty, all ten squad presets null — `devBuyerCanvas`, still there. Mechanism:
+`store/autosave.ts` debounces 800ms and also flushes on pagehide, so
+market.spec.ts's `afterEach` restore PUT was being overwritten by the market
+app's OWN last save; sortie-prefill then found squad 0 empty and could not
+muster it. Fixed at the source: the restore now tears the page down to
+`about:blank` first (an unmounted app cannot race it) and verifies by reading
+the canvas back, retrying the PUT rather than sleeping. Same command green
+afterwards, 21/21.
 
 ## Out of scope
 Server pagination, price-history charts, buy-side filters beyond today's

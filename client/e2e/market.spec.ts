@@ -141,6 +141,40 @@ async function furnaceTotalOf(page: Page): Promise<number> {
   return totals.reduce((s, r) => s + r.total, 0);
 }
 
+/** Puts the dev profile back the way the test found it.
+ *
+ * REQ-0375: the page is torn down to about:blank FIRST, and the restore is
+ * then verified by reading it back. store/autosave.ts debounces 800ms AND
+ * flushes on pagehide, so a restore PUT issued while the market app is still
+ * mounted can be overwritten moments later by the app's OWN last save of
+ * devBuyerCanvas -- an empty board whose squad presets are all null. Nothing
+ * in this file notices (its own assertions all pass and the next test
+ * re-seeds), but a hermetic fleet worker is handed several spec FILES in
+ * sequence and keeps its profile across them, so the loser was whichever file
+ * the worker drew next: sortie-prefill.spec.ts (REQ-0371) then found squad 0
+ * empty, could not muster it, and failed on a launch button that never
+ * enabled. Reproduced deterministically as
+ *   pnpm exec playwright test market.spec.ts sortie-prefill.spec.ts   (1 worker)
+ * and green on the same command with this restore in place.
+ *
+ * An unmounted page cannot race the PUT; the read-back retry is the proof
+ * rather than a hopeful sleep. */
+async function restoreDevProfile(page: Page, origCanvas: unknown, devProfileBackup: string | null): Promise<void> {
+  await page.goto('about:blank'); // unmount the SPA -- no debounce, no pagehide flush left to fire
+  if (origCanvas) {
+    const want = JSON.stringify((origCanvas as { presets?: { store?: unknown[] } }).presets?.store ?? []);
+    await expect(async () => {
+      await page.request.put('/api/profile/default/canvas', { data: origCanvas });
+      const back = (await (await page.request.get('/api/profile/default/canvas')).json()).canvas;
+      expect(JSON.stringify(back?.presets?.store ?? [])).toBe(want);
+    }).toPass({ timeout: 8000 });
+  }
+  if (devProfileBackup !== null) writeFileSync(DEV_PROFILE_PATH, devProfileBackup);
+  else if (existsSync(DEV_PROFILE_PATH)) rmSync(DEV_PROFILE_PATH);
+  // sweep any market debris the dev buyer accrued (warehouse deliveries)
+  await page.request.post('/api/warehouse/dev/clear-debris').catch(() => {});
+}
+
 test.describe('REQ-0064: Market screen on the real backend', () => {
   // Back up + restore the dev profile around each test (pg-aware, same
   // convention as warehouse-mjolnir.spec.ts: a dev.json file restore is a
@@ -156,11 +190,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
   });
 
   test.afterEach(async ({ page }) => {
-    if (origCanvas) await page.request.put('/api/profile/default/canvas', { data: origCanvas });
-    if (devProfileBackup !== null) writeFileSync(DEV_PROFILE_PATH, devProfileBackup);
-    else if (existsSync(DEV_PROFILE_PATH)) rmSync(DEV_PROFILE_PATH);
-    // sweep any market debris the dev buyer accrued (warehouse deliveries)
-    await page.request.post('/api/warehouse/dev/clear-debris').catch(() => {});
+    await restoreDevProfile(page, origCanvas, devProfileBackup);
   });
 
   test('BUY: browse renders listing cards; a No.-query deep-links by Dex No.; a name substring filters', async ({ page }) => {
@@ -708,10 +738,7 @@ test.describe('REQ-0375: buy-pane sort + scale-ready render', () => {
   });
 
   test.afterEach(async ({ page }) => {
-    if (origCanvas) await page.request.put('/api/profile/default/canvas', { data: origCanvas });
-    if (devProfileBackup !== null) writeFileSync(DEV_PROFILE_PATH, devProfileBackup);
-    else if (existsSync(DEV_PROFILE_PATH)) rmSync(DEV_PROFILE_PATH);
-    await page.request.post('/api/warehouse/dev/clear-debris').catch(() => {});
+    await restoreDevProfile(page, origCanvas, devProfileBackup);
   });
 
   test('SORT: price ascending renders 1/5/9, descending reverses it, the choice survives a pane switch, and newest floats a just-carved listing to the front', async ({ page }) => {
