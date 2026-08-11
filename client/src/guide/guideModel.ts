@@ -33,6 +33,23 @@ import type { GameState } from '../engine/engine.d.ts';
 export type GuideStatus = 'active' | 'skipped' | 'done';
 export type GuideHintId = 'rotation' | 'tagMismatch' | 'dudBeam';
 
+// REQ-0376: the halls that carry a first-visit card. One per nav destination
+// whose LAWS are otherwise stated nowhere -- the canvas is covered by the tour
+// above, the Dex carries the glossary, and Ragnarok/Friends have no laws to
+// state yet. Order is the nav-rail order, and is the order the e2e gate walks.
+export type HallId = 'schedule' | 'sortie' | 'warehouse' | 'workshop' | 'market';
+export const HALL_IDS: readonly HallId[] = ['schedule', 'sortie', 'warehouse', 'workshop', 'market'] as const;
+
+/** How many law lines each hall card states -- the i18n keys are
+ * guide.hall.<id>.law1 .. law<N>, plus guide.hall.<id>.title. Keeping the count
+ * HERE (rather than counting keys at runtime) is what keeps TranslationKey a
+ * compile-time union: every key this table implies exists literally in
+ * src/i18n/guide.ts, so the barrel's en/ja parity gate covers them like any
+ * other chrome string. */
+export const HALL_LAW_COUNT: Readonly<Record<HallId, number>> = {
+  schedule: 3, sortie: 4, warehouse: 4, workshop: 3, market: 4,
+};
+
 export interface GuidePersisted {
   status: GuideStatus;
   /** index into GUIDE_STEPS; meaningful only while status === active. */
@@ -43,6 +60,11 @@ export interface GuidePersisted {
   seen: boolean;
   /** first-time contextual-hint seen-flags. */
   hints: Partial<Record<GuideHintId, boolean>>;
+  /** REQ-0376: per-hall first-visit card seen-flags. OPTIONAL on purpose --
+   * every guide record persisted before REQ-0376 lacks it, and those records
+   * must round-trip through the auto-save PUT untouched. Absent === nothing
+   * dismissed yet, which is exactly what an unflagged veteran should mean. */
+  halls?: Partial<Record<HallId, boolean>>;
 }
 
 /** One step of the first-run tour. id keys the i18n copy
@@ -65,7 +87,15 @@ export const GUIDE_STEPS: GuideStep[] = [
 export const GUIDE_STEP_COUNT = GUIDE_STEPS.length;
 
 export function defaultGuide(status: GuideStatus): GuidePersisted {
-  return { status, step: 0, seen: false, hints: {} };
+  return { status, step: 0, seen: false, hints: {}, halls: {} };
+}
+
+/** REQ-0376: has this hall's first-visit card already been dismissed? A null
+ * guide (a profile that has never carried the field) answers false -- it has
+ * dismissed nothing -- WITHOUT the record being created; only a dismiss creates
+ * it (see guideController.markHallSeen). */
+export function isHallSeen(g: GuidePersisted | null, hall: HallId): boolean {
+  return Boolean(g?.halls?.[hall]);
 }
 
 // GameState is intentionally NOT widened with this client-only field (it would

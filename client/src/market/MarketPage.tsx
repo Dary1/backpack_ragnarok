@@ -32,6 +32,7 @@ import { BuyModal } from './BuyModal';
 import { BuyPane } from './BuyPane';
 import { MinePane } from './MinePane';
 import { SellPane } from './SellPane';
+import { HallCard } from '../guide/HallCard'; // REQ-0376
 
 type Pane = 'buy' | 'sell' | 'mine';
 
@@ -177,6 +178,11 @@ export function MarketPage({ locale }: MarketPageProps) {
         </div>
       </section>
       <div className="rune-divider headline market-headline">ᚠ</div>
+
+      {/* REQ-0376: the hall's laws on first visit. The ornate "three laws"
+          panel below is FLAVOR (ash has no owner); this states the same
+          economy in numbers -- 8%, and what the buyer/seller each carry. */}
+      <HallCard hall="market" />
 
       {/* the three laws */}
       <section className="panel ornate laws market-laws">

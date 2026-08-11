@@ -59,6 +59,7 @@ import { ShapeGrid } from './ShapeGrid';
 import { MonsterCatalog } from './MonsterCatalog'; // REQ-0208
 import { GimicCatalog } from './GimicCatalog'; // REQ-0211
 import { UnitCatalog } from './UnitCatalog'; // REQ-0208
+import { Glossary } from './Glossary'; // REQ-0376
 
 export interface DexEntry {
   id: string;
@@ -152,12 +153,16 @@ interface DexProps {
 // design. The Items tab keeps its exact REQ-0120 master/detail behavior and
 // every E2E-load-bearing selector; Units/Monsters render self-contained
 // catalogs (UnitCatalog.tsx / MonsterCatalog.tsx).
-type DexTab = 'items' | 'units' | 'monsters' | 'gimics'; // REQ-0211: gimics
+// REQ-0376: + Terms -- the glossary and the dry-rules block. It is the only
+// tab that reads NO payload (see Glossary.tsx), and it is deliberately LAST so
+// every existing tab keeps its position and Items stays the default.
+type DexTab = 'items' | 'units' | 'monsters' | 'gimics' | 'terms'; // REQ-0211: gimics; REQ-0376: terms
 const DEX_TABS: Array<{ id: DexTab; label: TranslationKey }> = [
   { id: 'items', label: 'dex.tabItems' },
   { id: 'units', label: 'dex.tabUnits' },
   { id: 'monsters', label: 'dex.tabMonsters' },
   { id: 'gimics', label: 'dex.tabGimics' }, // REQ-0211
+  { id: 'terms', label: 'dex.tabTerms' }, // REQ-0376
 ];
 
 export function Dex({ locale, payload, dexFocusId }: DexProps) {
@@ -373,6 +378,8 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
           onFocusConsumed={() => setGimicFocusId(null)}
         />
       ) : null}
+      {/* REQ-0376: Terms -- the static glossary + dry rules. */}
+      {tab === 'terms' ? <Glossary locale={locale} /> : null}
       {/* REQ-0120: master/detail split container. Orientation-driven in
           index.css: landscape = [list | detail], portrait = [detail / list].
           REQ-0208: mounted only on the (default) Items tab. */}

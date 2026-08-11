@@ -27,6 +27,7 @@ import { deriveSquadCard, type SquadCardEntry } from './deriveSquadCard';
 import { readSortieAttackLv, writeSortieAttackLv } from './sortiePrefs'; // REQ-0371
 import { AdvancedFold, type SortieAdvanced } from './AdvancedFold';
 import { useSquadConflicts } from './useSquadConflicts';
+import { HallCard } from '../guide/HallCard'; // REQ-0376
 
 interface SortiePageProps {
   locale: Locale;
@@ -218,6 +219,9 @@ export function SortiePage({ locale, focusDungeonId }: SortiePageProps) {
           <div className="sortie-pagehead-lede">{t(locale, 'sortie.pageLede')}</div>
         </div>
       </section>
+
+      {/* REQ-0376: the hall's laws on first visit (guide/HallCard.tsx). */}
+      <HallCard hall="sortie" />
 
       <section className="sortie-zone sortie-zone-dest">
         <div className="sortie-zone-head">

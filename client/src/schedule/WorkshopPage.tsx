@@ -39,6 +39,7 @@ import { DismantlePanel } from './DismantlePanel';
 import { t } from '../i18n';
 import { clearUndo, notifyStateChanged, useGameStore, type Locale } from '../store';
 import { GACHA_COMMON_BP_COST } from '../../../shared/constants.json';
+import { HallCard } from '../guide/HallCard'; // REQ-0376
 
 interface WorkshopPageProps {
   locale: Locale;
@@ -275,6 +276,9 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
         </div>
       </section>
       <div className="rune-divider workshop-headline">{'ᛈ'}</div>
+
+      {/* REQ-0376: the hall's laws on first visit (guide/HallCard.tsx). */}
+      <HallCard hall="workshop" />
 
       {error ? <div className="schedule-error" data-testid="workshop-error">{error}</div> : null}
       {toast ? <div className="schedule-toast workshop-toast" data-testid="workshop-toast">{toast}</div> : null}

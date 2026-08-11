@@ -64,3 +64,71 @@
 
 .settings-guide-replay { margin-top: 10px; background: var(--gold, #c8a24a); color: #1a1206; border: none; border-radius: 8px; padding: 8px 16px; font-weight: 700; cursor: pointer; }
 .settings-guide-replay:hover { filter: brightness(1.08); }
+
+/* ---------------------------------------------------------------------------
+   REQ-0376: the per-hall first-visit card. Same visual family as .guide-hint
+   above (panel ground, gold rule, x dismiss) but IN-FLOW -- it occupies real
+   layout under the pagehead instead of floating over the page, so it can never
+   cover a control. See guide/HallCard.tsx for why.
+   --------------------------------------------------------------------------- */
+.hall-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 720px;
+  margin: 0 auto 14px;
+  padding: 12px 14px;
+  background: var(--panel, #171a21);
+  color: var(--ink, #e8e6df);
+  border: 1px solid var(--gold, #c8a24a);
+  border-radius: 10px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
+}
+.hall-card-body { flex: 1 1 auto; min-width: 0; }
+.hall-card-title { font-size: 13.5px; font-weight: 700; margin-bottom: 6px; }
+.hall-card-laws { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.hall-card-law { font-size: 12.5px; line-height: 1.5; opacity: 0.92; }
+.hall-card-dismiss {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  color: var(--ink, #e8e6df);
+  opacity: 0.6;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+.hall-card-dismiss:hover { opacity: 1; }
+
+/* REQ-0376: the Dex "Terms" tab -- the glossary + the dry-rules block. Plain
+   reference typography; the tab owns no controls, so it borrows no chips. */
+.dex-glossary { max-width: 860px; margin: 0 auto; padding: 4px 2px 24px; }
+.dex-glossary-section + .dex-glossary-section { margin-top: 26px; }
+.dex-glossary-heading {
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin: 0 0 4px;
+}
+.dex-glossary-lede { font-size: 12.5px; line-height: 1.55; opacity: 0.75; margin: 0 0 12px; }
+.dex-glossary-list { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.dex-glossary-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) 1fr;
+  gap: 4px 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.dex-glossary-term { font-weight: 700; font-size: 13px; color: var(--gold, #c8a24a); }
+.dex-glossary-desc { font-size: 12.5px; line-height: 1.55; opacity: 0.92; margin: 0; }
+@media (max-width: 640px) {
+  .dex-glossary-row { grid-template-columns: 1fr; }
+}
+
+/* REQ-0376 (spec item 4): the schedule/sortie role split, stated in the two
+   places the Expedition hall shows nothing -- no rooms yet, and no room
+   selected. Sits with the rest of the onboarding chrome rather than in
+   schedule.css because it is guidance, not page furniture. */
+.schedule-role-note { margin: 6px 0 2px; opacity: 0.75; line-height: 1.5; }
