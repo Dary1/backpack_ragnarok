@@ -23,6 +23,17 @@
 // dismantled item would silently resurrect it on the next unrelated
 // auto-save PUT.
 //
+// REQ-0373: mass dismantle grew a SAFETY rail. The multi-selection summary
+// showed a bare count, so one confirm could melt a Rare inside a 30-item
+// drag-select and the player would never know it had been in there --
+// dismantle is irreversible, and the count told them nothing about WHAT.
+// Two additions, both display-only on the client's own state (no new
+// endpoint, no server change): a per-rarity chip breakdown of the live
+// selection, and a two-click ARM on the confirm button whenever the
+// selection holds anything at Rare or better. The single-item flow is
+// untouched -- it already names the exact piece being destroyed, which is
+// the whole thing the multi flow was missing.
+//
 // REQ-0090: the hoard list below is multi-select (hold+drag adds every
 // row the pointer passes over, Shift+Click adds one row, Ctrl+Click
 // range-selects by index -- see useListMultiSelect.ts for the exact
@@ -46,6 +57,26 @@ interface DismantlableItem {
   itemUid: string;
   itemId: string;
   kind: 'po' | 'si';
+}
+
+/** REQ-0373: the closed rarity vocabulary, weakest first
+ * (content/vocab.json's `rarities`). Order matters twice: the chips render
+ * in it, and everything from RARITY_ARM_FLOOR up is what arms the confirm.
+ * A def with an unknown/absent rarity is counted as Common -- the same
+ * fallback the row's own `rar-${def?.rarity || 'common'}` class already
+ * uses, so the chips can never disagree with the tint beside them. */
+const RARITIES = ['Common', 'Uncommon', 'Rare', 'Relic'] as const;
+type Rarity = (typeof RARITIES)[number];
+const RARITY_ARM_FLOOR = RARITIES.indexOf('Rare');
+const RARITY_LABEL: Record<Rarity, TranslationKey> = {
+  Common: 'workshop.dismantle.rarity.Common',
+  Uncommon: 'workshop.dismantle.rarity.Uncommon',
+  Rare: 'workshop.dismantle.rarity.Rare',
+  Relic: 'workshop.dismantle.rarity.Relic',
+};
+function rarityOf(def: ItemDef | SIDef | null): Rarity {
+  const r = def && typeof def.rarity === 'string' ? def.rarity : '';
+  return (RARITIES as readonly string[]).includes(r) ? (r as Rarity) : 'Common';
 }
 
 /** Every inventory-homed PO + SI across all inventory pages -- the exact
@@ -120,6 +151,11 @@ export function DismantlePanel({ locale, onClose }: DismantlePanelProps) {
   // loadGame() refresh removes the just-dismantled rows).
   const multi = useListMultiSelect(dismantlable, keyOf);
 
+  // REQ-0373: the confirm button's two-click arm. Reset by every change to
+  // the selection (below) so an arm can never outlive the selection it was
+  // granted for -- arming on "1 Common + 1 Rare" and then Ctrl-clicking 20
+  // more rows must ask again.
+  const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [errKey, setErrKey] = useState<TranslationKey | null>(null);
   const [result, setResult] = useState<DismantleBatchResult | null>(null);
@@ -162,6 +198,25 @@ export function DismantlePanel({ locale, onClose }: DismantlePanelProps) {
   // this panel's own concept of a lock.
   const selectedItems = dismantlable.filter((it) => multi.selected.has(keyOf(it)) && !deployedKeys.has(keyOf(it)));
   const selectedCount = selectedItems.length;
+  // REQ-0373: per-rarity tally of the LIVE selection (the same
+  // deployed-filtered list the confirm will act on, so the chips can never
+  // over-report), plus whether it holds anything at Rare or better.
+  const defOf = (it: DismantlableItem): ItemDef | SIDef | null =>
+    (it.kind === 'po' ? gameData?.ITEMS[it.itemId] : gameData?.SI_DEFS[it.itemId]) || null;
+  const rarityCounts = new Map<Rarity, number>();
+  for (const it of selectedItems) {
+    const r = rarityOf(defOf(it));
+    rarityCounts.set(r, (rarityCounts.get(r) ?? 0) + 1);
+  }
+  const precious = RARITIES.some((r, i) => i >= RARITY_ARM_FLOOR && (rarityCounts.get(r) ?? 0) > 0);
+  const needsArm = selectedCount > 1 && precious;
+  // The selection key changes whenever the SET changes, which is what
+  // disarms the button (see `armed` above). Sorted so a re-selection in a
+  // different order is the same selection.
+  const selectionKey = selectedItems.map((it) => keyOf(it)).sort().join('|');
+  useEffect(() => {
+    setArmed(false);
+  }, [selectionKey]);
   const singleSelected = selectedCount === 1 ? selectedItems[0] : null;
   const singleSelectedDef: ItemDef | SIDef | null = singleSelected
     ? singleSelected.kind === 'po'
@@ -222,6 +277,7 @@ export function DismantlePanel({ locale, onClose }: DismantlePanelProps) {
     }
     setErrKey(anyDeployed ? 'workshop.dismantle.errDeployed' : anyNotFound ? 'workshop.dismantle.errNotFound' : anyGeneric ? 'workshop.dismantle.errGeneric' : null);
     multi.clear();
+    setArmed(false); // REQ-0373: never leave a spent arm behind
     if (succeededCount > 0) {
       await loadGame(); // authoritative post-removal canvas -- defuses the auto-save race (see module comment)
     }
@@ -349,6 +405,17 @@ export function DismantlePanel({ locale, onClose }: DismantlePanelProps) {
                       {selectedCount}
                     </b>
                   </div>
+                  {/* REQ-0373: WHAT is in the selection, not just how many.
+                      Only rarities actually present get a chip -- a row of
+                      four chips, three of them zero, is noise that hides the
+                      one number that matters. */}
+                  <div className="workshop-dismantle-rarity-chips" data-testid="workshop-dismantle-rarity-chips">
+                    {RARITIES.filter((r) => (rarityCounts.get(r) ?? 0) > 0).map((r) => (
+                      <span key={r} className={`chip rar-word r-${r} workshop-dismantle-rarity-chip`} data-rarity={r} data-count={rarityCounts.get(r)}>
+                        {t(locale, RARITY_LABEL[r])} <b className="tnum">{rarityCounts.get(r)}</b>
+                      </span>
+                    ))}
+                  </div>
                   <div className="t-micro workshop-dismantle-note">{t(locale, 'workshop.dismantle.multiYieldNote')}</div>
                 </div>
               )}
@@ -365,15 +432,43 @@ export function DismantlePanel({ locale, onClose }: DismantlePanelProps) {
 
               {selectedCount > 0 ? (
                 <div className="mt16">
+                  {/* REQ-0373: the two-click arm. First click on a
+                      Rare-or-better multi-selection only ARMS -- the label
+                      changes to name what is at stake and the second click
+                      performs the dismantle. `data-armed` is the machine-
+                      readable state (the e2e gate reads it); `needsArm` is
+                      false for a single item and for Common/Uncommon-only
+                      selections, which confirm in one click exactly as
+                      before. */}
                   <button
                     type="button"
-                    className="btn btn-forge"
+                    className={`btn btn-forge${needsArm && armed ? ' is-armed' : ''}`}
                     data-testid="workshop-dismantle-confirm-btn"
+                    data-needs-arm={needsArm ? 'true' : 'false'}
+                    data-armed={needsArm && armed ? 'true' : 'false'}
                     disabled={busy}
-                    onClick={() => void confirmDismantle()}
+                    onClick={() => {
+                      if (needsArm && !armed) {
+                        setArmed(true);
+                        return;
+                      }
+                      void confirmDismantle();
+                    }}
                   >
-                    <span className="rune">{'ᚠ'}</span> {busy ? t(locale, 'workshop.dismantle.dismantling') : t(locale, 'workshop.dismantle.confirmBtn')}
+                    <span className="rune">{'ᚠ'}</span>{' '}
+                    {busy
+                      ? t(locale, 'workshop.dismantle.dismantling')
+                      : needsArm && !armed
+                        ? t(locale, 'workshop.dismantle.armBtn')
+                        : needsArm && armed
+                          ? t(locale, 'workshop.dismantle.armedBtn')
+                          : t(locale, 'workshop.dismantle.confirmBtn')}
                   </button>
+                  {needsArm ? (
+                    <div className="t-micro workshop-dismantle-armnote" data-testid="workshop-dismantle-arm-note">
+                      {armed ? t(locale, 'workshop.dismantle.armedNote') : t(locale, 'workshop.dismantle.armNote')}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 

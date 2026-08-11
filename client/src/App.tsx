@@ -85,7 +85,7 @@ import { createPortal } from 'react-dom';
 import { Board } from './board/Board';
 import { InventoryBoard } from './board/InventoryBoard';
 import { useInventorySlot } from './board/inventorySlot';
-import { BoardCoords, CanvasStatsChip, EmbarkDock, SaveSeal, UndoButton } from './CanvasChrome';
+import { ArrangeButton, BoardCoords, CanvasStatsChip, EmbarkDock, SaveSeal, UndoButton } from './CanvasChrome';
 import { CanvasSidePanel } from './canvas/CanvasSidePanel'; // REQ-0140
 import { CanvasSelectionOverlay } from './canvas/CanvasSelectionOverlay'; // REQ-0140
 import { CanvasEmptyState } from './canvas/CanvasEmptyState'; // REQ-0140/0141
@@ -141,7 +141,7 @@ function InventoryColumn({ locale, ready, resetKey }: { locale: ReturnType<typeo
         {sub ? <span className="stagehead-en">{sub}</span> : null}
         {ready ? <Tabs /> : null}
       </div>
-      <div className="board-wrap board-stage ornate">
+      <div className="board-wrap board-wrap-inventory board-stage ornate">
         <i className="k tl" />
         <i className="k tr" />
         <i className="k br" />
@@ -160,6 +160,13 @@ function InventoryColumn({ locale, ready, resetKey }: { locale: ReturnType<typeo
           >
             <InventoryBoard />
           </RenderErrorBoundary>
+        </div>
+        {/* REQ-0373: the inventory stage gains the canvas stage's own
+            boardfoot row, carrying the per-page Arrange (repack) control.
+            Scoped to .board-wrap-inventory so the canvas boardfoot's E2E
+            selectors (.board-wrap-canvas .boardfoot ...) stay unambiguous. */}
+        <div className="boardfoot">
+          <ArrangeButton locale={locale} />
         </div>
       </div>
       <div className="inventory-note">{t(locale, 'app.inventoryNote')}</div>

@@ -28,14 +28,19 @@
 //    「・3秒前」relative timestamp is omitted: the store keeps no
 //    last-saved-at instant, and inventing one is the kind of fiction
 //    REQ-0070 forbids.
+//  - ArrangeButton: REQ-0373's inventory-boardfoot repack control. The
+//    inventory stage had no boardfoot at all before this REQ; it gets the
+//    canvas stage's own .boardfoot row so the two stages stay structurally
+//    twinned (the canvas one carries squad tabs + save seal + undo).
 //  - EmbarkDock: the mock's fixed bottom-right「遠征へ発つ」forge CTA —
 //    an honest navigation to the real expedition page (#/schedule). The
 //    mock's readiness-hint copy (独立性検査 合格 / dungeon name + ETA)
 //    has no backing data client-side and is omitted.
+import { useEffect, useState } from 'react';
 import { t } from './i18n';
 import { buildPower } from './lib/buildPower';
 import type { Locale } from './store';
-import { setRoute, undo, useGameStore } from './store';
+import { arrangeInventoryPage, setRoute, undo, useGameStore } from './store';
 
 /** Column letters/row numbers around the canvas grid (mock: .coord). */
 export function BoardCoords() {
@@ -136,6 +141,45 @@ export function UndoButton({ locale }: { locale: Locale }) {
     >
       {'↩'}
     </button>
+  );
+}
+
+/** REQ-0373: the inventory boardfoot's Arrange button -- repacks the page
+ * the player is looking at (store/squads.ts's arrangeInventoryPage, over
+ * shared/placement.mjs). The outcome is ANNOUNCED rather than silent: a
+ * repack that moves nothing looks identical to a broken button otherwise,
+ * and "the hoard grows and the tools don't" (REQ-0373's own framing) is not
+ * fixed by a control the player cannot tell fired. The note clears itself
+ * after a few seconds, same short-lived-inline-feedback shape SquadTabs'
+ * delete refusal uses. */
+export function ArrangeButton({ locale }: { locale: Locale }) {
+  const snapshot = useGameStore();
+  const [note, setNote] = useState<{ moved: number; seq: number } | null>(null);
+  const seq = note?.seq ?? 0;
+  useEffect(() => {
+    if (note === null) return;
+    const id = setTimeout(() => setNote(null), 3000);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seq]);
+  return (
+    <>
+      <button
+        type="button"
+        className="boardfoot-arrange"
+        data-testid="inventory-arrange-btn"
+        disabled={snapshot.status !== 'ready'}
+        title={t(locale, 'canvas.arrange.tip')}
+        onClick={() => setNote({ moved: arrangeInventoryPage(), seq: Date.now() })}
+      >
+        {t(locale, 'canvas.arrange')}
+      </button>
+      {note ? (
+        <span className="boardfoot-arrange-note t-micro" data-testid="inventory-arrange-note" data-arrange-moved={note.moved} role="status">
+          {note.moved > 0 ? t(locale, 'canvas.arrange.done', { count: note.moved }) : t(locale, 'canvas.arrange.noop')}
+        </span>
+      ) : null}
+    </>
   );
 }
 

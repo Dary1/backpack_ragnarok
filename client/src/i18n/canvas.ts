@@ -38,6 +38,20 @@ export const canvasEn = {
   'canvas.saveState.offline': 'Offline',
   // REQ-0367: boardfoot single-step undo button (tooltip/aria label).
   'canvas.undo': 'Undo last placement (Ctrl+Z)',
+  // REQ-0373: inventory-boardfoot auto-arrange. The tip names the ordering
+  // rule and the two exemptions, because a control that silently rearranges
+  // a player's hoard owes them a description of what it will do.
+  'canvas.arrange': 'Arrange',
+  'canvas.arrange.tip': 'Repack this page, largest pieces first. Packed backpacks keep their contents; starter pieces stay put. Undoable.',
+  'canvas.arrange.done': 'Arranged — {count} moved',
+  'canvas.arrange.noop': 'Already packed',
+  // REQ-0373: name search beside the filter chips. Matches either locale's
+  // name, so a JA player can still find an item by its EN name.
+  'canvas.search.placeholder': 'Search by name',
+  'canvas.search.label': 'Search inventory by item name',
+  'canvas.search.clear': 'Clear search',
+  'canvas.empty.searchTitle': 'No item by that name',
+  'canvas.empty.searchBody': 'Nothing on hand matches this search. Clear it, or widen the filter beside it.',
   // REQ-0140 (canvas-side-panel-parity): side-panel filter chips, detail
   // card No. line, and empty-state guidance copy (SHARED with REQ-0141).
   'canvas.filter.all': 'All',
@@ -108,6 +122,17 @@ export const canvasJa = {
   'canvas.saveState.offline': 'オフライン',
   // REQ-0367
   'canvas.undo': '直前の配置を元に戻す（Ctrl+Z）',
+  // REQ-0373
+  'canvas.arrange': '整列',
+  'canvas.arrange.tip': 'このページを大きい物から詰め直します。背嚢の中身はそのまま、固定された初期装備は動きません。元に戻せます。',
+  'canvas.arrange.done': '整列しました — {count}件移動',
+  'canvas.arrange.noop': 'すでに整っています',
+  // REQ-0373: 名前検索（英名・和名のどちらでも一致します）
+  'canvas.search.placeholder': '名前で検索',
+  'canvas.search.label': '物品名でインベントリを検索',
+  'canvas.search.clear': '検索をクリア',
+  'canvas.empty.searchTitle': '該当する物品がありません',
+  'canvas.empty.searchBody': 'この検索に一致する所持品はありません。検索を消すか、隣の絞り込みを広げてください。',
   // REQ-0140 (canvas-side-panel-parity)
   'canvas.filter.all': 'すべて',
   'canvas.filter.weapon': '武具',

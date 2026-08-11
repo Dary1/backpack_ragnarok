@@ -23,6 +23,12 @@
 //    already publishes to board/itemTip; this panel mirrors that into the
 //    selection channel (board -> panel highlight + detail), and a row click
 //    sets it directly (panel -> board ring, drawn by CanvasSelectionOverlay).
+//  - REQ-0373: a name search sits beside the filter chips. It matches the
+//    LOCALIZED name in BOTH locales (def.name and def.name_ja) rather than
+//    only the displayed one -- an item's JA and EN names are different
+//    strings, and a player who knows one should not have to flip the
+//    language toggle to find it. It ANDs with the active chip; the chips
+//    keep their own meaning untouched.
 //  - Distinct class names (.canvas-side-panel / .canvas-item-detail) so the
 //    REQ-0114 assertions (no .item-panel / .item-detail catalog on this view)
 //    still hold; the rarity-tinted row styling reuses the theme's existing
@@ -55,6 +61,20 @@ function matchesFilter(def: ItemDef, filter: Filter): boolean {
   const hay = (def.tags || []).join(' ').toLowerCase();
   const keys = filter === 'weapon' ? WEAPON_KEYS : filter === 'element' ? ELEMENT_KEYS : LINK_KEYS;
   return keys.some((k) => hay.includes(k.toLowerCase()));
+}
+
+/** REQ-0373: does either locale's name contain `needle`? Case-folded
+ * substring, no tokenizing -- JA has no word boundaries to tokenize on, and
+ * the app's own precedent (dex/Dex.tsx's catalog search: `[id, name,
+ * name_ja].join(' ').toLowerCase().includes(q)`) is the same plain contains
+ * test. The item ID is deliberately NOT in this haystack the way it is in
+ * the Dex's: this is the player's hoard, not a catalog, and the REQ asks for
+ * a NAME search. An empty needle matches everything. */
+function matchesName(def: ItemDef, needle: string): boolean {
+  if (!needle) return true;
+  const en = typeof def.name === 'string' ? def.name.toLowerCase() : '';
+  const ja = typeof def.name_ja === 'string' ? def.name_ja.toLowerCase() : '';
+  return en.includes(needle) || ja.includes(needle);
 }
 
 /** JA-preferring localized string (mirrors ItemPanel/FloatingItemTip). */
@@ -113,6 +133,7 @@ export function CanvasSidePanel({ locale }: { locale: Locale }) {
   const snapshot = useGameStore();
   const selection = useSyncExternalStore(subscribeCanvasSelection, getCanvasSelection, getCanvasSelection);
   const [filter, setFilter] = useState<Filter>('all');
+  const [query, setQuery] = useState(''); // REQ-0373
 
   // board -> panel: mirror the floating item-tip's tapped item into the
   // shared selection so a board tap highlights the matching entry + detail.
@@ -152,7 +173,10 @@ export function CanvasSidePanel({ locale }: { locale: Locale }) {
     }
   }
 
-  const visible = entries.filter((e) => matchesFilter(e.def, filter));
+  // REQ-0373: chip AND name search. The needle is trimmed + case-folded
+  // once here rather than per row.
+  const needle = query.trim().toLowerCase();
+  const visible = entries.filter((e) => matchesFilter(e.def, filter) && matchesName(e.def, needle));
 
   // Detail: the shared selection, else the first visible/known entry so the
   // card is populated from first paint (like the mock). Resolves against
@@ -240,8 +264,43 @@ export function CanvasSidePanel({ locale }: { locale: Locale }) {
             </button>
           ))}
         </div>
+        {/* REQ-0373: name search, beside (below) the chips -- same row group
+            so the two read as one narrowing control. */}
+        <div className="canvas-inv-search">
+          <input
+            type="text"
+            className="canvas-inv-search-input"
+            data-testid="canvas-inv-search"
+            value={query}
+            placeholder={t(locale, 'canvas.search.placeholder')}
+            aria-label={t(locale, 'canvas.search.label')}
+            onChange={(ev) => setQuery(ev.target.value)}
+          />
+          {needle ? (
+            <button
+              type="button"
+              className="canvas-inv-search-clear"
+              data-testid="canvas-inv-search-clear"
+              aria-label={t(locale, 'canvas.search.clear')}
+              onClick={() => setQuery('')}
+            >
+              {'\u2715'}
+            </button>
+          ) : null}
+        </div>
         {visible.length === 0 ? (
-          <CanvasEmptyState variant="empty-inventory" locale={locale} />
+          // A search that matched nothing is NOT an empty inventory -- saying
+          // "nothing stowed here" to someone holding 40 items is a lie the
+          // REQ-0140 empty state was never written for.
+          needle && entries.length > 0 ? (
+            <div className="canvas-empty canvas-empty-search" data-empty-variant="search" role="note">
+              <div className="canvas-empty-rune" aria-hidden="true">{'\u16B7'}</div>
+              <div className="canvas-empty-title">{t(locale, 'canvas.empty.searchTitle')}</div>
+              <div className="canvas-empty-body">{t(locale, 'canvas.empty.searchBody')}</div>
+            </div>
+          ) : (
+            <CanvasEmptyState variant="empty-inventory" locale={locale} />
+          )
         ) : (
           <ul className="item-list canvas-inv-list">
             {visible.map((e) => {

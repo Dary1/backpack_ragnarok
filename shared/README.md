@@ -19,10 +19,15 @@
   callers pass `vocab` in. Error messages are part of the HTTP 400
   contract (api_test asserts them) — do not reword casually.
 - `placement.mjs` (+ `placement.d.mts`) — the first-fit placement helpers
-  (`firstFitPlace` / `firstFitOrMergeTM` / `firstFitPlaceBp`). Promoted verbatim
-  from `client/src/lib/placement.ts` by REQ-0310. ESM so Vite imports it
+  (`firstFitPlace` / `firstFitOrMergeTM` / `firstFitPlaceBp`, plus REQ-0373's
+  whole-page `arrangePage`). Promoted verbatim from
+  `client/src/lib/placement.ts` by REQ-0310. ESM so Vite imports it
   unforked and node can `import()` it; dependency-free, engine passed in by the
-  caller. Pinned by `client/scripts/check_placement.mjs` (REQ-0273).
+  caller. Pinned by `client/scripts/check_placement.mjs` (REQ-0273) and
+  `client/scripts/check_arrange.mjs` (REQ-0373). The first three answer "where
+  does ONE new thing go?" and stay separate variants by a recorded verdict —
+  read it before merging them; `arrangePage` repacks a whole page and states
+  its own laws (what never moves, what it may not invent) in its header.
 - `player_actions.mjs` (+ `player_actions.d.mts`) — THE three
   client-authoritative player actions as pure state transitions:
   `applyGachaRoll`, `applyWarehouseClaim`, `buildStarterUnitsState`, plus

@@ -74,13 +74,13 @@ web service (no ingress change needed; `web/` is already served as-is).
   pages that used to hold private copies. `itemContent.ts` (itemId ->
   content-entry / localized-name / icon+rarity resolution), `time.ts`
   (formatClock + formatWarehouseCountdown), `tabPulse.ts` (cross-page
-  inv-tab pulse), `placement.ts` (the three first-fit variants + grid
-  bounds; see its recorded gather-then-unify verdict), 
-  `usePolledResource.ts` (load-on-mount / optional poll / error/loading /
+  inv-tab pulse), `usePolledResource.ts` (load-on-mount / optional poll / error/loading /
   manual-reload hook, parameterized to each page's exact semantics),
   `contentCache.ts` (memoized /api/content promise +
-  invalidateContentCache()). New pages import from here instead of
-  re-implementing; `shared/constants.json` (repo root) holds the numeric
+  invalidateContentCache()). The first-fit placement variants (and
+  REQ-0373's whole-page `arrangePage`) used to live here as `placement.ts`;
+  REQ-0310 promoted them to `shared/placement.mjs` — import them from there.
+  New pages import from here instead of re-implementing; `shared/constants.json` (repo root) holds the numeric
   constants shared verbatim with server services (WAREHOUSE_CAP,
   GACHA_COMMON_BP_COST) — import it rather than hardcoding a display
   literal.

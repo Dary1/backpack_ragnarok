@@ -54,3 +54,30 @@
 .schedule-monitor-speed.is-on { border-color: #8cdcf5; color: #8cdcf5; }
 .schedule-monitor-skip-end { cursor: pointer; white-space: nowrap; }
 .schedule-monitor-timeline-scrub { cursor: pointer; }
+
+/* REQ-0373: mass-dismantle safety. The rarity chips ride the theme's own
+   .rar-word/.r-* rarity colouring (same encoding the hoard rows use, so the
+   chip and the row it summarises are never a different colour), and the
+   armed confirm gets a blood-lit frame that the unarmed one does not. */
+.workshop-dismantle-rarity-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+
+.workshop-dismantle-rarity-chip {
+  padding: 2px 8px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.workshop-dismantle-armnote {
+  margin-top: 6px;
+  color: var(--bone-3);
+}
+
+.btn-forge.is-armed {
+  border-color: var(--blood);
+  box-shadow: 0 0 8px rgba(176, 65, 62, 0.55);
+}

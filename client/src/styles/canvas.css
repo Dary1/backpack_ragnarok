@@ -167,6 +167,88 @@
   cursor: default;
 }
 
+/* REQ-0373: inventory boardfoot -- the Arrange (repack) control and its
+   short-lived outcome note. Same visual family as .boardfoot-undo (bone
+   hairline, gold on hover) so the two stages' feet read as one system. */
+.boardfoot-arrange {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border: 1px solid var(--bone-3);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--bone-3);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.boardfoot-arrange:hover:not(:disabled) {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
+.boardfoot-arrange:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.boardfoot-arrange-note {
+  color: var(--bone-3);
+  white-space: nowrap;
+}
+
+/* REQ-0373: name search beside the side panel's filter chips. */
+.canvas-inv-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 6px 0 2px;
+}
+
+.canvas-inv-search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 26px 5px 9px;
+  border: 1px solid var(--bone-3);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--bone);
+  font: inherit;
+  font-size: 12px;
+}
+
+.canvas-inv-search-input::placeholder {
+  color: var(--bone-3);
+  opacity: 0.8;
+}
+
+.canvas-inv-search-input:focus {
+  outline: none;
+  border-color: var(--gold);
+}
+
+.canvas-inv-search-clear {
+  position: absolute;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--bone-3);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.canvas-inv-search-clear:hover {
+  color: var(--gold);
+}
+
 /* item cards (mock .icard) -- the rarity frame/word/corner-gem triple
    encoding comes from the theme's .rar-* / .rar-word / .gem primitives;
    these rules add only the card layout. */

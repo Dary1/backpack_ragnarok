@@ -431,6 +431,13 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   # consumption). Same vite-ssrLoadModule rig as check_auth.mjs above.
   stage "[5.9h/7] client single-step undo store (REQ-0367)"
   (cd client && node scripts/check_undo.mjs)
+  # REQ-0373: whole-page auto-arrange driven against the REAL engine --
+  # determinism (same page -> same layout), every seat engine-legal, and the
+  # four laws arrangePage states in its header (fixed POs pinned, BP cargo
+  # travels with its pack, no free PO loaded into a pack, no TM stacks
+  # merged). Plain node: both modules under test are dependency-free.
+  stage "[5.9i/7] client inventory auto-arrange (REQ-0373)"
+  (cd client && node scripts/check_arrange.mjs)
   # REQ-0341: there is no [6.1/7] bundle-env tripwire any more, and there is no
   # env to provision either. The client no longer reads VITE_SUPABASE_* at all
   # (client/src/auth/client.ts fetches GET /api/config at runtime), so web/app is

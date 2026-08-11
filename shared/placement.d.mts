@@ -69,3 +69,15 @@ export function firstFitPlaceBp(
   openPage: number,
   pageCount: number
 ): BpPlacementResult | null;
+
+/** REQ-0373 auto-arrange: how many entities the repack considered, and how
+ * many actually changed position (0 = already packed, or rolled back). */
+export interface ArrangeResult {
+  moved: number;
+  total: number;
+}
+
+/** REQ-0373: repacks ONE inventory page in place -- largest footprint
+ * first, engine-validated first fit, all-or-nothing. See placement.mjs's
+ * own header for what never moves and what the repack may not invent. */
+export function arrangePage(engine: EngineInstance, state: GameState, pg: number): ArrangeResult;

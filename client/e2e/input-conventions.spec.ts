@@ -57,7 +57,34 @@ async function seedSellerListing(page: Page, seller: MintedPlayer, itemUid: stri
   expect(put.ok()).toBeTruthy();
   const res = await page.request.post('/api/market/listings', { headers: { 'X-Auth-Token': seller.token }, data: { itemUid, price: { tm: 'lrdst', qty } } });
   expect(res.status()).toBe(200);
+  seededSeller = seller; // REQ-0373: withdrawn again in afterEach, see below
 }
+
+/** REQ-0373 (e2e hygiene, not a REQ-0369 behaviour change): the listing
+ * seeded above used to OUTLIVE this file. Market listings are server-side
+ * rows shared by every spec on the same worker backend, and nothing ever
+ * withdrew this one -- so whichever worker also ran market.spec.ts saw a
+ * THIRD listing and that spec's exact `toHaveCount(2)` browse assertion
+ * failed. Which worker that is depends only on file->worker sharding, so
+ * the leak stayed invisible until adding a new spec file shifted the
+ * shards (REQ-0373). Fixed at the source rather than by loosening the
+ * assertion: a spec cleans up the server rows it creates (REQ-0172 order
+ * independence). Best-effort by design -- teardown hygiene must never
+ * itself become a gate. */
+let seededSeller: MintedPlayer | null = null;
+test.afterEach(async ({ page }) => {
+  const seller = seededSeller;
+  seededSeller = null;
+  if (!seller) return;
+  try {
+    const res = await page.request.get('/api/market/listings?filter=mine', { headers: { 'X-Auth-Token': seller.token } });
+    if (!res.ok()) return;
+    const listings = (await res.json()).listings as Array<{ id: string }>;
+    for (const l of listings ?? []) {
+      await page.request.post(`/api/market/listings/${l.id}/withdraw`, { headers: { 'X-Auth-Token': seller.token } });
+    }
+  } catch { /* best-effort */ }
+});
 
 async function gotoMarket(page: Page): Promise<void> {
   await bootApp(page);

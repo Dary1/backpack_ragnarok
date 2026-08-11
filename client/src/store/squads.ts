@@ -2,7 +2,8 @@
 // Moved VERBATIM from client/src/store.ts (see that file for the barrel).
 import { snapshot, setSnapshot } from './core';
 import { scheduleAutoSave } from './autosave';
-import { clearUndo } from './undo';
+import { armUndoFrom, captureUndoState, clearUndo } from './undo';
+import { arrangePage } from '../../../shared/placement.mjs'; // REQ-0373
 
 export function switchActiveSquad(n: number): void {
   const st = snapshot.state;
@@ -138,6 +139,34 @@ export function reorderInventoryPage(from: number, to: number): void {
   clearUndo();
   setSnapshot({ ...snapshot, activeInvPage: nextActive });
   notifyStateChanged();
+}
+
+/**
+ * REQ-0373: repacks inventory page `n` (0-based, defaults to the page the
+ * player is looking at) -- the boardfoot Arrange button. The whole repack
+ * runs through shared/placement.mjs's arrangePage(), i.e. through the
+ * engine's own inventory mutators (design rule 1 untouched), and persists
+ * the normal way: notifyStateChanged() -> the debounced auto-save PUT, the
+ * one profile writer (design rule 5).
+ *
+ * REQ-0367 interop: an arrange is ONE undoable step. The snapshot is taken
+ * BEFORE the repack but armed only AFTER it is known to have moved
+ * something -- the same arm-on-success discipline the dblclick-rotate sites
+ * use, so a no-op arrange (an already-packed page) neither overwrites an
+ * armed slot with a copy that undoes nothing nor schedules a pointless save.
+ * Returns how many entities moved so the caller can render feedback.
+ */
+export function arrangeInventoryPage(n?: number): number {
+  const st = snapshot.state;
+  const engine = snapshot.engine;
+  if (!st || !engine) return 0;
+  const pg = n === undefined ? snapshot.activeInvPage : n;
+  const pre = captureUndoState();
+  const { moved } = arrangePage(engine, st, pg);
+  if (moved === 0) return 0;
+  armUndoFrom(pre);
+  notifyStateChanged();
+  return moved;
 }
 
 /** Renames inventory page `n` (0-based). */
