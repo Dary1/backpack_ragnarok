@@ -11,6 +11,20 @@ import { bootApp, waitForAutoSave } from './helpers';
 test.describe('REQ-0371 sortie attackLv prefill', () => {
   test('attackLv 7 committed at depart is the stepper seed on revisit and after reload', async ({ page }) => {
     await bootApp(page);
+    // GUARD (added while merging REQ-0370): fleet workers are REUSED across
+    // spec files, and a still-recruiting troop left by an EARLIER file on
+    // this worker holds a seat that keeps squad 0 undeployable -- the launch
+    // button then never enables (the same collision class the CLEANUP below
+    // stops this file from CAUSING). REQ-0370's new audio-mixer.spec.ts
+    // reshuffled the file->worker layout and surfaced it twice in full-suite
+    // runs (spec green 4/4 standalone). Cancel leftovers up front: this spec
+    // provisions its own clean seat regardless of its neighbours.
+    {
+      const rooms = (await (await page.request.get('/api/schedule/rooms')).json()).rooms as Array<{ id: string; status: string }>;
+      for (const r of rooms) {
+        if (r.status === 'recruiting') await page.request.post(`/api/schedule/troops/${r.id}/cancel`);
+      }
+    }
     await page.goto('/app/#/sortie');
     await expect(page.locator('[data-testid="sortie-entry"]')).toBeVisible({ timeout: 10000 });
     // Fresh profile: the stepper starts at its default 1.
