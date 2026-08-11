@@ -1365,6 +1365,210 @@ module.exports.run = async function run(h) {
     for (const item of schedule.listWarehouse(wh.playerId)) scheduleStorage.deleteWarehouseItem(wh.playerId, item.itemUid);
   });
 
+  // =====================================================================
+  // REQ-0372: expedition run history -- per-room listing of past settled
+  // runs, replay-by-id, and the 10-run retention prune. Both backends run
+  // this group (the api suite executes twice, files AND pg).
+  // =====================================================================
+
+  // settleCurrent: force the room's in-flight run's clock elapsed, then poll --
+  // the lazy settle. Returns the run id that just settled. The room is left
+  // COOLING DOWN (no new dive), so a caller can assert against a room whose
+  // lastRunId is a settled run.
+  async function settleCurrent(roomId, token) {
+    const runId = scheduleStorage.readRoom(roomId).lastRunId;
+    forceRunElapsed(runId);
+    await scheduleReq('GET', '/api/schedule/rooms/' + roomId, token);
+    assert.strictEqual(scheduleStorage.readRun(runId).settled, true, 'the run settled on the poll');
+    return runId;
+  }
+
+  // startNextDive: clear the cooldown (not what this group tests) and poll, so
+  // maybeAutoStartNextRun departs the next dive.
+  async function startNextDive(roomId, token) {
+    const cooled = scheduleStorage.readRoom(roomId);
+    cooled.cooldownUntil = null;
+    scheduleStorage.writeRoom(roomId, cooled);
+    const res = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, token);
+    assert.strictEqual(res.body.room.status, 'active', 'the next dive departed');
+  }
+
+  async function makeHistoryRoom(player, runCount) {
+    const created = await scheduleReq('POST', '/api/schedule/rooms', player.token, { dungeonId: 'test_dungeon', level: 1 });
+    assert.strictEqual(created.status, 200, 'history room created: ' + JSON.stringify(created.body));
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) {
+      const r = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, player.token, { squadIndex: i });
+      assert.strictEqual(r.status, 200, 'slot ' + i + ' assigned: ' + JSON.stringify(r.body));
+    }
+    // Filling the 4th slot does not itself depart the dive -- the route settles
+    // BEFORE it assigns, so the lazy scheduler only sees a full room on the
+    // NEXT read (the REQ-0087 poll path). One GET is that read.
+    const launched = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, player.token);
+    assert.strictEqual(launched.body.room.status, 'active', 'the filled room departed: ' + JSON.stringify(launched.body.room && launched.body.room.status));
+    const settledIds = [];
+    for (let n = 0; n < runCount; n++) {
+      if (n > 0) await startNextDive(roomId, player.token);
+      settledIds.push(await settleCurrent(roomId, player.token));
+    }
+    // Leaves the room cooling down with NO dive in flight: room.lastRunId is
+    // the newest SETTLED run, so GET .../run and the history listing describe
+    // the same set.
+    return { roomId, settledIds };
+  }
+
+  function dropHistoryRoom(player, roomId) {
+    for (const item of schedule.listWarehouse(player.playerId)) scheduleStorage.deleteWarehouseItem(player.playerId, item.itemUid);
+    for (const run of scheduleStorage.listRunsForRoom(roomId)) scheduleStorage.deleteRun(run.id);
+    scheduleStorage.deleteRoom(roomId);
+  }
+
+  await AT('REQ-0372: GET .../runs lists past SETTLED runs newest-first with the {runId,result,startedAt,durationMs,level,lootSummary} shape, plus a window-scoped W/L tally', async () => {
+    const pl = playersFixture.createPlayer('R372A', []);
+    scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const { roomId, settledIds } = await makeHistoryRoom(pl, 2);
+
+    const res = await scheduleReq('GET', '/api/schedule/rooms/' + roomId + '/runs', pl.token);
+    assert.strictEqual(res.status, 200, 'listing: ' + JSON.stringify(res.body));
+    assert.strictEqual(res.body.ok, true);
+    assert.strictEqual(res.body.roomId, roomId, 'the listing names its own room');
+    assert.strictEqual(res.body.window, schedule.RUN_HISTORY_LIMIT, 'the retention window is reported, so the client can label the tally honestly');
+    assert.strictEqual(res.body.runs.length, 2, 'both settled runs are listed');
+    assert.deepStrictEqual(res.body.runs.map((r) => r.runId), settledIds.slice().reverse(), 'newest departure first');
+
+    // A dive IN FLIGHT is not history yet -- the listing is settled runs only.
+    await startNextDive(roomId, pl.token);
+    const midFlight = await scheduleReq('GET', '/api/schedule/rooms/' + roomId + '/runs', pl.token);
+    assert.strictEqual(midFlight.body.runs.length, 2, 'the in-flight third dive is NOT listed');
+    assert.ok(!midFlight.body.runs.some((r) => r.runId === scheduleStorage.readRoom(roomId).lastRunId), 'and specifically not by its own id');
+
+    const row = res.body.runs[0];
+    assert.ok(['victory', 'wipe', 'incomplete'].includes(row.result), 'result is a run outcome: ' + row.result);
+    assert.ok(typeof row.startedAt === 'string' && !Number.isNaN(Date.parse(row.startedAt)), 'startedAt is an ISO timestamp');
+    assert.strictEqual(typeof row.durationMs, 'number', 'durationMs is a number');
+    assert.ok(row.durationMs >= 0, 'durationMs is non-negative');
+    assert.strictEqual(row.level, 1, 'the level the dive was FOUGHT at (room.level at departure), captured on the run doc');
+    assert.ok(Array.isArray(row.lootSummary), 'lootSummary is an array');
+    for (const loot of row.lootSummary) {
+      assert.strictEqual(typeof loot.itemId, 'string', 'loot row names an item id');
+      assert.ok(loot.kind === 'item' || loot.kind === 'tm', 'loot row carries the content table to resolve it from');
+      assert.ok(loot.qty >= 1, 'loot row qty is aggregated, never zero');
+    }
+    // durationMs is COMBAT time (the seal-comparison basis), NOT the [45s,300s]
+    // clamped presentation duration the monitor's transport counts down.
+    const raw0 = scheduleStorage.readRun(row.runId);
+    assert.strictEqual(row.durationMs, Math.round(raw0.simDurationSecs * 1000), 'durationMs reports simDurationSecs, the combat-truth clear time');
+
+    const tallyTotal = res.body.tally.victory + res.body.tally.wipe + res.body.tally.incomplete;
+    assert.strictEqual(tallyTotal, res.body.runs.length, 'the tally counts exactly the LISTED window -- there is no all-time record to report');
+    assert.strictEqual(res.body.tally[row.result] >= 1, true, 'the listed run is counted under its own result');
+
+    // A room with no settled run yet lists nothing rather than 404ing.
+    const empty = await scheduleReq('POST', '/api/schedule/rooms', pl.token, { dungeonId: 'test_dungeon', level: 1 });
+    const emptyList = await scheduleReq('GET', '/api/schedule/rooms/' + empty.body.room.id + '/runs', pl.token);
+    assert.strictEqual(emptyList.status, 200, 'a run-less room still answers');
+    assert.deepStrictEqual(emptyList.body.runs, [], 'with an empty list');
+    assert.deepStrictEqual(emptyList.body.tally, { victory: 0, wipe: 0, incomplete: 0 }, 'and a zero tally');
+    scheduleStorage.deleteRoom(empty.body.room.id);
+
+    // Method + ownership guards match the rest of the /rooms surface.
+    const wrongMethod = await scheduleReq('POST', '/api/schedule/rooms/' + roomId + '/runs', pl.token, {});
+    assert.strictEqual(wrongMethod.status, 405, 'listing is GET-only');
+    const otherPlayer = await scheduleReq('GET', '/api/schedule/rooms/' + roomId + '/runs', scheduleP2.token);
+    assert.strictEqual(otherPlayer.status, 404, "another player's room history is not readable");
+
+    dropHistoryRoom(pl, roomId);
+  });
+
+  await AT('REQ-0372: GET .../runs/<runId> replays a PAST run through the same ApiRunView shape -- byte-identical events to the live .../run path -- and refuses an id from any other room', async () => {
+    const pl = playersFixture.createPlayer('R372B', []);
+    scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const { roomId, settledIds } = await makeHistoryRoom(pl, 2);
+    const olderRunId = settledIds[0];
+
+    const byId = await scheduleReq('GET', '/api/schedule/rooms/' + roomId + '/runs/' + olderRunId, pl.token);
+    assert.strictEqual(byId.status, 200, 'past replay: ' + JSON.stringify(byId.body && byId.body.error));
+    assert.strictEqual(byId.body.runId, olderRunId, 'it serves the run that was asked for, not the latest');
+    assert.strictEqual(byId.body.roomId, roomId);
+    assert.strictEqual(byId.body.settled, true, 'a listed run is settled by construction');
+    // The monitor playback path reads exactly these fields -- the by-id route
+    // must fill every one of them, not a reduced projection.
+    for (const key of ['ok', 'startedAt', 'durationSecs', 'pacingVersion', 'roster', 'clock', 'events', 'result', 'finalProgressPct', 'cooldownSecs', 'levelAfter', 'H']) {
+      assert.ok(Object.prototype.hasOwnProperty.call(byId.body, key), 'by-id view carries ' + key);
+    }
+    assert.ok(byId.body.events.length > 0, 'a settled replay is fully revealed');
+
+    // FROZEN-SURFACE gate: the replay bytes reaching the client through the NEW
+    // route are identical to the ones the existing live route serves for the
+    // very same run (both go through schedule.visibleEvents -- assert it, do
+    // not assume it).
+    const live = await scheduleReq('GET', '/api/schedule/rooms/' + roomId + '/run', pl.token);
+    assert.strictEqual(live.body.runId, settledIds[1], 'precondition: .../run serves the room LAST (settled) run');
+    const sameViaNew = await scheduleReq('GET', '/api/schedule/rooms/' + roomId + '/runs/' + live.body.runId, pl.token);
+    assert.strictEqual(JSON.stringify(sameViaNew.body.events), JSON.stringify(live.body.events), 'replay bytes are byte-identical through the new fetch path');
+    assert.strictEqual(JSON.stringify(sameViaNew.body.roster), JSON.stringify(live.body.roster), 'so is the roster');
+
+    // Cross-room + unknown id are both 404 (a run id is only readable through
+    // the room that owns it).
+    const otherRoom = await makeHistoryRoom(pl, 1);
+    const crossRoom = await scheduleReq('GET', '/api/schedule/rooms/' + otherRoom.roomId + '/runs/' + olderRunId, pl.token);
+    assert.strictEqual(crossRoom.status, 404, "a run id from ANOTHER room is not served through this room");
+    const unknown = await scheduleReq('GET', '/api/schedule/rooms/' + roomId + '/runs/run_does_not_exist', pl.token);
+    assert.strictEqual(unknown.status, 404, 'an unknown run id 404s');
+    const foreign = await scheduleReq('GET', '/api/schedule/rooms/' + roomId + '/runs/' + olderRunId, scheduleP2.token);
+    assert.strictEqual(foreign.status, 404, "another player's replay is not readable");
+
+    dropHistoryRoom(pl, otherRoom.roomId);
+    dropHistoryRoom(pl, roomId);
+  });
+
+  await AT('REQ-0372: retention -- settling the 11th run PRUNES the oldest run doc out of storage; the listing caps at RUN_HISTORY_LIMIT and a pruned replay 404s', async () => {
+    const pl = playersFixture.createPlayer('R372C', []);
+    scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const limit = schedule.RUN_HISTORY_LIMIT;
+    const { roomId, settledIds } = await makeHistoryRoom(pl, limit + 2);
+
+    const listed = await scheduleReq('GET', '/api/schedule/rooms/' + roomId + '/runs', pl.token);
+    assert.strictEqual(listed.body.runs.length, limit, 'the listing caps at the retention window');
+    assert.deepStrictEqual(
+      listed.body.runs.map((r) => r.runId),
+      settledIds.slice(-limit).reverse(),
+      'and it is the NEWEST ' + limit + ', newest first'
+    );
+
+    // The guard is real storage deletion, not a display cap.
+    const pruned = settledIds.slice(0, settledIds.length - limit);
+    assert.strictEqual(pruned.length, 2, 'precondition: two runs fell out of the window');
+    for (const gone of pruned) {
+      assert.strictEqual(scheduleStorage.readRun(gone), null, 'pruned run doc is deleted from storage: ' + gone);
+      const res = await scheduleReq('GET', '/api/schedule/rooms/' + roomId + '/runs/' + gone, pl.token);
+      assert.strictEqual(res.status, 404, 'a pruned replay 404s rather than half-serving');
+    }
+    for (const kept of settledIds.slice(-limit)) {
+      assert.ok(scheduleStorage.readRun(kept), 'a run inside the window survives: ' + kept);
+    }
+    // The in-flight run is never a prune candidate.
+    const roomNow = scheduleStorage.readRoom(roomId);
+    assert.ok(scheduleStorage.readRun(roomNow.lastRunId), 'the room current run doc is untouched');
+
+    dropHistoryRoom(pl, roomId);
+  });
+
+  await AT('REQ-0372: a run doc recorded BEFORE this REQ (no attackLv) reports level:null rather than a guessed level', async () => {
+    const pl = playersFixture.createPlayer('R372D', []);
+    scheduleStorage.writeProfile(pl.playerId, makeTestCanvas());
+    const { roomId, settledIds } = await makeHistoryRoom(pl, 1);
+    const legacy = scheduleStorage.readRun(settledIds[0]);
+    assert.strictEqual(legacy.attackLv, 1, 'a run recorded now carries the level it was fought at');
+    delete legacy.attackLv; // exactly the shape of a pre-REQ-0372 run doc
+    scheduleStorage.writeRun(legacy.id, legacy);
+
+    const listed = await scheduleReq('GET', '/api/schedule/rooms/' + roomId + '/runs', pl.token);
+    assert.strictEqual(listed.body.runs[0].level, null, 'a legacy run reports null -- levelAfter is FLOORED on a wipe, so it is not the fought level');
+
+    dropHistoryRoom(pl, roomId);
+  });
+
   scheduleStorage.deleteRoom(r5TroopId);
 
   // Cleanup the shared open troop so it never leaks into later suites' state.

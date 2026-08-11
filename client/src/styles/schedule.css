@@ -857,3 +857,46 @@
 @media (prefers-reduced-motion: reduce) {
   .mon-rail-fill, .mon-dock-fill { transition: none; }
 }
+
+/* REQ-0372: expedition run history -- the past-runs fold under the monitor.
+   A quiet surface by default (collapsed head only): it is a reference tool for
+   build tuning, never competition for the live monitor above it. */
+.schedule-history { margin-top: 10px; padding: 8px 10px; }
+.schedule-history-head {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  background: none; border: 0; padding: 2px 0; cursor: pointer;
+  color: inherit; text-align: left;
+}
+.schedule-history-caret { color: var(--gold-lo); width: 1em; }
+.schedule-history-title { color: var(--gold-hi); }
+.schedule-history-tally { color: var(--bone-2); margin-left: auto; }
+.schedule-history-tally-scope { color: var(--bone-3, var(--bone-2)); opacity: .75; }
+.schedule-history-failed { color: var(--ember-hi); margin-left: auto; }
+.schedule-history-body { margin-top: 6px; border-top: 1px solid var(--border-lo); padding-top: 6px; }
+.schedule-history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.schedule-history-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: none; border: 1px solid transparent; border-radius: 2px;
+  padding: 4px 6px; cursor: pointer; color: inherit; text-align: left;
+}
+.schedule-history-row:hover { background: var(--raised); border-color: var(--border-lo); }
+.schedule-history-row.is-selected { border-color: var(--gold-hi); background: var(--raised); }
+.schedule-history-glyph { width: 1.2em; text-align: center; }
+.schedule-history-when { color: var(--bone-2); min-width: 9ch; }
+.schedule-history-time { color: var(--bone-1, var(--bone-2)); min-width: 6ch; }
+.schedule-history-level { color: var(--bone-2); min-width: 5ch; }
+.schedule-history-loot { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+.schedule-history-loot-none { color: var(--bone-2); opacity: .6; }
+.schedule-history-loot-chip { display: inline-flex; align-items: center; gap: 3px; padding: 0 5px; max-width: 14ch; }
+.schedule-history-loot-chip img { width: 14px; height: 14px; image-rendering: pixelated; }
+.schedule-history-loot-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.schedule-history-loot-qty { color: var(--bone-2); }
+.schedule-history-latest { margin-top: 6px; }
+.schedule-history-note { margin-top: 6px; color: var(--bone-2); opacity: .7; }
+
+@media (max-width: 700px) {
+  /* Narrow: the loot rail wraps under the run's own facts rather than
+     squeezing the clear time / level out of legibility. */
+  .schedule-history-row { flex-wrap: wrap; }
+  .schedule-history-loot { margin-left: 0; width: 100%; }
+}

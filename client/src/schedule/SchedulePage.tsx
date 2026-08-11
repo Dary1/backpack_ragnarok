@@ -70,6 +70,7 @@ import { SquadStatusBoard } from './SquadStatusBoard'; // REQ-0239
 import { Monitor } from './Monitor';
 import { MonitorErrorBoundary } from './MonitorErrorBoundary'; // REQ-0285
 import { RoomCard } from './RoomCard';
+import { RunHistory } from './RunHistory'; // REQ-0372
 import { isRecruiting, isTroopRoom } from './seats'; // REQ-0337
 import { SealPanel } from './SealPanel'; // REQ-0058
 import { SlotsPanel } from './SlotsPanel';
@@ -97,7 +98,13 @@ export function SchedulePage({ locale }: SchedulePageProps) {
   const [hideCanceled, setHideCanceled] = useState(true);
   // REQ-0100: bumped whenever the watched room's run settles (Monitor
   // detects settle) so the spoils rail refreshes its warehouse preview.
+  // REQ-0372: the run-history fold rides the SAME signal -- a settle is
+  // exactly when a new history row appears.
   const [spoilsRefresh, setSpoilsRefresh] = useState(0);
+  // REQ-0372: which PAST run of the selected room the monitor is replaying
+  // (null = the room's live/latest run). Owned here rather than in the fold
+  // because the Monitor and the fold are siblings under the detail pane.
+  const [historyRunId, setHistoryRunId] = useState<string | null>(null);
 
   const reloadRooms = useCallback(async () => {
     try {
@@ -137,6 +144,10 @@ export function SchedulePage({ locale }: SchedulePageProps) {
   }, [reloadRooms]);
 
   const isAdmin = !!me && Array.isArray(me.roles) && me.roles.includes('item_admin');
+
+  // REQ-0372: a past-run selection belongs to ONE room -- switching rooms (or
+  // closing the detail pane) returns the monitor to that room's latest run.
+  useEffect(() => { setHistoryRunId(null); }, [expandedRoomId]);
 
   // REQ-0239: the sortie page hands the freshly-launched room off via
   // sessionStorage('bp.watchRoom') -- read it ONCE on mount and watch that room
@@ -315,8 +326,18 @@ export function SchedulePage({ locale }: SchedulePageProps) {
                   in the client") but did not close. Keyed on the room id so
                   switching rooms both remounts the Monitor and clears a prior error. */}
               <MonitorErrorBoundary key={selectedRoom.id} locale={locale}>
-                <Monitor room={selectedRoom} locale={locale} dungeonName={dungeonNameFor(selectedRoom.dungeonId)} dungeonTheme={dungeonThemeFor(selectedRoom.dungeonId)} isAdmin={isAdmin} onRunSettled={() => setSpoilsRefresh((n) => n + 1)} />
+                <Monitor room={selectedRoom} locale={locale} dungeonName={dungeonNameFor(selectedRoom.dungeonId)} dungeonTheme={dungeonThemeFor(selectedRoom.dungeonId)} isAdmin={isAdmin} replayRunId={historyRunId} onRunSettled={() => setSpoilsRefresh((n) => n + 1)} />
               </MonitorErrorBoundary>
+              {/* REQ-0372: the past-runs fold sits UNDER the monitor and drives
+                  it -- selecting a row swaps which run the monitor above is
+                  playing back, through the monitor's own existing path. */}
+              <RunHistory
+                roomId={selectedRoom.id}
+                locale={locale}
+                selectedRunId={historyRunId}
+                onSelect={setHistoryRunId}
+                refreshSignal={spoilsRefresh}
+              />
             </>
           ) : (
             <div className="schedule-detail-empty" data-testid="schedule-detail-empty">{t(locale, 'schedule.detail.empty')}</div>

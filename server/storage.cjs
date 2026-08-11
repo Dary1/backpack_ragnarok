@@ -104,6 +104,7 @@ module.exports = {
   readRun: runs.readRun,
   writeRun: runs.writeRun,
   listRunsForRoom: runs.listRunsForRoom,
+  deleteRun: runs.deleteRun, // REQ-0372: run-history retention prune
   // REQ-0058: sealed-seed + participant-run registry persistence
   // REQ-0060: pack biography (per-BP-instance ledger; storage.cjs stays
   // the sole persistence chokepoint -- from storage/bio.cjs).

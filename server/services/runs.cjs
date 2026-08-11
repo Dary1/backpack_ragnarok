@@ -21,6 +21,12 @@ const pacing = require('./pacing.cjs'); // REQ-0240: presentation-pacing serving
 // breaker refuses the next auto-start (troop -> disband, solo -> halt).
 const WIPE_STREAK_LIMIT = 3;
 
+// REQ-0372: how many SETTLED runs of a room stay readable (listing + replay).
+// The 11th settled run's arrival deletes the oldest run doc at settle time --
+// a storage-growth guard, and the reason the room's W/L tally is honestly
+// labelled as "of the last N", never as all-time (spec item 3).
+const RUN_HISTORY_LIMIT = 10;
+
 // REQ-0293: the enemy level-scaling manifest, loaded ONCE at module load (the
 // same discipline as the sim content fixtures). v1 ships NEUTRAL -- every rule
 // is identity -- so this changes no output; it wires the effLevel-driven,
@@ -219,11 +225,25 @@ function startRun(room, profileCanvas) {
 
   const runId = genId('run');
   const startedAt = new Date().toISOString();
+  // REQ-0372: this room's own monotonic dive counter. The history listing
+  // orders on it rather than on startedAt because startedAt is REWRITABLE --
+  // the dev/backdate test-control seam moves it into the past by a run's own
+  // (variable) duration, which can invert two runs' timestamps relative to the
+  // order they actually departed in. `seq` cannot be moved by a clock hack.
+  const seq = (Number.isFinite(room.runSeq) ? room.runSeq : 0) + 1;
   const runDoc = {
     id: runId,
     roomId: room.id,
     seed,
     startedAt,
+    // REQ-0372: the level the dive was FOUGHT at, captured at start. The run
+    // doc already carried `levelAfter` (a wipe FLOORS it, so the fought level
+    // is not recoverable from it -- see maybeAutoStartNextRun's LEVEL_MIN
+    // clamp), and settleRun rewrites room.level before anyone could read it
+    // back. The history listing reports this; a pre-REQ-0372 run doc has no
+    // such field and reports level:null rather than a guessed one.
+    attackLv: room.level != null ? room.level : null,
+    seq, // REQ-0372: this room's Nth dive (1-based) -- the history ordering key
     // REQ-0240: durationSecs is now the PRESENTATION duration the player
     // watches (pt-based) -- this IS the "battle wait increase"; the room is
     // occupied for as long as the paced replay lasts. The sim itself still
@@ -263,6 +283,7 @@ function startRun(room, profileCanvas) {
 
   room.status = 'active';
   room.lastRunId = runId;
+  room.runSeq = seq; // REQ-0372: persisted on the room so the counter survives a prune
   room.updatedAt = startedAt;
   storage.writeRoom(room.id, room);
   return runDoc;
@@ -374,6 +395,14 @@ function settleRun(room, run, profileCanvas, itemDefsById) {
   run.settled = true;
   storage.writeRun(run.id, run);
   storage.writeRoom(swapped.id, swapped);
+
+  // REQ-0372: retention prune, AFTER both docs are durable so a crash mid-way
+  // can only ever leave MORE history than the policy, never a settled run
+  // whose effects were not banked. Best-effort like the bio write above: a
+  // failed prune is a storage-growth problem, never a reason to unwind a
+  // settlement (the next settle re-attempts it -- the policy is a set, not a
+  // per-run step).
+  try { pruneRoomRunHistory(swapped); } catch (e) { /* retention is non-critical */ }
 
   // REQ-0368: the run-return notification, emitted AFTER both docs are
   // durable so a feed entry can never describe a settlement that did not
@@ -565,6 +594,122 @@ function devBackdateActiveRun(room, extraSecsIntoPast) {
 // feature). Throws NOT_FOUND if the row doesn't exist, BAD_REQUEST if it
 // isn't currently 'claiming' (nothing to backdate).
 
+// ---------------------------------------------------------------------
+// REQ-0372: expedition run history -- the per-room list of past SETTLED
+// runs, the replay-by-id read behind it, and the retention prune that
+// bounds both. The data already existed (every run is persisted whole,
+// replay JSONL included); only retention and a read path were missing.
+// ---------------------------------------------------------------------
+
+// settledRunsNewestFirst: this room's settled runs, newest departure first.
+// startedAt is the ordering key (a run's identity is its departure, not its
+// settlement); ties fall back to the run id so the order is TOTAL and stable
+// across polls -- files-backend readdir order is arbitrary.
+function settledRunsNewestFirst(roomId) {
+  const settled = storage.listRunsForRoom(roomId).filter((r) => r && r.settled);
+  // Two ordering populations, concatenated -- deliberately NOT one mixed
+  // comparator (a comparator that switches keys per pair is not transitive,
+  // and Array.prototype.sort is undefined on those).
+  //   post-REQ-0372: ordered by the room's own monotonic `seq`, which no clock
+  //     rewrite can disturb (see startRun).
+  //   legacy (no seq): ordered by startedAt, tie-broken by id so the order is
+  //     TOTAL and stable across polls -- files-backend readdir order is
+  //     arbitrary. Every seq-bearing run departed after every legacy one of the
+  //     same room by construction, so legacy runs sort strictly older.
+  const seqed = settled.filter((r) => Number.isFinite(r.seq)).sort((a, b) => b.seq - a.seq);
+  const legacy = settled.filter((r) => !Number.isFinite(r.seq)).sort((a, b) => {
+    const d = Date.parse(b.startedAt) - Date.parse(a.startedAt);
+    if (d !== 0 && Number.isFinite(d)) return d;
+    return String(b.id).localeCompare(String(a.id));
+  });
+  return seqed.concat(legacy);
+}
+
+// runLootSummary: one row per DISTINCT reward item, qty-aggregated -- the
+// history row's loot chips. Reads the run's OWN stored `rewards` (the sim's
+// assignment list, {item, owner}) through the SAME resolveRewardItemId the
+// settle path uses to mint warehouse rows, so a chip names exactly what was
+// banked. The aggregate LRDST drop rides along as the kind:'tm' row settleRun
+// writes it as. A wipe banks nothing and yields []. Deliberately NOT read back
+// out of the warehouse: those rows expire (7d TTL) and get claimed/sold, so
+// they are not a record of what this run dropped.
+function runLootSummary(run) {
+  if (!run || run.result === 'wipe') return [];
+  const byId = new Map();
+  const bump = (itemId, kind, qty) => {
+    const key = kind + '/' + itemId;
+    const cur = byId.get(key);
+    if (cur) cur.qty += qty;
+    else byId.set(key, { itemId, kind, qty });
+  };
+  for (const assignment of (run.rewards || [])) {
+    if (!assignment) continue;
+    bump(resolveRewardItemId(assignment.item), 'item', 1);
+  }
+  if (run.lrdstReward > 0) bump('lrdst', 'tm', run.lrdstReward);
+  return Array.from(byId.values());
+}
+
+// runHistoryRow: the compact per-run projection the listing serves. NOTE
+// `durationMs` is COMBAT time (simDurationSecs), not the presentation duration
+// the monitor's transport counts down: this column exists so a player can
+// compare run N against run N-1 while tuning a build, and REQ-0240 clamps the
+// presentation duration into [45s,300s], which would flatten exactly that
+// comparison. Same value seals compare on (services/seals.cjs clearTimeSecs).
+// A legacy run doc predating REQ-0240 carries no simDurationSecs; its events
+// are on sim `t` throughout, so durationSecs IS combat time there.
+function runHistoryRow(run) {
+  const combatSecs = Number.isFinite(run.simDurationSecs) ? run.simDurationSecs : run.durationSecs;
+  return {
+    runId: run.id,
+    result: run.result,
+    startedAt: run.startedAt,
+    durationMs: Math.max(0, Math.round(combatSecs * 1000)),
+    level: run.attackLv != null ? run.attackLv : null, // REQ-0372: null on a pre-REQ run doc, never a guess
+    lootSummary: runLootSummary(run),
+  };
+}
+
+// listRoomRunHistory: the GET .../runs payload -- the newest RUN_HISTORY_LIMIT
+// settled runs + the W/L tally OF THAT WINDOW. The tally is deliberately
+// derived from the listed rows and nothing else: older runs are pruned away
+// (pruneRoomRunHistory below), so any "all-time" record would be a lie the
+// moment a room passes its 11th run.
+function listRoomRunHistory(roomId) {
+  const runs = settledRunsNewestFirst(roomId).slice(0, RUN_HISTORY_LIMIT).map(runHistoryRow);
+  const tally = { victory: 0, wipe: 0, incomplete: 0 };
+  for (const r of runs) if (tally[r.result] !== undefined) tally[r.result] += 1;
+  return { window: RUN_HISTORY_LIMIT, tally, runs };
+}
+
+// getRoomRun: the replay-by-id read. Room-scoped ON PURPOSE -- a run id is
+// only ever readable through the room that owns it (the route has already
+// resolved that room against the caller), so a guessed/leaked run id from
+// someone else's room 404s here rather than serving their replay.
+function getRoomRun(roomId, runId) {
+  const run = storage.readRun(runId);
+  if (!run || run.roomId !== roomId) {
+    const err = new Error('run record not found'); err.code = 'NOT_FOUND'; throw err;
+  }
+  return run;
+}
+
+// pruneRoomRunHistory: the retention guard, called at settle time. Deletes
+// every SETTLED run of this room beyond the newest RUN_HISTORY_LIMIT. Never
+// touches an unsettled run (the dive currently in flight is not history yet)
+// and never the room's own lastRunId (belt-and-braces: that doc backs
+// lastRunSummary + the live GET .../run). Returns the number deleted.
+function pruneRoomRunHistory(room) {
+  const doomed = settledRunsNewestFirst(room.id).slice(RUN_HISTORY_LIMIT);
+  let deleted = 0;
+  for (const run of doomed) {
+    if (run.id === room.lastRunId) continue;
+    storage.deleteRun(run.id);
+    deleted += 1;
+  }
+  return deleted;
+}
+
 // lastRunSummary (REQ-0239, design B1): a compact wall-clock window for a
 // room's active/last run, attached to each room in the LIST response so the
 // squad status board can draw honest run progress + a return (帰還) time
@@ -589,6 +734,7 @@ function lastRunSummary(room) {
 
 module.exports = {
   WIPE_STREAK_LIMIT, // REQ-0357
+  RUN_HISTORY_LIMIT, // REQ-0372
   computeDurationSecs,
   runClock,
   visibleEvents,
@@ -600,5 +746,9 @@ module.exports = {
   maybeAutoStartNextRun,
   disbandTroopRoom, // REQ-0326: co-op Troop teardown (member cancel -> disband on return / immediately)
   lastRunSummary,
+  // REQ-0372: expedition run history
+  listRoomRunHistory,
+  getRoomRun,
+  pruneRoomRunHistory,
   devBackdateActiveRun,
 };

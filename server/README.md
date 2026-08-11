@@ -313,6 +313,8 @@ session state (REQ-0039 Bot API design-first-class requirement).
 | PUT | `/api/schedule/rooms/:id/slots/:slotIndex` | `{squadIndex}` | Assigns one of the CALLER'S OWN squads (0-based) to a squad slot (golden b). Enforces the deploy gate (golden d) — `409` on an independence violation or a cross-room active-squad overlap. |
 | PUT | `/api/schedule/rooms/:id/swap` | `{slot, squadIndex}` | Queues (or, if no run is active, immediately applies) a squad swap (golden j). Returns `{ok, room, applied:boolean}`. |
 | GET | `/api/schedule/rooms/:id/run` | — | The room's last/current run, run-clock-paced (see below): `events` only includes entries whose `t` has "arrived" in wall-clock time. Also returns the full (always-final) `result`/`rewards`/`cooldownSecs` summary plus a `settled` flag and `clock:{elapsedSecs,isSettled,pct}`. |
+| GET | `/api/schedule/rooms/:id/runs` | — | REQ-0372: this room's last `window` (10) SETTLED runs, newest first, each `{runId, result, startedAt, durationMs, level, lootSummary[]}`, plus `tally:{victory,wipe,incomplete}` OF THAT WINDOW. Compact by design (no events). `durationMs` is COMBAT time (`simDurationSecs`), not the presentation duration `.../run` reports — the history exists to compare run N with run N-1, and the REQ-0240 presentation clamp would flatten that. `level` is the level the dive was FOUGHT at (`run.attackLv`), `null` on a run recorded before REQ-0372. |
+| GET | `/api/schedule/rooms/:id/runs/:runId` | — | REQ-0372: one PAST run in the EXACT shape `.../run` serves for the current one (same `buildRunView`, same `visibleEvents`), so the client replays it through its existing monitor path. `404` for a run id that does not belong to this room, or one already pruned out of the retention window. |
 | GET | `/api/warehouse` | — | Lists the caller's own warehouse items (expired rows purged first). |
 | POST | `/api/warehouse/claim` | `{itemUid}` | Moves one warehouse item into the caller's OWN inventory via first-fit engine placement (golden f). `409` if no inventory page has space (item stays in the warehouse, untouched). There is no reverse (inventory→warehouse) path anywhere in this API. |
 
@@ -321,6 +323,25 @@ token, `404` room/run/warehouse-item not found (including "not yours"),
 `409` deploy-gate violation or no-inventory-space-to-claim, `413`
 oversized body, `500` unexpected error. Every error body is `{ok:false,
 error:"<message>"}`.
+
+### Run retention (REQ-0372)
+
+A room keeps its newest `RUN_HISTORY_LIMIT` (10) SETTLED runs; the 11th
+settlement DELETES the oldest run doc, through `storage.deleteRun` so files and
+pg prune identically (`server/services/runs.cjs pruneRoomRunHistory`, called at
+the end of `settleRun` once both the run and room docs are durable, and
+best-effort — a failed prune is a storage-growth problem, never a reason to
+unwind a settlement). Two consequences the UI must respect: a pruned run's
+replay is a `404`, and the W/L tally the history serves is the record OF THE
+LISTED WINDOW, never an all-time one (there is no all-time record kept).
+
+Ordering is the room's own monotonic `run.seq` (a per-room dive counter
+persisted as `room.runSeq`), NOT `startedAt`: the `dev/backdate` test-control
+seam rewrites `startedAt` into the past by a run's own variable duration, which
+can invert two runs relative to the order they actually departed in. Runs
+recorded before REQ-0372 carry no `seq` and are ordered by `startedAt` behind
+every seq-bearing run (see `settledRunsNewestFirst` for why that is two sorted
+populations concatenated rather than one mixed comparator).
 
 ### Run-clock design (instant-sim + timed playback)
 

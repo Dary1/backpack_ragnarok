@@ -21,6 +21,10 @@ function writeRunFiles(id, doc) {
   atomicWriteJSON(RUNS_DIR, runPath(id), doc);
   return doc;
 }
+function deleteRunFiles(id) {
+  const p = runPath(id);
+  if (fs.existsSync(p)) fs.unlinkSync(p);
+}
 function listRunsForRoomFiles(roomId) {
   ensureScheduleDirs();
   const files = fs.readdirSync(RUNS_DIR).filter((f) => f.endsWith('.json') && !f.startsWith('.'));
@@ -50,6 +54,10 @@ function writeRunPg(id, roomId, doc) {
   );
   return doc;
 }
+function deleteRunPg(id) {
+  const { querySync } = require('../pg_sync.cjs');
+  querySync('DELETE FROM schedule_runs WHERE run_id = $1', [namespacedId(id)]);
+}
 function listRunsForRoomPg(roomId) {
   const { querySync } = require('../pg_sync.cjs');
   const res = querySync('SELECT doc FROM schedule_runs WHERE room_id = $1', [namespacedId(roomId)]);
@@ -74,10 +82,18 @@ function writeRun(id, doc) {
 function listRunsForRoom(roomId) {
   return backendMode() === 'pg' ? listRunsForRoomPg(roomId) : listRunsForRoomFiles(roomId);
 }
+// REQ-0372: the run-history retention prune's only deletion chokepoint (the
+// same shape deleteRoom already has in storage/rooms.cjs -- files unlink / pg
+// DELETE, so both backends prune identically). Deleting an ABSENT run is a
+// no-op in both backends, so a racing double-prune is harmless.
+function deleteRun(id) {
+  return backendMode() === 'pg' ? deleteRunPg(id) : deleteRunFiles(id);
+}
 
 module.exports = {
   runPath,
   readRun,
   writeRun,
   listRunsForRoom,
+  deleteRun, // REQ-0372
 };

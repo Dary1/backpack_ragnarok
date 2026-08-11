@@ -43,6 +43,7 @@ module.exports = {
   DEFAULT_FORMATION_ID: core.DEFAULT_FORMATION_ID,
   DEFAULT_FAILURE_STEP: core.DEFAULT_FAILURE_STEP,
   WIPE_STREAK_LIMIT: runs.WIPE_STREAK_LIMIT, // REQ-0357
+  RUN_HISTORY_LIMIT: runs.RUN_HISTORY_LIMIT, // REQ-0372
   getScheduleContent: core.getScheduleContent,
   resolveRewardItemId: core.resolveRewardItemId,
   makeEngine: core.makeEngine,
@@ -89,6 +90,10 @@ module.exports = {
   settleTroopIfDue: troops.settleTroopIfDue, // REQ-0325
   listRecruitingTroops: troops.listRecruitingTroops,
   lastRunSummary: runs.lastRunSummary, // REQ-0239 (B1): compact run window for the board
+  // REQ-0372: expedition run history (listing + replay-by-id + retention prune)
+  listRoomRunHistory: runs.listRoomRunHistory,
+  getRoomRun: runs.getRoomRun,
+  pruneRoomRunHistory: runs.pruneRoomRunHistory,
   listDungeonsAndFormations: core.listDungeonsAndFormations,
   devBackdateActiveRun: runs.devBackdateActiveRun,
   WAREHOUSE_CLAIM_TIMEOUT_MS: core.WAREHOUSE_CLAIM_TIMEOUT_MS,

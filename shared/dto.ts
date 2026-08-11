@@ -745,6 +745,49 @@ export interface ApiRunView {
   settled: boolean;
 }
 
+/** REQ-0372: one qty-aggregated loot row of a past run (the history row's
+ * chips). `kind` picks the content table the client resolves the icon/name
+ * from -- 'tm' for the aggregate LRDST drop, 'item' for everything the sim
+ * distributed (resolve through items, then sis, exactly as the monitor's
+ * settled-summary rewards list already does). */
+export interface ApiRunHistoryLoot {
+  itemId: string;
+  kind: 'item' | 'tm';
+  qty: number;
+}
+
+/** REQ-0372: one settled past run in GET /api/schedule/rooms/:id/runs. */
+export interface ApiRunHistoryRow {
+  runId: string;
+  result: 'victory' | 'wipe' | 'incomplete';
+  startedAt: string;
+  /** COMBAT time (the run's simDurationSecs), NOT the presentation duration
+   * ApiRunView.durationSecs reports: this column exists to compare run N with
+   * run N-1 while tuning a build, and REQ-0240 clamps the presentation
+   * duration into [45s,300s], which would flatten that comparison. Same basis
+   * as a seal comparison's clearTimeSecs. */
+  durationMs: number;
+  /** The level the dive was FOUGHT at (the run doc's own attackLv). null on a
+   * run recorded before REQ-0372 added the field -- a wipe FLOORS levelAfter,
+   * so the fought level is not recoverable, and a guess is not offered. */
+  level: number | null;
+  lootSummary: ApiRunHistoryLoot[];
+}
+
+/** GET /api/schedule/rooms/:id/runs response (server/routes/schedule.cjs's
+ * SCHEDULE_ROOM_RUNS_RE handler). `runs` is the newest `window` SETTLED runs,
+ * newest first; older runs are PRUNED at settle time, so `tally` is the W/L
+ * record OF THAT WINDOW ONLY and the UI must label it as such -- there is no
+ * all-time record to report. */
+export interface ApiRunHistory {
+  ok: true;
+  roomId: string;
+  /** The retention limit (server/services/runs.cjs RUN_HISTORY_LIMIT). */
+  window: number;
+  tally: { victory: number; wipe: number; incomplete: number };
+  runs: ApiRunHistoryRow[];
+}
+
 /** REQ-0058: public sealed-seed metadata (genSeed deliberately withheld --
  * the recipient never handles the raw seed; the server copies it into
  * their room server-side). */

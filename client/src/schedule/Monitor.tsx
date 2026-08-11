@@ -13,7 +13,7 @@
 // humanized; raw JSONL moves to the admin ⋯ menu).
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import {
-  fetchContent, fetchDungeons, fetchRun, fetchWarehouse,
+  fetchContent, fetchDungeons, fetchRun, fetchRunById, fetchWarehouse,
   type ApiContentPayload, type ApiRoom, type ApiRunEvent, type ApiWarehouseItem,
 } from '../api';
 import { loadBoardTextures } from '../board/sprites';
@@ -59,6 +59,11 @@ interface MonitorProps {
   /** REQ-0304: the DRAWN dungeon's theme, surfaced in the monitor header post-entry. */
   dungeonTheme?: string;
   isAdmin: boolean;
+  /** REQ-0372: a PAST run of this room to replay instead of its current one
+   * (picked in the History fold). The past run is settled and immutable, so
+   * this swaps the SOURCE of the run view and nothing else -- the renderer,
+   * the playhead and the REQ-0099 transport are the same code either way. */
+  replayRunId?: string | null;
   onRunSettled?: () => void;
 }
 
@@ -70,7 +75,7 @@ function latestOfType(events: ApiRunEvent[], evName: string): ApiRunEvent | null
   return null;
 }
 
-export function Monitor({ room, locale, dungeonName, dungeonTheme, isAdmin, onRunSettled }: MonitorProps) {
+export function Monitor({ room, locale, dungeonName, dungeonTheme, isAdmin, replayRunId, onRunSettled }: MonitorProps) {
   const snapshot = useGameStore();
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => { const id = setInterval(() => setNowMs(Date.now()), 1000); return () => clearInterval(id); }, []);
@@ -97,7 +102,18 @@ export function Monitor({ room, locale, dungeonName, dungeonTheme, isAdmin, onRu
   const { playheadMs, durationMs, releasedIdx, isLive, needsCatchup, catchUp, speed, setSpeed, playing, setPlaying, seekMs, restart, progressPct, silentEpoch } = playhead;
 
   // Poll GET .../run ~2s while this room has (or recently had) a run.
+  // REQ-0372: with a PAST run selected, fetch it ONCE instead -- a settled run
+  // is immutable, so polling it would be pure noise (and would fight the
+  // player's own playhead by re-triggering the settle-transition park).
   useEffect(() => {
+    if (replayRunId) {
+      let cancelled = false;
+      setRun(null); // drop the previous run first: the renderer resets on run identity change
+      void (async () => {
+        try { const view = await fetchRunById(room.id, replayRunId); if (!cancelled) setRun(view); } catch { /* the row is gone (pruned) -- the fold reloads */ }
+      })();
+      return () => { cancelled = true; };
+    }
     if (!room.lastRunId) { setRun(null); return; }
     let cancelled = false;
     const poll = async (): Promise<void> => {
@@ -106,7 +122,7 @@ export function Monitor({ room, locale, dungeonName, dungeonTheme, isAdmin, onRu
     void poll();
     const id = setInterval(poll, POLL_MS);
     return () => { cancelled = true; clearInterval(id); };
-  }, [room.id, room.lastRunId]);
+  }, [room.id, room.lastRunId, replayRunId]);
 
   // Reset per-run cursors when the run identity changes.
   useEffect(() => {
@@ -336,7 +352,10 @@ export function Monitor({ room, locale, dungeonName, dungeonTheme, isAdmin, onRu
   }, [run, rewards]);
 
   const settled = run?.settled ?? false;
-  useEffect(() => { if (settled && run) onRunSettled?.(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [settled, run?.runId]);
+  // REQ-0372: a PAST run is settled by construction -- announcing it would
+  // re-fire the spoils/history refresh on every row click, for a settlement
+  // that happened long ago. Only the room's CURRENT run settling is news.
+  useEffect(() => { if (settled && run && !replayRunId) onRunSettled?.(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [settled, run?.runId, replayRunId]);
 
   useEffect(() => () => {
     rendererRef.current?.destroy(); rendererRef.current = null;
@@ -435,7 +454,7 @@ export function Monitor({ room, locale, dungeonName, dungeonTheme, isAdmin, onRu
   const railPct = typeof latestProgress === 'number' ? latestProgress : progressPct;
   const returnAt = run && isLive ? new Date(Date.parse(run.startedAt) + run.durationSecs * 1000).toLocaleTimeString(locale === 'ja' ? 'ja-JP' : 'en-US', { hour: '2-digit', minute: '2-digit' }) : null;
 
-  if (!room.lastRunId) {
+  if (!room.lastRunId && !replayRunId) {
     return <div className="schedule-monitor schedule-monitor-empty">{t(locale, 'schedule.monitor.awaitingRun')}</div>;
   }
 

@@ -10,6 +10,7 @@ import type {
   ApiTroopBrowseRow,
   ApiDungeonsPayload,
   ApiRoom,
+  ApiRunHistory,
   ApiRunView,
   ApiSealComparison,
   ApiSealMetaResponse,
@@ -92,6 +93,25 @@ export function swapSquad(
  * rendered event index" across polls. */
 export function fetchRun(roomId: string): Promise<ApiRunView> {
   return scheduleJSON(`/api/schedule/rooms/${encodeURIComponent(roomId)}/run`);
+}
+
+/** GET /api/schedule/rooms/:id/runs -- REQ-0372. This room's last N SETTLED
+ * runs, newest first, plus the W/L tally OF THAT WINDOW. Compact by design (no
+ * events): one row is `{runId, result, startedAt, durationMs, level,
+ * lootSummary}`, and the replay bytes are fetched one run at a time via
+ * fetchRunById below. Older runs are PRUNED server-side at settle time, so the
+ * tally is never an all-time record and the UI must say so. */
+export function fetchRunHistory(roomId: string): Promise<ApiRunHistory> {
+  return scheduleJSON(`/api/schedule/rooms/${encodeURIComponent(roomId)}/runs`);
+}
+
+/** GET /api/schedule/rooms/:id/runs/:runId -- REQ-0372. One PAST run in the
+ * SAME ApiRunView shape fetchRun() returns for the current one, so the monitor
+ * replays it through its existing playback path with no second code path.
+ * Throws ApiError(404) for a run id that does not belong to this room, or one
+ * that has been pruned out of the retention window. */
+export function fetchRunById(roomId: string, runId: string): Promise<ApiRunView> {
+  return scheduleJSON(`/api/schedule/rooms/${encodeURIComponent(roomId)}/runs/${encodeURIComponent(runId)}`);
 }
 
 /** POST /api/schedule/rooms/:id/dev/backdate -- REQ-0036 P1-C dev-only

@@ -32,6 +32,11 @@ const SCHEDULE_ROOM_RE = /^\/api\/schedule\/rooms\/([^/]+)$/;
 const SCHEDULE_ROOM_SLOT_RE = /^\/api\/schedule\/rooms\/([^/]+)\/slots\/([0-9]+)$/;
 const SCHEDULE_ROOM_SWAP_RE = /^\/api\/schedule\/rooms\/([^/]+)\/swap$/;
 const SCHEDULE_ROOM_RUN_RE = /^\/api\/schedule\/rooms\/([^/]+)\/run$/;
+// REQ-0372: run history. `/runs` (listing) and `/runs/<runId>` (replay by id)
+// are distinct anchored shapes -- neither can shadow the other, and neither
+// collides with `/run` (singular), `/slots/<n>`, `/swap` or `/dev/backdate`.
+const SCHEDULE_ROOM_RUNS_RE = /^\/api\/schedule\/rooms\/([^/]+)\/runs$/;
+const SCHEDULE_ROOM_RUN_BY_ID_RE = /^\/api\/schedule\/rooms\/([^/]+)\/runs\/([^/]+)$/;
 const SCHEDULE_ROOM_DEV_BACKDATE_RE = /^\/api\/schedule\/rooms\/([^/]+)\/dev\/backdate$/; // REQ-0036 P1-C: dev-only E2E time-control hook
 const SCHEDULE_ROOMS_DEV_CLEAR_RE = /^\/api\/schedule\/rooms\/dev\/clear$/; // REQ-0082: dev-only E2E room-cleanup hook
 const SCHEDULE_SORTIES_RE = /^\/api\/schedule\/sorties$/; // REQ-0239 (D1): atomic create-room + assign-4-slots
@@ -53,9 +58,38 @@ const SCHEDULE_TROOP_LEAVE_RE = /^\/api\/schedule\/troops\/([^/]+)\/leave$/;
 const SCHEDULE_TROOP_CANCEL_RE = /^\/api\/schedule\/troops\/([^/]+)\/cancel$/; // REQ-0326: seated-member cancel -> disband
 const SCHEDULE_TROOP_RE = /^\/api\/schedule\/troops\/([^/]+)$/;
 
+// buildRunView (REQ-0372): the ApiRunView body, extracted VERBATIM from the
+// GET .../run handler below so the new replay-by-id route serves the SAME
+// shape from the SAME `visible` array -- one wire contract, one place to
+// change it, and replay bytes that are byte-identical through either path.
+function buildRunView(run, visible) {
+  const clock = schedule.runClock(run);
+  return {
+    ok: true,
+    runId: run.id,
+    roomId: run.roomId,
+    startedAt: run.startedAt,
+    durationSecs: run.durationSecs, // REQ-0240: PRESENTATION duration (pt-based for paced runs)
+    pacingVersion: run.pacingVersion || 0, // REQ-0240 M2: 0 = legacy run (events carry no pt; client replays on t)
+    roster: run.roster || null, // REQ-0240 M1: per-slot BP hpMax + enemy id/name/hpMax/footprint hints (client reveals enemies on first-seen)
+    clock: { elapsedSecs: clock.elapsedSecs, isSettled: clock.isSettled, pct: clock.pct },
+    events: visible, // REQ-0240: each event carries `pt` (ms) for paced runs; `t` (sim secs) always present
+    // Summary fields are always present (computed instantly at run
+    // start) but represent the FINAL outcome even before the
+    // clock finishes -- a spectator-safe client should treat
+    // `result`/`rewards` as "the eventual outcome", only fully
+    // authoritative once clock.isSettled is true (matching how
+    // visibleEvents() itself withholds not-yet-reached events).
+    result: run.result, finalProgressPct: run.finalProgressPct,
+    cooldownSecs: run.cooldownSecs, levelAfter: run.levelAfter, H: run.H,
+    settled: run.settled,
+  };
+}
+
 function tryScheduleRoutes(req, res, url, p) {
   const scheduleMatch = p.match(SCHEDULE_ROOMS_RE) || p.match(SCHEDULE_ROOM_RE) ||
     p.match(SCHEDULE_ROOM_SLOT_RE) || p.match(SCHEDULE_ROOM_SWAP_RE) || p.match(SCHEDULE_ROOM_RUN_RE) ||
+    p.match(SCHEDULE_ROOM_RUNS_RE) || p.match(SCHEDULE_ROOM_RUN_BY_ID_RE) || // REQ-0372
     p.match(SCHEDULE_ROOM_DEV_BACKDATE_RE) ||
     p.match(SCHEDULE_ROOMS_DEV_CLEAR_RE) || p.match(SCHEDULE_SORTIES_RE) ||
     p.match(SCHEDULE_SEAL_MINT_RE) || p.match(SCHEDULE_SEAL_GET_RE) ||
@@ -282,27 +316,46 @@ function tryScheduleRoutes(req, res, url, p) {
           sendText(res, 200, body);
           return;
         }
-        const clock = schedule.runClock(run);
-        sendJSON(res, 200, {
-          ok: true,
-          runId: run.id,
-          roomId: run.roomId,
-          startedAt: run.startedAt,
-          durationSecs: run.durationSecs, // REQ-0240: PRESENTATION duration (pt-based for paced runs)
-          pacingVersion: run.pacingVersion || 0, // REQ-0240 M2: 0 = legacy run (events carry no pt; client replays on t)
-          roster: run.roster || null, // REQ-0240 M1: per-slot BP hpMax + enemy id/name/hpMax/footprint hints (client reveals enemies on first-seen)
-          clock: { elapsedSecs: clock.elapsedSecs, isSettled: clock.isSettled, pct: clock.pct },
-          events: visible, // REQ-0240: each event carries `pt` (ms) for paced runs; `t` (sim secs) always present
-          // Summary fields are always present (computed instantly at run
-          // start) but represent the FINAL outcome even before the
-          // clock finishes -- a spectator-safe client should treat
-          // `result`/`rewards` as "the eventual outcome", only fully
-          // authoritative once clock.isSettled is true (matching how
-          // visibleEvents() itself withholds not-yet-reached events).
-          result: run.result, finalProgressPct: run.finalProgressPct,
-          cooldownSecs: run.cooldownSecs, levelAfter: run.levelAfter, H: run.H,
-          settled: run.settled,
-        });
+        sendJSON(res, 200, buildRunView(run, visible));
+      } catch (e) { sendDomainError(res, e); }
+      return;
+    }
+
+    // ---- GET /api/schedule/rooms/:id/runs (REQ-0372: run history) ----
+    // The last RUN_HISTORY_LIMIT SETTLED runs of this room, newest first, plus
+    // the W/L tally OF THAT WINDOW. Owner-guarded through the same
+    // loadAndSettleRoom() every other room route uses -- so a poll of this
+    // endpoint also settles a due run, and the run that JUST settled is in the
+    // list it returns. Deliberately compact (no events): the replay bytes come
+    // from the by-id route below, one run at a time.
+    const runsMatch = p.match(SCHEDULE_ROOM_RUNS_RE);
+    if (runsMatch) {
+      const roomId = decodeURIComponent(runsMatch[1]);
+      if (!methodGuard(req, res, 'GET')) return;
+      try {
+        const room = loadAndSettleRoom(roomId);
+        const history = schedule.listRoomRunHistory(room.id);
+        sendJSON(res, 200, Object.assign({ ok: true, roomId: room.id }, history));
+      } catch (e) { sendDomainError(res, e); }
+      return;
+    }
+
+    // ---- GET /api/schedule/rooms/:id/runs/:runId (REQ-0372) ----
+    // One PAST run's replay, in the exact ApiRunView shape GET .../run serves
+    // for the CURRENT one, so the client feeds it to the same monitor playback
+    // path with no second renderer. schedule.getRoomRun 404s a run id that does
+    // not belong to THIS (already owner-resolved) room, so a leaked id from
+    // someone else's room is never served. A pruned run is likewise a 404 --
+    // history is the listing, and the listing is what the client offers.
+    const runByIdMatch = p.match(SCHEDULE_ROOM_RUN_BY_ID_RE);
+    if (runByIdMatch) {
+      const roomId = decodeURIComponent(runByIdMatch[1]);
+      const runId = decodeURIComponent(runByIdMatch[2]);
+      if (!methodGuard(req, res, 'GET')) return;
+      try {
+        const room = loadAndSettleRoom(roomId);
+        const run = schedule.getRoomRun(room.id, runId);
+        sendJSON(res, 200, buildRunView(run, schedule.visibleEvents(run)));
       } catch (e) { sendDomainError(res, e); }
       return;
     }

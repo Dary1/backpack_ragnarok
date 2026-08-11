@@ -270,6 +270,17 @@ export const scheduleEn = {
   'schedule.board.goSortie': 'To sortie prep →',
   'schedule.board.goBackpacks': 'To builder →',
   'schedule.board.tileAria': '{squad}: {state}',
+
+  // REQ-0372: expedition run history (past-runs fold under the monitor).
+  'schedule.history.title': 'History',
+  'schedule.history.tally': '{wins}W / {losses}L',
+  'schedule.history.tallyScope': 'of the last {count}',
+  'schedule.history.level': 'Lv {level}',
+  'schedule.history.lootNone': 'no spoils',
+  'schedule.history.clearTimeHint': 'Clear time (battle duration, not playback length)',
+  'schedule.history.backToLatest': 'Back to the latest run',
+  'schedule.history.retentionNote': 'The last {count} runs of this room are kept; older replays are discarded.',
+  'schedule.history.loadFailed': 'History unavailable',
 } as const;
 
 export const scheduleJa = {
@@ -535,4 +546,14 @@ export const scheduleJa = {
   'schedule.board.goSortie': '出撃準備へ →',
   'schedule.board.goBackpacks': '編成へ →',
   'schedule.board.tileAria': '{squad}: {state}',
+  // REQ-0372: 遠征戦績（モニタ下の過去ラン折りたたみ）
+  'schedule.history.title': '戦績',
+  'schedule.history.tally': '{wins}勝 / {losses}敗',
+  'schedule.history.tallyScope': '（直近{count}件）',
+  'schedule.history.level': 'Lv {level}',
+  'schedule.history.lootNone': '戦利品なし',
+  'schedule.history.clearTimeHint': 'クリアタイム（戦闘の実時間。再生時間ではありません）',
+  'schedule.history.backToLatest': '最新のランに戻る',
+  'schedule.history.retentionNote': 'この部屋の直近{count}件のみ保持され、それより古いリプレイは破棄されます。',
+  'schedule.history.loadFailed': '戦績を取得できません',
 } as const;
