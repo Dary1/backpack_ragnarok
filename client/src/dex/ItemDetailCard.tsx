@@ -27,14 +27,12 @@
 // content). The raw AST <details> block is also locale-neutral.
 //
 // REQ-0075 (MJOLNIR re-skin; mock: web/redesign/dex.html §銘と効果 +
-// §市場の刻銘): the mock's 市場の刻銘 (market engravings) block is
-// rendered as an EMPTY-STATE shell: no Dex-facing price/listing feed is
-// exposed today (the market wire shapes exist in shared/dto.ts on the
-// /api/market listing endpoints only — REQ-0064; a per-item Dex card feed
-// is REQ-0052, still queued). Per REQ-0075's own fallback clause, and
-// since /api/content offers NOTHING market-related, the block shows the
-// mock's anchor/listing labels with honest "—" placeholders, NOT invented
-// numbers, and links to the market page. See docs/REQ-0075-redesign-dex.md.
+// §市場の刻銘): the mock's 市場の刻銘 (market engravings) block shipped as
+// an EMPTY-STATE shell because no Dex-facing price/listing feed existed.
+// REQ-0374 wired it: the block moved to dex/DexMarketBlock.tsx and reads
+// GET /api/market/dex/:itemId for the real settled anchor + on-hearth
+// listing count, keeping REQ-0075's honest placeholders as the genuine
+// empty/unreachable state. This card renders LORE only again.
 //
 // Locale text resolution prefers the formal i18n map (entry.i18n?.ja)
 // over the legacy top-level name_ja/flavor_ja mirror fields, falling
@@ -48,6 +46,7 @@ import type { ApiItemEntry, ApiRegistry, ApiSIEntry } from '../api';
 import { t } from '../i18n';
 import type { Locale } from '../store';
 import type { DexEntry } from './Dex';
+import { DexMarketBlock } from './DexMarketBlock';
 import { ancestryPath, type TagTree } from './vocabTree';
 
 interface ItemDetailCardProps {
@@ -207,46 +206,17 @@ export function ItemDetailCard({ dexEntry, locale, tagTree, registry, dexNo }: I
         </div>
       </div>
 
-      {/* ============ 市場の刻銘 / THE MARKET ENGRAVINGS (mock) ============
-          REQ-0075 EMPTY-STATE: no Dex-facing price/listing feed exists yet
-          (REQ-0052/REQ-0064). Render the mock's block shell with honest
-          "—" placeholders + a zero listing count, never invented numbers.
-          The anchor-price / listing-count LABELS from the mock are kept so
-          the block reads as a real (currently empty) section, and a link
-          to the market page is provided. See docs/REQ-0075-redesign-dex.md. */}
+      {/* ============ 市場の刻銘 / THE MARKET ENGRAVINGS ============
+          REQ-0374: the block is WIRED and lives in its own component now
+          (dex/DexMarketBlock.tsx), which owns the GET /api/market/dex/:itemId
+          read, the real anchor + on-hearth count, and the item-scoped market
+          deep link. It keeps REQ-0075's empty state verbatim for an item that
+          has never settled (or when the market cannot be reached) -- honest
+          placeholders, never invented numbers, exactly as before.
+          key={dexEntry.id}: the block re-reads by remounting when the viewed
+          entry changes (see its module comment). */}
       <div className="rune-divider" aria-hidden="true">ᚠ</div>
-      <div className="dex-market" data-testid="dex-market-block">
-        <div className="dex-market-head">
-          <span className="ttl dj dex-market-title">{t(locale, 'dex.market.title')}</span>
-          <span className="den dex-market-den">{t(locale, 'dex.market.den')}</span>
-          <span className="dex-colhead-grow" />
-          <span className="chip dex-market-count" data-testid="dex-market-count">
-            <span className="rune dex-market-count-rune">ᚠ</span> {t(locale, 'dex.market.listingCount', { count: 0 })}
-          </span>
-        </div>
-        <div className="dex-market-empty" data-testid="dex-market-empty">
-          <div className="dex-market-anchor-row">
-            <span className="dex-market-anchor-label t-micro">{t(locale, 'dex.market.anchorLabel')}</span>
-            <span className="dex-market-anchor-val tnum">
-              <span className="rune dex-market-anchor-rune">ᚠ</span>—
-            </span>
-          </div>
-          <div className="dex-market-empty-note t-micro">{t(locale, 'dex.market.emptyNote')}</div>
-        </div>
-        <div className="dex-market-cap">{t(locale, 'dex.market.caption')}</div>
-        <div className="den dex-market-cap-en">{t(locale, 'dex.market.captionEn')}</div>
-        <div className="dex-market-link">
-          <button
-            type="button"
-            className="btn btn-ghost dex-market-link-btn"
-            onClick={() => {
-              window.location.hash = '#/market';
-            }}
-          >
-            <span className="rune" aria-hidden="true">ᚠ</span> {t(locale, 'dex.market.viewInMarket')}
-          </button>
-        </div>
-      </div>
+      <DexMarketBlock key={dexEntry.id} itemId={dexEntry.id} dexNo={dexNo} name={entry.name} locale={locale} />
     </div>
   );
 }

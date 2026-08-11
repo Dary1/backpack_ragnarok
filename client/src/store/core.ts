@@ -161,6 +161,19 @@ export const SORTIE_HASH_RE = /^#\/sortie\/([A-Za-z0-9_-]+)$/;
 // ordering as the dex/contentadmin/artadmin deep links above.
 export const MARKET_SELL_HASH_RE = /^#\/market\?sell=([^&]+)(?:&kind=(po|si|unit))?$/;
 
+// REQ-0374: '#/market?buy=<query>' is the BUY-side twin of the sell deep link
+// above -- the Dex detail's market block ("View in the market") carries the
+// item the player was looking at instead of dropping them on an unscoped
+// '#/market'. The payload is a market SEARCH QUERY, not an id: the market's
+// own search grammar (a Dex No. or an EN/JA name substring, views.cjs's
+// matchesQuery mirrored client-side in BuyPane) already resolves an item
+// exactly, so the link reuses it rather than adding a second, parallel
+// item-addressing scheme to the market. Checked BEFORE the generic
+// routeFromHash() fallback for the same reason every deep link above is
+// (routeFromHash would see 'market?buy=...' as an unknown segment and drop to
+// 'backpacks').
+export const MARKET_BUY_HASH_RE = /^#\/market\?buy=([^&]+)$/;
+
 // REQ-0069: the EMPTY hash ('', '#' or '#/') is the landing (title)
 // screen -- the app's boot route. Named routes keep their '#/<name>'
 // hashes, and an UNKNOWN hash still falls back to 'backpacks' (NOT the
@@ -261,6 +274,14 @@ export interface StoreSnapshot {
    * once (switches to the SELL pane + preselects the instance) then calls
    * clearMarketSellFocus() -- null the rest of the time. */
   marketSellFocus: { uid: string; kind: 'po' | 'si' | 'unit' } | null;
+  /** REQ-0374: pending market BUY deep-link target, set by initRouting()/
+   * onHashChange when the hash matches MARKET_BUY_HASH_RE
+   * ('#/market?buy=<query>', e.g. the Dex detail's "View in the market").
+   * MarketPage consumes this once (switches to the BUY pane, resets the chip
+   * to 'all' and seeds the search box with the query) then calls
+   * clearMarketBuyFocus() -- null the rest of the time. A plain string
+   * because it IS the market's search query, not an id (see the RE's note). */
+  marketBuyFocus: string | null;
 }
 
 export let snapshot: StoreSnapshot = {
@@ -283,6 +304,7 @@ export let snapshot: StoreSnapshot = {
   contentAdminFocusName: null,
   artAdminFocusName: null,
   marketSellFocus: null,
+  marketBuyFocus: null,
   sortieFocusDungeonId: null,
 };
 

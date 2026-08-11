@@ -13,6 +13,9 @@
 //   POST /api/market/listings              {itemUid, price:{tm,qty}}
 //   POST /api/market/listings/:id/withdraw owner-only, free
 //   POST /api/market/listings/:id/buy      atomic settle (the only burn)
+//   GET  /api/market/dex/:itemId           REQ-0374: per-ITEM read model for
+//                                          the Dex detail's market block
+//                                          (settled anchor + on-hearth count)
 //   GET  /api/market/furnace               seasonal burn total (REQ-0066:
 //                                          windowed from the current
 //                                          season start via the ragnarok
@@ -42,6 +45,7 @@ const MARKET_LISTINGS_RE = /^\/api\/market\/listings$/;
 const MARKET_LISTING_WITHDRAW_RE = /^\/api\/market\/listings\/([^/]+)\/withdraw$/;
 const MARKET_LISTING_BUY_RE = /^\/api\/market\/listings\/([^/]+)\/buy$/;
 const MARKET_FURNACE_RE = /^\/api\/market\/furnace$/;
+const MARKET_DEX_RE = /^\/api\/market\/dex\/([^/]+)$/; // REQ-0374
 const MARKET_LISTINGS_DEV_CLEAR_RE = /^\/api\/market\/listings\/dev\/clear-all$/;
 const MARKET_LISTINGS_FROM_WAREHOUSE_RE = /^\/api\/market\/listings\/from-warehouse$/; // REQ-0328
 
@@ -52,7 +56,7 @@ const BODY_WORDING = { allowEmpty: false };
 function tryMarketRoutes(req, res, url, p) {
   const marketMatch = p.match(MARKET_LISTINGS_RE) || p.match(MARKET_LISTING_WITHDRAW_RE) ||
     p.match(MARKET_LISTING_BUY_RE) || p.match(MARKET_FURNACE_RE) || p.match(MARKET_LISTINGS_DEV_CLEAR_RE) ||
-    p.match(MARKET_LISTINGS_FROM_WAREHOUSE_RE);
+    p.match(MARKET_LISTINGS_FROM_WAREHOUSE_RE) || p.match(MARKET_DEX_RE);
   if (!marketMatch) return false;
 
   // REQ-0199: resolve the caller EXACTLY like schedule/warehouse and profile/me
@@ -171,6 +175,35 @@ function tryMarketRoutes(req, res, url, p) {
         ok: true, dtoVersion: market.MARKET_DTO_VERSION, replayed, receipt,
         listing: market.toListingDto(listing, { state: listing.state, suspended: false }, null),
       });
+    } catch (e) { sendDomainError(res, e); }
+    return;
+  }
+
+  // ---- GET /api/market/dex/:itemId (REQ-0374) ----
+  // The Dex detail's 市場の刻銘 block used to be a PERMANENT empty state: a
+  // literal "--" anchor and a hardcoded 0 count, because no dex-facing feed
+  // existed (the REQ-0075 comment in client/src/dex/ItemDetailCard.tsx said so
+  // out loud). This is that feed -- lean by design: ONE content id in, an
+  // anchor + an on-hearth count out, no listing array (the block links to the
+  // browse for the cards themselves, it does not re-render them).
+  //
+  // Auth: the family preamble above, unchanged -- a market read is a market
+  // read. This route deliberately does NOT become the one anonymous surface in
+  // the market just because its consumer sits on a content page; the caller is
+  // resolved and then ignored, since the answer is caller-independent (see
+  // services/market/views.cjs's dexMarketInfo). A client that cannot resolve
+  // keeps the honest empty state it has rendered since REQ-0075.
+  //
+  // An unknown/never-traded id is a 200 {anchor:null, activeCount:0}, NOT a
+  // 404: existence of a content id is /api/content's and /api/dex/card's
+  // question, and 404ing here would make an untraded item indistinguishable
+  // from a typo at the call site that has already resolved the item.
+  const dexMatch = p.match(MARKET_DEX_RE);
+  if (dexMatch) {
+    if (!methodGuard(req, res, 'GET')) return;
+    const itemId = decodeURIComponent(dexMatch[1]);
+    try {
+      sendJSON(res, 200, { ok: true, dtoVersion: market.MARKET_DTO_VERSION, dex: market.dexMarketInfo(itemId) });
     } catch (e) { sendDomainError(res, e); }
     return;
   }

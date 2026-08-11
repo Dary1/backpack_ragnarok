@@ -42,6 +42,8 @@ export const warehouseEn = {
   'schedule.warehouse.claimFailed': 'Could not claim this item: ',
   'schedule.warehouse.loadFailed': 'Failed to load the warehouse: ',
   'schedule.warehouse.claimNoSpace': 'No space in any inventory page -- the item stays in your warehouse.',
+  // REQ-0374: the way out of every "no room" message on this page.
+  'schedule.warehouse.organizeCta': 'Organize inventory',
   'schedule.warehouse.claimedOnOtherPage': 'Placed on page {page}.',
   'schedule.warehouse.capWarning': 'Space is running low. Claim soon or new rewards may be lost.',
   'schedule.warehouse.capFull': 'Warehouse is full. New expedition rewards are being lost until you claim space.',
@@ -100,6 +102,7 @@ export const warehouseJa = {
   'schedule.warehouse.claimFailed': 'このアイテムを受け取れませんでした: ',
   'schedule.warehouse.loadFailed': '倉庫の読み込みに失敗しました: ',
   'schedule.warehouse.claimNoSpace': 'どのインベントリページにも空きがありません -- アイテムは倉庫に保管されたままです。',
+  'schedule.warehouse.organizeCta': '持ち物を整理する',
   'schedule.warehouse.claimedOnOtherPage': 'ページ {page} に配置しました。',
   'schedule.warehouse.capWarning': '空き容量が少なくなっています。早めに受け取らないと新しい報酬が失われる可能性があります。',
   'schedule.warehouse.capFull': '倉庫が満杯です。空きができるまで、新しい遠征報酬は失われ続けます。',

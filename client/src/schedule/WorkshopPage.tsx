@@ -385,7 +385,7 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
           <ul className="workshop-rules">
             <li>{t(locale, 'workshop.ruleCommon')}</li>
             <li>{t(locale, 'workshop.ruleUnit')}</li>
-            <li>{t(locale, 'workshop.ruleTwoPhase')}</li>
+            <li>{t(locale, 'workshop.ruleReceipt')}</li>
           </ul>
           {/* REQ-0062: transparent bonus-slot odds -- every table with its weights. */}
           <div className="rune-divider">{'\u16DC'}</div>

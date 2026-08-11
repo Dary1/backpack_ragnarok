@@ -1127,6 +1127,35 @@ export interface ApiMarketFurnaceResponse {
   };
 }
 
+/** REQ-0374: GET /api/market/dex/:itemId -- the lean per-ITEM read model the
+ * Dex detail's 市場の刻銘 (Market Engravings) block renders. Market-wide and
+ * caller-independent: the same two numbers for every player.
+ *
+ * `anchor` is the NEWEST settled engraving for the id -- the head of the same
+ * rolling last-5 history ApiMarketListing.priceHistory carries for a listing
+ * of that item -- or null when the item has never settled.
+ *
+ * `activeCount` is how many listings for the id are ON THE HEARTH: exactly the
+ * active+suspended set the default browse (GET /api/market/listings) returns,
+ * so the block's "View in the market" cannot land on a page that contradicts
+ * the count it was clicked from.
+ *
+ * An id with no listings and no history is a plain 200 {anchor:null,
+ * activeCount:0}, never a 404 -- the market has no opinion on whether a
+ * content id exists. */
+export interface ApiMarketDexInfo {
+  itemId: string;
+  anchor: ApiMarketPriceHistoryEntry | null;
+  activeCount: number;
+}
+
+/** GET /api/market/dex/:itemId response envelope. */
+export interface ApiMarketDexInfoResponse {
+  ok: true;
+  dtoVersion: MarketDtoVersion;
+  dex: ApiMarketDexInfo;
+}
+
 // ---- REQ-0066: Hall of Ragnarok wire shapes (server/routes/ragnarok.cjs) ----
 // Every /api/ragnarok response envelope carries `dtoVersion:
 // RAGNAROK_DTO_VERSION` (currently 1; server/services/ragnarok.cjs owns

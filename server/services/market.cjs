@@ -98,6 +98,7 @@ module.exports = {
   referencedUidSet,
   normalizeListing: listings.normalizeListing,
   listListings: views.listListings,
+  dexMarketInfo: views.dexMarketInfo, // REQ-0374: per-item anchor + on-hearth count
   createListing: listings.createListing,
   createListingFromWarehouse: listings.createListingFromWarehouse,
   withdrawListing: listings.withdrawListing,

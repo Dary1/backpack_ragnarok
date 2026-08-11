@@ -107,10 +107,19 @@ export function useWarehouseData(locale: Locale) {
   const claimLockRef = useRef<Set<string>>(new Set());
   const [claimErrors, setClaimErrors] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<string | null>(null);
+  // REQ-0374: some toasts NAME a problem the player can act on. `toastAction`
+  // is the optional CTA that rides along with the current toast ('organize' =
+  // "there is no room anywhere" -> the inventory). A separate field rather
+  // than a richer toast value because `toast` is a plain string every other
+  // call site (claimed / claimedOnOtherPage / sell success+failure) sets
+  // directly, and widening it would touch all of them for one case. Cleared
+  // WITH the toast by the timer below, so the CTA can never outlive its
+  // message.
+  const [toastAction, setToastAction] = useState<'organize' | null>(null);
 
   useEffect(() => {
     if (!toast) return;
-    const id = setTimeout(() => setToast(null), 4000);
+    const id = setTimeout(() => { setToast(null); setToastAction(null); }, 4000);
     return () => clearTimeout(id);
   }, [toast]);
 
@@ -184,7 +193,13 @@ export function useWarehouseData(locale: Locale) {
         // 'claimable' after the server's own timeout (no explicit
         // "abandon claim" round-trip needed -- see this file's module
         // comment). Surface a toast so the user isn't left guessing.
+        // REQ-0374: this failure is the one warehouse outcome the player can
+        // fix directly, and it used to state the problem and stop there. The
+        // toast now carries the way out (WarehousePage renders it as the
+        // organize link) -- the message is unchanged, only no longer a
+        // dead end.
         setToast(t(locale, 'schedule.warehouse.claimNoSpace'));
+        setToastAction('organize');
         setClaimErrors((prev) => ({ ...prev, [itemUid]: t(locale, 'schedule.warehouse.claimNoSpace') }));
         return 'no_space';
       }
@@ -224,6 +239,7 @@ export function useWarehouseData(locale: Locale) {
       clearUndo();
       notifyStateChanged();
 
+      setToastAction(null); // a success toast carries no CTA
       setToast(
         res.page === openPage
           ? t(locale, 'schedule.warehouse.claimedToast')
@@ -267,10 +283,12 @@ export function useWarehouseData(locale: Locale) {
     setSellingUid(itemUid);
     try {
       await sellFromWarehouse(itemUid, { tm: SELL_TM_ID, qty });
+      setToastAction(null);
       setToast(t(locale, 'schedule.warehouse.sellSuccess', { qty }));
       await reload(); // the consumed row leaves the warehouse list
       return true;
     } catch (e) {
+      setToastAction(null);
       setToast(t(locale, 'schedule.warehouse.sellFailed') + (e instanceof Error ? e.message : String(e)));
       return false;
     } finally {
@@ -303,6 +321,7 @@ export function useWarehouseData(locale: Locale) {
     rooms,
     dungeons,
     toast,
+    toastAction,
     claimingUid,
     claimingAll,
     claimFx,

@@ -2,7 +2,7 @@
 // (extracted VERBATIM from the old flat api.ts). newIdemKey stays
 // module-private, exactly as it was file-private before.
 import { scheduleJSON } from './http';
-import type { ApiMarketBuyResponse, ApiMarketCreateListingRequest, ApiMarketFurnaceResponse, ApiMarketListingResponse, ApiMarketListingsResponse, ApiMarketPrice } from '../../../shared/dto';
+import type { ApiMarketBuyResponse, ApiMarketCreateListingRequest, ApiMarketDexInfoResponse, ApiMarketFurnaceResponse, ApiMarketListingResponse, ApiMarketListingsResponse, ApiMarketPrice } from '../../../shared/dto';
 
 // ---- REQ-0064: Market (交易の火床 / Hearth of Barter) ----
 // Client surface for server/routes/market.cjs. Shapes are EXACTLY
@@ -40,6 +40,15 @@ export function fetchMarketListings(opts?: { filter?: string; q?: string }): Pro
   if (opts?.q) params.set('q', opts.q);
   const qs = params.toString();
   return scheduleJSON<ApiMarketListingsResponse>(`/api/market/listings${qs ? `?${qs}` : ''}`);
+}
+
+/** REQ-0374: GET /api/market/dex/:itemId -- the per-item settled-price anchor
+ * + on-hearth listing count the Dex detail's market block renders. Market-wide
+ * (nothing here is scoped to the caller), token-gated like the rest of this
+ * family. A rejection is NOT fatal to the Dex page: the block keeps the honest
+ * empty state it has rendered since REQ-0075 (see dex/DexMarketBlock.tsx). */
+export function fetchMarketDexInfo(itemId: string): Promise<ApiMarketDexInfoResponse> {
+  return scheduleJSON<ApiMarketDexInfoResponse>(`/api/market/dex/${encodeURIComponent(itemId)}`);
 }
 
 /** POST /api/market/listings {itemUid, price:{tm,qty}} -- list one of

@@ -101,7 +101,7 @@ import { itemKindOf } from '../../../shared/player_actions.mjs'; // REQ-0310
 import { formatWarehouseCountdown } from '../lib/time';
 import { localizedName } from '../lib/contentName'; // REQ-0239: relocated
 import { t } from '../i18n';
-import type { Locale } from '../store';
+import { setRoute, type Locale } from '../store';
 import { SellModal } from './SellModal'; // REQ-0366
 import { TtlRing } from './TtlRing';
 import { useWarehouseData, type WarehouseRow } from './useWarehouseData';
@@ -128,6 +128,27 @@ const FRESH_MS = 86400000;
 
 type WarehouseFilter = 'all' | 'spoils' | 'currency';
 
+/** REQ-0374: the way OUT of a "there is no room" message. Both surfaces that
+ * report the problem -- the per-claim no-space toast and the full-warehouse
+ * capacity banner -- name it and, before this REQ, stopped there; the player
+ * was told the shelf is jammed and left to work out that the fix lives on
+ * another route. Navigation goes through the store's setRoute (the app's ONE
+ * navigation path). REQ-0373's per-page auto-arrange button is the affordance
+ * this lands NEXT TO once it exists; until then the inventory itself is the
+ * honest destination -- nothing here depends on that REQ having landed. */
+function OrganizeLink({ locale, testId }: { locale: Locale; testId: string }) {
+  return (
+    <button
+      type="button"
+      className="btn btn-ghost schedule-warehouse-organize-btn"
+      data-testid={testId}
+      onClick={() => setRoute('backpacks')}
+    >
+      {t(locale, 'schedule.warehouse.organizeCta')}
+    </button>
+  );
+}
+
 export function WarehousePage({ locale }: WarehousePageProps) {
   const {
     items,
@@ -136,6 +157,7 @@ export function WarehousePage({ locale }: WarehousePageProps) {
     rooms,
     dungeons,
     toast,
+    toastAction,
     claimingUid,
     claimingAll,
     claimFx,
@@ -296,7 +318,22 @@ export function WarehousePage({ locale }: WarehousePageProps) {
               {src.market ? <div className="schedule-warehouse-src-note t-micro">{t(locale, 'schedule.warehouse.srcMarketNote')}</div> : null}
             </div>
           ) : null}
-          {claimErrors[item.itemUid] ? <div className="schedule-slot-error">{claimErrors[item.itemUid]}</div> : null}
+          {claimErrors[item.itemUid] ? (
+            <div className="schedule-slot-error">
+              {claimErrors[item.itemUid]}
+              {/* REQ-0374: the per-ROW copy of the no-space message gets the
+                  same way out as the toast -- the toast auto-clears after 4s
+                  and this line does not, so the row is where a player who
+                  looked away still finds it. Keyed off the message being the
+                  no-space one rather than a second piece of state: the row's
+                  error is a rendered STRING by construction (see
+                  useWarehouseData's setClaimErrors call sites), and the
+                  comparison is against the very t() call that produced it. */}
+              {claimErrors[item.itemUid] === t(locale, 'schedule.warehouse.claimNoSpace') ? (
+                <OrganizeLink locale={locale} testId={`schedule-warehouse-row-organize-${item.itemUid}`} />
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <div className="schedule-warehouse-row-side">
           <TtlRing
@@ -413,13 +450,25 @@ export function WarehousePage({ locale }: WarehousePageProps) {
             data-testid="schedule-warehouse-capacity-warning"
           >
             {capState === 'full' ? t(locale, 'schedule.warehouse.capFull') : t(locale, 'schedule.warehouse.capWarning')}
+            {/* REQ-0374: the FULL banner is the harshest message this page
+                shows ("rewards are being lost"); it now carries the fix. The
+                milder 'warning' state deliberately does not -- there is still
+                room, so nothing is being asked of the player yet. */}
+            {capState === 'full' ? <OrganizeLink locale={locale} testId="schedule-warehouse-cap-organize" /> : null}
           </div>
         ) : null}
         <div className="schedule-warehouse-strip-note t-micro">{t(locale, 'schedule.warehouse.stripNote')}</div>
       </section>
 
       {loadError ? <div className="schedule-error">{t(locale, 'schedule.warehouse.loadFailed')}{loadError}</div> : null}
-      {toast ? <div className="schedule-toast" data-testid="schedule-warehouse-toast">{toast}</div> : null}
+      {toast ? (
+        <div className="schedule-toast" data-testid="schedule-warehouse-toast">
+          {toast}
+          {/* REQ-0374: only a toast that carries an action renders one (today:
+              the no-space claim failure). See useWarehouseData's toastAction. */}
+          {toastAction === 'organize' ? <OrganizeLink locale={locale} testId="schedule-warehouse-toast-organize" /> : null}
+        </div>
+      ) : null}
 
       {sortedItems === null ? (
         <div className="schedule-loading">{t(locale, 'schedule.loading')}</div>

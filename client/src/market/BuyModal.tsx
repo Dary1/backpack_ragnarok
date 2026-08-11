@@ -11,7 +11,7 @@ import { useState } from 'react';
 import { buyMarketListing, type ApiMarketListing, type GameData } from '../api';
 import { t } from '../i18n';
 import { useModalConventions } from '../lib/useModalConventions'; // REQ-0369
-import type { Locale } from '../store';
+import { setRoute, type Locale } from '../store';
 import { buyReasonOf } from './marketErrors';
 import { RollBar, MarketThumb, PriceTag, dexNoLabel, listingKindLine } from './marketShared';
 
@@ -145,6 +145,23 @@ export function BuyModal({ listing, gameData, locale, tms, balance, onSettled, o
             <div className="dj market-done-title">{t(locale, 'market.buy.doneTitle')}</div>
             <p className="mdone dj">{t(locale, 'market.buy.doneBody', { burn, receives, who: listing.sellerName })}</p>
             <div className="row market-done-actions">
+              {/* REQ-0374: doneBody TELLS the player the goods are waiting in
+                  the vault; until this REQ the modal offered no way there, so
+                  the one sentence that names the next step was also the one
+                  place the player had to leave and find it by hand. The route
+                  change goes through the store's setRoute (the app's ONE
+                  navigation path -- Nav/LandingPage/SquadBoardTile all use it;
+                  it writes the hash too), and closes the modal first so the
+                  market is not left holding a dialog over a page the player
+                  has navigated away from. */}
+              <button
+                type="button"
+                className="btn btn-forge"
+                data-testid="market-buy-done-warehouse"
+                onClick={() => { onClose(); setRoute('warehouse'); }}
+              >
+                <span className="rune" aria-hidden="true">ᚷ</span> {t(locale, 'market.buy.openWarehouse')}
+              </button>
               <button type="button" className="btn" onClick={onClose} data-testid="market-buy-done-close">{t(locale, 'market.buy.close')}</button>
             </div>
           </div>

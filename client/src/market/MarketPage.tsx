@@ -26,7 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePolledResource } from '../lib/usePolledResource';
 import { fetchMarketFurnace, fetchMarketListings, type ApiMarketFurnaceResponse, type ApiMarketListing } from '../api';
 import { t } from '../i18n';
-import { clearMarketSellFocus, loadGame, useGameStore, type Locale } from '../store';
+import { clearMarketBuyFocus, clearMarketSellFocus, loadGame, useGameStore, type Locale } from '../store';
 import type { GameState } from '../engine/engine.d.ts';
 import { BuyModal } from './BuyModal';
 import { BuyPane } from './BuyPane';
@@ -98,6 +98,21 @@ export function MarketPage({ locale }: MarketPageProps) {
     setSellPreselect(marketSellFocus);
     clearMarketSellFocus();
   }, [marketSellFocus]);
+
+  // REQ-0374: '#/market?buy=<query>' deep link -> the BUY pane with the search
+  // prefilled (the Dex detail's "View in the market", which used to jump to a
+  // bare '#/market' and lose the item). The chip is reset to 'all' in the same
+  // breath: chip and query are ANDed in BuyPane, so a stale kind/tag chip from
+  // an earlier visit could otherwise empty a grid the deep link just filled.
+  // Consume the store's one-shot focus immediately, same as the sell link.
+  const marketBuyFocus = snapshot.marketBuyFocus;
+  useEffect(() => {
+    if (marketBuyFocus === null) return;
+    setPane('buy');
+    setActiveChip('all');
+    setQuery(marketBuyFocus);
+    clearMarketBuyFocus();
+  }, [marketBuyFocus]);
 
   const loadBrowse = useCallback(async () => {
     const res = await fetchMarketListings();

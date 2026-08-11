@@ -348,6 +348,80 @@ module.exports.run = async function run(h) {
     assert.strictEqual(buyerFeed.body.notifications.filter((n) => n.kind === 'market_settled').length, 0, 'the buyer is not notified of their own purchase');
   });
 
+  await AT('REQ-0374: GET /api/market/dex/:itemId -- the settled anchor + an on-hearth count that AGREES with the default browse; unknown id is an empty 200, not a 404; GET-only', async () => {
+    // Runs after the blade settle above, so 'blade' has exactly one engraving
+    // (qty 46) in the same rolling history a listing DTO exposes.
+    const dex = await marketReq('GET', '/api/market/dex/blade', mktBuyer.token);
+    assert.strictEqual(dex.status, 200, JSON.stringify(dex.body));
+    assert.strictEqual(dex.body.dtoVersion, market.MARKET_DTO_VERSION);
+    assert.strictEqual(dex.body.dex.itemId, 'blade');
+
+    // The anchor is the HEAD of the history the market engraves at settlement
+    // -- asserted against storage, so the route cannot drift into computing
+    // "the anchor" some second way.
+    const hist = scheduleStorage.readMarketDexHistory('blade');
+    assert.strictEqual(dex.body.dex.anchor.qty, hist.entries[0].qty, 'anchor qty is the newest engraving');
+    assert.strictEqual(dex.body.dex.anchor.qty, 46);
+    assert.strictEqual(dex.body.dex.anchor.tm, 'lrdst');
+    assert.strictEqual(dex.body.dex.anchor.t, hist.entries[0].t);
+    assert.strictEqual(typeof dex.body.dex.anchor.listingId, 'undefined', 'the wire anchor is the DTO history shape (qty/tm/t), not the stored row');
+
+    // THE INVARIANT THAT MATTERS: activeCount is exactly what the default
+    // browse shows for this item. Derived FROM the browse rather than
+    // hardcoded, so it holds whatever else this shared suite has listed by
+    // now -- and so a future change that makes one of the two treat
+    // suspended/expired listings differently fails HERE, instead of shipping
+    // a dex block whose number the page it links to contradicts.
+    const browse = await marketReq('GET', '/api/market/listings', mktBuyer.token);
+    const browseBlades = browse.body.listings.filter((l) => l.itemId === 'blade').length;
+    assert.ok(browseBlades > 0, 'fixture sanity: blade listings are live at this point');
+    assert.strictEqual(dex.body.dex.activeCount, browseBlades, 'the dex count IS the browse count for that item');
+
+    // An item that has never traded and is not listed: an empty answer, 200.
+    // Not a 404 -- whether a content id exists is /api/content's question, and
+    // 404ing here would make "never traded" indistinguishable from a typo.
+    const cold = await marketReq('GET', '/api/market/dex/no_such_item_id', mktBuyer.token);
+    assert.strictEqual(cold.status, 200, JSON.stringify(cold.body));
+    assert.deepStrictEqual(cold.body.dex, { itemId: 'no_such_item_id', anchor: null, activeCount: 0 });
+
+    // Read-only surface: anything but GET is the family's 405.
+    const post = await marketReq('POST', '/api/market/dex/blade', mktBuyer.token, {});
+    assert.strictEqual(post.status, 405, JSON.stringify(post.body));
+  });
+
+  await AT('REQ-0374: a SUSPENDED listing still counts on the dex block -- it is browsable (unbuyable), so the count never disagrees with the browse it links to', async () => {
+    // Directed, and REVERSIBLE by construction: reference the already-listed
+    // mkt_susp onto the seller's active board (the exact technique the
+    // suspension test above uses), so nothing is created and nothing is left
+    // behind for the downstream groups.
+    const before = await marketReq('GET', '/api/market/dex/blade', mktBuyer.token);
+    const doc = scheduleStorage.readProfile(mktSeller.playerId);
+    doc.canvas.pos.push({ uid: 'mkt_susp', id: 'blade', cell: [5, 5], rot: 0 });
+    scheduleStorage.writeProfile(mktSeller.playerId, doc.canvas);
+
+    let suspListingId = null;
+    try {
+      const browse = await marketReq('GET', '/api/market/listings', mktBuyer.token);
+      const susp = browse.body.listings.filter((l) => l.itemId === 'blade' && l.state === 'suspended');
+      assert.strictEqual(susp.length, 1, 'fixture sanity: exactly one blade listing is suspended right now');
+      suspListingId = susp[0].id;
+      const during = await marketReq('GET', '/api/market/dex/blade', mktBuyer.token);
+      assert.strictEqual(during.body.dex.activeCount, before.body.dex.activeCount, 'suspension does not remove a listing from the dex count');
+      assert.strictEqual(during.body.dex.activeCount, browse.body.listings.filter((l) => l.itemId === 'blade').length, 'and the count still equals the browse count');
+    } finally {
+      // The un-reference runs even on a failed assertion: a leaked board
+      // reference would suspend this listing for every LATER group too, and a
+      // cross-test leak of exactly that shape is what REQ-0159 spent a whole
+      // pass cleaning out of this suite.
+      const doc2 = scheduleStorage.readProfile(mktSeller.playerId);
+      doc2.canvas.pos = doc2.canvas.pos.filter((pp) => pp.uid !== 'mkt_susp');
+      scheduleStorage.writeProfile(mktSeller.playerId, doc2.canvas);
+    }
+    const after = await marketReq('GET', '/api/market/dex/blade', mktBuyer.token);
+    assert.strictEqual(after.body.dex.activeCount, before.body.dex.activeCount, 'and the reversal leaves the count where it was');
+    assert.strictEqual(scheduleStorage.readMarketListing(suspListingId).state, 'active', 'stored state never flipped -- downstream groups see what they expect');
+  });
+
   await AT('market: concurrent buys -- first wins, second 409 already_settled; self-buy 409; insufficient balance 409 leaves everything untouched', async () => {
     const mine = await marketReq('GET', '/api/market/listings?filter=mine', mktSeller.token);
     const fxId = mine.body.listings.find((x) => x.itemUid === 'mkt_sell_3').id;

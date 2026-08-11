@@ -114,7 +114,11 @@ export const dexEn = {
   'dex.noPrefix': 'No.',
   'dex.market.title': 'Market Engravings',
   'dex.market.den': 'THE MARKET ENGRAVINGS',
-  'dex.market.listingCount': 'engraved: {count}',
+  // REQ-0374: this counted nothing until the block was wired -- it was a
+  // hardcoded 0 and read 'engraved', which described the settlement history,
+  // not the number it printed. It is now the live count of listings for this
+  // item ON THE HEARTH, and says so.
+  'dex.market.listingCount': 'on the hearth: {count}',
   'dex.market.anchorLabel': 'Anchor — latest settlement',
   'dex.market.emptyNote': 'No settlements engraved yet.',
   'dex.market.caption': 'Asks are opinions; settlements are facts — only settlements set the anchor.',
@@ -247,7 +251,7 @@ export const dexJa = {
   'dex.noPrefix': 'No.',
   'dex.market.title': '市場の刻銘',
   'dex.market.den': 'THE MARKET ENGRAVINGS',
-  'dex.market.listingCount': '刻銘中 {count}件',
+  'dex.market.listingCount': '火床に {count}件',
   'dex.market.anchorLabel': '錨 — 直近刻銘',
   'dex.market.emptyNote': 'まだ刻銘はない。',
   'dex.market.caption': '言い値は意見、成立は事実 — 錨は成立のみが刻む。',

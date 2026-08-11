@@ -43,6 +43,39 @@ async function gotoWarehouseTab(page: Page): Promise<void> {
   await expect(page.locator('[data-testid="schedule-warehouse-topstrip"]')).toBeVisible({ timeout: 10000 });
 }
 
+/** REQ-0374: a canvas whose FIVE inventory pages are completely full -- every
+ * one of the 8x8 cells (shared/placement.mjs's GRID_MIN..GRID_MAX bound) holds
+ * a 1x1 'hilt', the only 1-cell PO in live content. This is the ONE state that
+ * makes a claim bounce: applyWarehouseClaim first-fits across every page and
+ * only reports failure when none of them has room, which is exactly the
+ * schedule.warehouse.claimNoSpace surface REQ-0374 gives a way out of. Built
+ * rather than fixtured because it is 320 rows of pure repetition, and because
+ * a fixture file would silently stop meaning "full" the day the grid changes.
+ */
+function fullInventoryCanvas() {
+  const page = (p: number) => ({
+    bps: [],
+    pos: Array.from({ length: 64 }, (_, i) => ({
+      uid: `e2e_full_${p}_${i}`,
+      id: 'hilt',
+      loc: 'grid',
+      cell: [Math.floor(i / 8) + 1, (i % 8) + 1],
+      rot: 0,
+    })),
+    sis: [],
+    tms: [],
+  });
+  return {
+    linked: true,
+    bps: [],
+    pos: [],
+    sis: [],
+    layout: { ROWS: 8, COLS: 8 },
+    presets: { active: 0, names: ['P1', 'P2', 'P3', 'P4', 'P5'], store: [null, null, null, null, null] },
+    inv: { names: ['1', '2', '3', '4', '5'], pages: [page(0), page(1), page(2), page(3), page(4)] },
+  };
+}
+
 /** Shared MJOLNIR-chrome assertions both describes reuse: the pagehead
  * identity swap + the ornate topstrip anatomy. */
 async function expectWarehouseChrome(page: Page): Promise<void> {
@@ -425,5 +458,63 @@ test.describe('REQ-0072: staged capacity + decay presentation states (mocked war
     await expect(page.locator('[data-item-uid="mockwh_tm"]')).toBeVisible();
     await page.locator('[data-testid="schedule-warehouse-filter-all"]').click();
     await expect(page.locator('[data-item-uid="mockwh_market"]')).toBeVisible();
+  });
+});
+
+// REQ-0374: the claim that cannot land anywhere used to state the problem and
+// stop. It is the one warehouse failure the player can fix themselves, so it
+// now carries the way out. Driven through the REAL claim (the no-space branch
+// is a client-side placement verdict, not a server error -- there is no
+// response to mock that would produce it).
+test.describe('REQ-0374: an inventory-full claim failure offers the way out', () => {
+  let devUserBackup: string | null = null;
+  test.beforeEach(async () => {
+    devUserBackup = existsSync(DEV_USER_PATH) ? readFileSync(DEV_USER_PATH, 'utf8') : null;
+    writeFileSync(DEV_USER_PATH, JSON.stringify({ playerId: 'dev', name: 'Developer', roles: ['item_admin'] }));
+  });
+  test.afterEach(async () => {
+    if (devUserBackup !== null) writeFileSync(DEV_USER_PATH, devUserBackup);
+    else if (existsSync(DEV_USER_PATH)) rmSync(DEV_USER_PATH);
+  });
+
+  test('the no-space toast and the row error both offer "Organize inventory", and it lands on the inventory route', async ({ page }) => {
+    const devProfileExisted = existsSync(DEV_PROFILE_PATH);
+    const devProfileBackup = devProfileExisted ? readFileSync(DEV_PROFILE_PATH, 'utf8') : null;
+    // pg-aware restore, same reasoning as the describe above.
+    const origCanvasResp = await page.request.get('/api/profile/default/canvas');
+    const origCanvas = origCanvasResp.ok() ? (await origCanvasResp.json()).canvas : null;
+    try {
+      await page.request.put('/api/profile/default/canvas', { data: fullInventoryCanvas() });
+      const grant = await page.request.post('/api/admin/warehouse/grant', { data: { itemId: 'hilt' } });
+      expect(grant.status()).toBe(200);
+      const grantUid = (await grant.json()).item.itemUid as string;
+
+      await gotoWarehouseTab(page);
+      const claimBtn = page.locator(`[data-testid="schedule-claim-btn-${grantUid}"]`);
+      await expect(claimBtn).toBeVisible({ timeout: 10000 });
+      await claimBtn.click();
+
+      // The failure surfaces on BOTH the toast and the row -- and each carries
+      // the link now. (The toast self-clears after 4s; the row line does not,
+      // which is why both get one.)
+      const toast = page.locator('[data-testid="schedule-warehouse-toast"]');
+      await expect(toast).toBeVisible({ timeout: 10000 });
+      await expect(toast).toContainText('No space');
+      await expect(page.locator('[data-testid="schedule-warehouse-toast-organize"]')).toBeVisible();
+      const rowLink = page.locator(`[data-testid="schedule-warehouse-row-organize-${grantUid}"]`);
+      await expect(rowLink).toBeVisible();
+
+      // ...and it goes somewhere the player can actually act.
+      await rowLink.click();
+      await expect(page).toHaveURL(/#\/backpacks$/);
+      await expect(page.locator('canvas.inventory-board-canvas')).toBeVisible({ timeout: 10000 });
+    } finally {
+      if (origCanvas) await page.request.put('/api/profile/default/canvas', { data: origCanvas });
+      if (devProfileBackup !== null) writeFileSync(DEV_PROFILE_PATH, devProfileBackup);
+      else if (devProfileExisted === false && existsSync(DEV_PROFILE_PATH)) rmSync(DEV_PROFILE_PATH);
+      // The unclaimed grant row is left behind on purpose-free grounds: sweep
+      // it the way every other grant-driven test in this file relies on.
+      await page.request.post('/api/warehouse/dev/clear-debris').catch(() => {});
+    }
   });
 });

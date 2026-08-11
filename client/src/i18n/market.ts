@@ -89,6 +89,8 @@ export const marketEn = {
   'market.sell.carveTitle': 'Carve the price',
   'market.sell.carveEn': 'Carve the price',
   'market.sell.pieceLabel': 'The piece to be listed:',
+  // REQ-0374: doneBody says the goods wait in the vault; this is the way there.
+  'market.buy.openWarehouse': 'Open the warehouse',
   'market.sell.anchor': "The codex's last engraving: ᚠ{n}",
   'market.sell.anchorNone': 'No engraving in the codex yet',
   'market.sell.priceDown': 'Lower the price',
@@ -244,6 +246,7 @@ export const marketJa = {
   'market.sell.carveTitle': '値を刻む',
   'market.sell.carveEn': 'Carve the price',
   'market.sell.pieceLabel': '出品する品:',
+  'market.buy.openWarehouse': '倉庫を開く',
   'market.sell.anchor': '図鑑の直近刻銘 ᚠ{n}',
   'market.sell.anchorNone': '図鑑にまだ刻銘は無い',
   'market.sell.priceDown': '値を下げる',

@@ -26,6 +26,7 @@ module.exports = {
   deployedUidSet: market.deployedUidSet,
   normalizeListing: market.normalizeListing,
   listListings: market.listListings,
+  dexMarketInfo: market.dexMarketInfo, // REQ-0374: per-item anchor + on-hearth count
   createListing: market.createListing,
   createListingFromWarehouse: market.createListingFromWarehouse,
   withdrawListing: market.withdrawListing,

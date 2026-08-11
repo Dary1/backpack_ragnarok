@@ -608,6 +608,80 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     await expect(page.locator('.market-foot .lore')).toBeVisible();
   });
 
+  // ---- REQ-0374: the dex <-> market cross-links -------------------------
+  // Both tests below drive the REAL settlement path (an engraving only exists
+  // because a trade actually settled) rather than writing a price-history doc
+  // behind the market's back -- the whole point of the anchor is that it is
+  // the record of a real trade.
+
+  test('REQ-0374 DEX: an item with a settled trade shows its anchor + a real on-hearth count, and "View in the market" lands on the BUY pane filtered to that item', async ({ page }) => {
+    // 1. A settlement engraves the anchor. The price (77) is deliberately not
+    //    one any other test in this file uses, so the assertion below reads the
+    //    NEWEST engraving rather than passing on an earlier test's leftover.
+    const settleSeller = mintInvite('MarketSellerDexAnchor');
+    const settleId = await seedSellerListing(page, settleSeller, 'e2e_dex_anchor_1', 'tower_shield', 77);
+    await page.request.put('/api/profile/default/canvas', { data: devBuyerCanvas(300, []) });
+    const buy = await page.request.post(`/api/market/listings/${settleId}/buy`);
+    expect(buy.status()).toBe(200);
+
+    // 2. A still-LIVE listing of the same item (so the count is non-zero) and a
+    //    control listing of a DIFFERENT item (so "filtered" means something).
+    const liveSeller = mintInvite('MarketSellerDexLive');
+    await seedSellerListing(page, liveSeller, 'e2e_dex_anchor_2', 'tower_shield', 30);
+    const otherSeller = mintInvite('MarketSellerDexOther');
+    await seedSellerListing(page, otherSeller, 'e2e_dex_other_1', 'dagger', 12);
+
+    // Server truth first: the feed the block reads.
+    const info = await page.request.get('/api/market/dex/tower_shield');
+    expect(info.status()).toBe(200);
+    const dexInfo = (await info.json()).dex as { anchor: { qty: number } | null; activeCount: number };
+    expect(dexInfo.anchor?.qty).toBe(77);
+    expect(dexInfo.activeCount).toBeGreaterThan(0);
+
+    // 3. The Dex detail renders it. Before REQ-0374 this block was a hardcoded
+    //    "—" + 0 for every item in the game, so an anchored box appearing at
+    //    all is the regression this guards.
+    await bootApp(page);
+    await page.goto('/app/#/dex/tower_shield');
+    const detail = page.locator('[data-testid="dex-detail-pane"]');
+    await expect(detail).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="dex-market-anchored"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="dex-market-empty"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="dex-market-anchor-val"]')).toContainText('77');
+    await expect(page.locator('[data-testid="dex-market-count"]')).toContainText(String(dexInfo.activeCount));
+
+    // 4. The link carries the item. It used to jump to a bare '#/market'.
+    await page.locator('[data-testid="dex-market-link-btn"]').click();
+    await expect(page.locator('[data-testid="market-page"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="market-loading"]')).toHaveCount(0, { timeout: 10000 });
+    await expect(page.locator('[data-testid="market-tab-buy"]')).toHaveClass(/is-on/);
+    // The search box carries the market's own Dex-No. query grammar, and the
+    // grid honours it: the tower_shield card is there, the dagger control is not.
+    await expect(page.locator('[data-testid="market-search"]')).not.toHaveValue('');
+    await expect(page.locator('[data-testid="market-listing-row"][data-item-uid="e2e_dex_anchor_2"]')).toBeVisible();
+    await expect(page.locator('[data-testid="market-listing-row"][data-item-uid="e2e_dex_other_1"]')).toHaveCount(0);
+  });
+
+  test('REQ-0374 BUY: the done modal offers the warehouse the goods actually went to, and it lands there', async ({ page }) => {
+    const seller = mintInvite('MarketSellerDoneVault');
+    await seedSellerListing(page, seller, 'e2e_done_vault_1', 'tower_shield', 20);
+    await page.request.put('/api/profile/default/canvas', { data: devBuyerCanvas(100, []) });
+    await gotoMarket(page);
+
+    await page.locator('[data-testid="market-buy-btn-e2e_done_vault_1"]').click();
+    await page.locator('[data-testid="market-buy-confirm"]').click();
+    await expect(page.locator('[data-testid="market-buy-body-done"]')).toBeVisible({ timeout: 10000 });
+
+    // doneBody has always TOLD the player the goods are in the vault; until
+    // REQ-0374 the modal offered no way there.
+    await page.locator('[data-testid="market-buy-done-warehouse"]').click();
+    await expect(page.locator('[data-testid="market-buy-modal"]')).toHaveCount(0);
+    await expect(page).toHaveURL(/#\/warehouse$/);
+    await expect(page.locator('[data-testid="schedule-warehouse-topstrip"]')).toBeVisible({ timeout: 10000 });
+    // And the thing it promised is really on that shelf.
+    await expect(page.locator('[data-testid="schedule-warehouse-row"]').first()).toBeVisible({ timeout: 10000 });
+  });
+
   // REQ-0205: the global held-TM balance HUD lives in the app-wide header,
   // so it must surface a held currency on the market page AND persist when the
   // player routes elsewhere (proving it is global chrome, not a market widget).

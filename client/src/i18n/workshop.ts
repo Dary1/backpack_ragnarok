@@ -35,7 +35,14 @@ export const workshopEn = {
   'workshop.oddsHp': 'HP {hp}',
   'workshop.ruleCommon': 'Cast blueprints are Common rarity only.',
   'workshop.ruleUnit': 'A cast yields ONE unit and the pack that is its inventory -- both the unit and its seat are stamped at cast time, and neither can be chosen.',
-  'workshop.ruleTwoPhase': 'Receipt is two-phase -- receive, placing..., finalized by the auto-save in the Backpacks hall.',
+  // REQ-0374: was 'Receipt is two-phase -- receive, placing..., finalized by
+  // the auto-save in the Backpacks hall.' -- the internal grant protocol
+  // (architecture rule 5's two-phase pattern) recited at the player, whose only
+  // possible reading is "your item might not be final yet". The MECHANISM is
+  // unchanged; what the rules list promises is now the outcome, in the game's
+  // own vocabulary. Key renamed with it (ruleTwoPhase named the internal, not
+  // the rule).
+  'workshop.ruleReceipt': 'Take the cast to the Backpacks hall, set it down, and it is yours to keep.',
   'workshop.transmuteTitle': 'Transmute',
   'workshop.transmuteDen': 'TRANSMUTE',
   'workshop.transmuteCopy': '"Pour in currency, and re-forge a pack."',
@@ -73,7 +80,8 @@ export const workshopEn = {
   'workshop.rollResultDen': 'CASTING RESULT',
   'workshop.rollResultMint': 'Mint',
   'workshop.rollResultFlavor': '"The cup tips; leather and rivet take shape -- and someone steps into it."',
-  'workshop.rollResultNote': 'Receipt is two-phase -- through placing... it is finalized by the auto-save in the Backpacks hall.',
+  // REQ-0374: same rewrite as ruleReceipt above, in the result modal's voice.
+  'workshop.rollResultNote': 'Set it down in the Backpacks hall and it is yours to keep.',
   'workshop.rollAgain': 'Again ᚠ{cost}',
   'workshop.statRarity': 'Rarity',
   'workshop.statCells': 'Cells',
@@ -137,7 +145,7 @@ export const workshopJa = {
   'workshop.oddsHp': 'HP {hp}',
   'workshop.ruleCommon': '鋳造される設計図の品位は Common のみ。',
   'workshop.ruleUnit': '1回の鋳造で「ユニット1体」と、その持ち物であるBPが出る — ユニットもその座(ᛖ)も鋳込時に刻印され、どちらも選べない。',
-  'workshop.ruleTwoPhase': '受領は二段階 — 受け取る → 配置中… → 編成の間の自動保存で確定。',
+  'workshop.ruleReceipt': '鋳り上がりを編成の間へ運び、置く — それであなたのものだ。',
   'workshop.transmuteTitle': '変成',
   'workshop.transmuteDen': 'TRANSMUTE',
   'workshop.transmuteCopy': '「通貨アイテムを注ぎ、鞄を鍛え直す」',
@@ -175,7 +183,7 @@ export const workshopJa = {
   'workshop.rollResultDen': 'CASTING RESULT',
   'workshop.rollResultMint': '鋳銘',
   'workshop.rollResultFlavor': '「杯が傾き、革と鋲が形を得る。銘はまだ無い — 背負う者が与える。」',
-  'workshop.rollResultNote': '受領は二段階 — 配置中… を経て、編成の間の自動保存で確定する。',
+  'workshop.rollResultNote': '編成の間に置けば、それはあなたのものだ。',
   'workshop.rollAgain': 'もう一度 ᚠ{cost}',
   'workshop.statRarity': '品位',
   'workshop.statCells': 'セル',

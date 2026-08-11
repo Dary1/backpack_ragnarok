@@ -246,9 +246,58 @@ function listListings(callerId, opts) {
   return out;
 }
 
+// ---------------------------------------------------------------------
+// REQ-0374: the per-ITEM dex read model (one content id, not one listing).
+// ---------------------------------------------------------------------
+
+// dexMarketInfo(itemId): everything the Dex detail's 市場の刻銘 (Market
+// Engravings) block needs for ONE content id -- the settled-price ANCHOR, and
+// how many listings for that id are on the hearth right now.
+//
+// anchor = the NEWEST entry of that id's rolling price history, i.e. exactly
+// what toListingDto already publishes as priceHistory[0] for a listing of the
+// same item (trade.cjs writes that doc at settlement, its step 7/7). Reusing
+// priceHistoryFor rather than re-reading storage here keeps the two
+// definitions of "the anchor" from drifting apart. null = never settled.
+//
+// activeCount = the number of listings for the id in the SAME set the default
+// browse returns (active + suspended), derived through the same lazy
+// normalizeListing/deriveView law listListings runs. Deliberately NOT
+// stored-'active' alone: the dex block's "View in the market" lands the player
+// on that very browse, filtered to this item, so any other counting rule here
+// would print a number the destination page immediately contradicts. Suspended
+// cards are browsable-but-unbuyable there, and are counted here for the same
+// reason they are listed there.
+//
+// Caller-INDEPENDENT by construction -- a market-wide aggregate, the same
+// numbers for every player (no `mine` overlay, no caller-scoped state). An id
+// with no listings and no history returns {anchor:null, activeCount:0}, so an
+// UNKNOWN id is that same empty answer rather than an error: the market has no
+// opinion on whether a content id exists (routes/market.cjs 200s it).
+// Cost: one listing scan + one seller-context load per distinct seller of a
+// MATCHING listing -- the same perf posture listListings documents for itself,
+// over a strictly smaller set.
+function dexMarketInfo(itemId) {
+  const now = Date.now();
+  const history = priceHistoryFor(itemId, null);
+  const sellers = new Map();
+  let activeCount = 0;
+  for (const raw of storage.listMarketListings()) {
+    if (!raw || raw.itemId !== itemId) continue;
+    const listing = normalizeListing(raw, now);
+    if (listing.state !== 'active') continue; // settled/withdrawn/expired never browse
+    let ctx = sellers.get(listing.sellerId);
+    if (!ctx) { ctx = sellerViewContext(listing.sellerId); sellers.set(listing.sellerId, ctx); }
+    const view = deriveView(listing, ctx, now);
+    if (view.state === 'active' || view.state === 'suspended') activeCount++;
+  }
+  return { itemId, anchor: history.length > 0 ? history[0] : null, activeCount };
+}
+
 module.exports = {
   sellerViewContext,
   deriveView,
   toListingDto,
   listListings,
+  dexMarketInfo,
 };

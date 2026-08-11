@@ -506,7 +506,11 @@
   color: var(--bone-3);
 }
 
-/* ---------- 市場の刻銘 empty-state block (mock .mkhead/.anchlist/.mkcap) --- */
+/* ---------- 市場の刻銘 block (mock .mkhead/.anchlist/.mkcap) --------------
+   REQ-0374: no longer an empty-state-only block. `.is-empty` keeps REQ-0075's
+   dashed "nothing engraved here yet" frame and dimmed value VERBATIM; the
+   anchored state gets a solid frame and a live value, so "never settled" and
+   "settled at ᚠN" cannot be confused at a glance. */
 .dex-market {
   margin-top: 4px;
 }
@@ -533,12 +537,16 @@
 .dex-market-count-rune {
   color: var(--gold);
 }
-.dex-market-empty {
+.dex-market-anchorbox {
   margin-top: 8px;
   padding: 10px 12px;
-  border: 1px dashed rgba(133, 112, 56, 0.35);
+  border: 1px solid rgba(133, 112, 56, 0.5);
   border-radius: 3px;
   background: rgba(16, 20, 27, 0.4);
+}
+.dex-market-anchorbox.is-empty {
+  border-style: dashed;
+  border-color: rgba(133, 112, 56, 0.35);
 }
 .dex-market-anchor-row {
   display: flex;
@@ -562,6 +570,12 @@
   font-size: 12px;
   color: var(--gold-lo);
   margin-right: 5px;
+}
+.dex-market-anchorbox.is-anchored .dex-market-anchor-val {
+  color: var(--bone);
+}
+.dex-market-anchorbox.is-anchored .dex-market-anchor-rune {
+  color: var(--gold);
 }
 .dex-market-empty-note {
   margin-top: 6px;

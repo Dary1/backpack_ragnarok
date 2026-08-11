@@ -112,6 +112,18 @@
 .schedule-warehouse-capacity-warning-text.warning { color: var(--ember-hi); }
 .schedule-warehouse-capacity-warning-text.full { color: #e06b5f; }
 
+/* REQ-0374: the "organize inventory" way-out, rendered inline after the
+   message that names the problem (capacity banner / claim toast / row error).
+   Sized down and pulled tight so it reads as part of the sentence rather than
+   a competing page action. */
+.schedule-warehouse-organize-btn {
+  margin-left: 10px;
+  padding: 2px 8px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  vertical-align: baseline;
+}
+
 /* mock .chip.warn (near-expiry counter) -- ported verbatim; generic on
    purpose (the styleguide defines it as a chip variant). */
 .chip.warn {
