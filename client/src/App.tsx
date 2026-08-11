@@ -96,6 +96,7 @@ import { DexCardProvider } from './dex/DexCardWindow'; // REQ-0052
 import { Header } from './Header';
 import { t } from './i18n';
 import { FloatingItemTip } from './FloatingItemTip';
+import { ShortcutHelp } from './ShortcutHelp'; // REQ-0369
 // REQ-0142: the link-trace panel, mounted app-level for the same reason the
 // item tip is -- it floats over whichever board the pointer is interrogating.
 import { BeamTracePanel } from './BeamTracePanel';
@@ -363,6 +364,9 @@ function App() {
             board (including the warehouse/expedition portal reuse) with no
             per-page wiring. */}
         <FloatingItemTip />
+        {/* REQ-0369: the ? shortcut-reference overlay -- top-level like the
+            tip, so it can appear on any route. */}
+        <ShortcutHelp />
         <BeamTracePanel />
       </main>
     </div>

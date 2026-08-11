@@ -94,7 +94,7 @@ export function undo(): void {
 
 /** True while keyboard focus sits in a text-entry element -- the Ctrl+Z
  * guard (spec item 3): a rename field's own native undo must win there. */
-function focusInTextEntry(): boolean {
+export function focusInTextEntry(): boolean { // REQ-0369: exported -- the gameplay-shortcut layer (lib/inputShortcuts.ts, Monitor's Space binding) shares this exact guard.
   const el = typeof document !== 'undefined' ? document.activeElement : null;
   if (!el) return false;
   const tag = el.tagName;

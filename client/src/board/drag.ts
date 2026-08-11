@@ -104,6 +104,11 @@ export interface BoardCommitApi {
    * carry that ended WITHOUT a commit (unresolved/illegal drop, Esc-cancel).
    * Purely visual -- state was never touched on those paths. */
   revertFeedback?(carry: CarryState): void;
+  /** REQ-0369 (optional): the R-shortcut rotate for a piece living on THIS
+   * board -- delegates to the SAME dblclick-rotate core the pointer path
+   * uses (see board/commits.ts's makeCommitApi). kind 'po' covers POs and
+   * an assembly's blade (pass the blade uid); 'bp' takes the BP id. */
+  rotateShortcut?(kind: 'po' | 'bp', uid: string): void;
 }
 
 let carry: CarryState | null = null;
@@ -112,6 +117,14 @@ const boardRegistry = new Map<string, BoardCommitApi>();
 
 export function getCarry(): CarryState | null {
   return carry;
+}
+
+/** REQ-0369: routes the R shortcut to the owning board's rotate core. A
+ * no-op if that board isn't currently registered (unmounted) -- `boardKey`
+ * is boardIdKey() of the piece's board (a carry's originBoard / a tip's
+ * boardKey), the same key registerBoard() filed the board under. */
+export function rotatePieceOnBoard(boardKey: string, kind: 'po' | 'bp', uid: string): void {
+  boardRegistry.get(boardKey)?.rotateShortcut?.(kind, uid);
 }
 
 export function subscribeCarry(listener: () => void): () => void {

@@ -21,9 +21,10 @@
 // stale auto-save can't resurrect the destroyed items. confirm() awaits
 // onDevoted() BEFORE flipping to the 'done' phase -- byte-for-byte the
 // market BuyModal's confirm->onSettled->reveal ordering.
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { Locale } from '../store';
 import { t } from '../i18n';
+import { useModalConventions } from '../lib/useModalConventions'; // REQ-0369
 import {
   ApiError, devoteRagnarok,
   type ApiRagnarokDevotionPreviewResponse, type ApiRagnarokBlast,
@@ -315,12 +316,7 @@ export function DevotionSection(props: DevotionSectionProps) {
           chrome. The manifest recap is carried here too, but the WEIGHT
           was already the manifest above (REQ-0067 item 1). */}
       {phase === 'final' && preview ? (
-        <div
-          className="scrim"
-          data-testid="ragnarok-final-question-modal"
-          onClick={(e) => { if (e.target === e.currentTarget && !busy) setPhase('idle'); }}
-        >
-          <div className="modal panel ornate center ragnarok-final-modal" role="dialog" aria-modal="true">
+        <FinalQuestionChrome onClose={() => { if (!busy) setPhase('idle'); }}>
             <i className="k tl" /><i className="k tr" /><i className="k br" /><i className="k bl" />
             <Valknut size={40} className="ragnarok-final-vk" />
             <div className="ragnarok-final-t">{t(locale, 'ragnarok.final.title')}</div>
@@ -346,8 +342,7 @@ export function DevotionSection(props: DevotionSectionProps) {
                 {t(locale, 'ragnarok.final.no')}
               </button>
             </div>
-          </div>
-        </div>
+        </FinalQuestionChrome>
       ) : null}
 
       {/* THE ENGRAVED SUCCESS STATE (only revealed AFTER the race guard
@@ -367,5 +362,22 @@ export function DevotionSection(props: DevotionSectionProps) {
         </div>
       ) : null}
     </section>
+  );
+}
+
+/** REQ-0369: the final-question modal's scrim+chrome with the shared modal
+ * conventions. EXCEPTION per REQ-0369 spec item 1: the devotion rite keeps
+ * its deliberate multi-stage confirm -- Esc (like a scrim click) closes
+ * only THIS first stage (back to 'idle'; busy-guarded through onClose),
+ * and the engraved success modal above keeps its explicit close-button /
+ * scrim-click behavior untouched. */
+function FinalQuestionChrome({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  const { dialogRef, onScrimClick } = useModalConventions(onClose);
+  return (
+    <div className="scrim" data-testid="ragnarok-final-question-modal" onClick={onScrimClick}>
+      <div className="modal panel ornate center ragnarok-final-modal" role="dialog" aria-modal="true" ref={dialogRef} tabIndex={-1}>
+        {children}
+      </div>
+    </div>
   );
 }

@@ -20,7 +20,7 @@ import { loadBoardTextures } from '../board/sprites';
 import { iconDataUrl } from '../dex/dexIcons';
 import { t } from '../i18n';
 import type { Locale } from '../store';
-import { useGameStore } from '../store';
+import { focusInTextEntry, useGameStore } from '../store';
 import { formatCountdown } from './RoomCard';
 import { seatIsOwnedBy } from './seats'; // REQ-0337
 import { MonitorRenderer, type MonitorSquadVisual } from './MonitorRenderer';
@@ -360,6 +360,25 @@ export function Monitor({ room, locale, dungeonName, dungeonTheme, isAdmin, onRu
     if (!playing) { if (playheadMs >= durationMs) restart(); else setPlaying(true); }
     else setPlaying(false);
   }, [settled, run, playing, playheadMs, durationMs, restart, setPlaying]);
+
+  // REQ-0369 (spec item 2): Space = play/pause while a settled run's replay
+  // transport is on screen. Guarded like every gameplay shortcut (never
+  // while focus is in an input/textarea/contentEditable, never with a
+  // Ctrl/Meta/Alt chord); preventDefault stops the page scroll and a
+  // focused button's own Space activation from double-toggling. Live runs
+  // have no transport -- the listener only exists while settled.
+  useEffect(() => {
+    if (!settled) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== ' ') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (focusInTextEntry()) return;
+      e.preventDefault();
+      onPlayPause();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [settled, onPlayPause]);
   const onSkipEnd = useCallback(() => { if (settled && run) seekMs(durationMs); }, [settled, run, durationMs, seekMs]);
   const onScrubClick = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
     if (!settled || !run) return;

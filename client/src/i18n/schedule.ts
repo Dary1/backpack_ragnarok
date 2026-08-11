@@ -9,6 +9,10 @@ export const scheduleEn = {
   'schedule.loading': 'Loading…',
   'schedule.loadFailed': 'Failed to load the schedule: ',
   'schedule.noRooms': 'No rooms yet — forge your first expedition with the form above.',
+  // REQ-0376 (report clarity note 1): the schedule/sortie ROLE SPLIT, said
+  // out loud. The CTA to Sortie has always been here; what was missing was
+  // the sentence explaining why departures are not ordered on this page.
+  'schedule.roleNote': 'Expeditions are watched here — departures are ordered in Sortie.',
   'schedule.createTitle': 'Create a room',
   'schedule.dungeonLabel': 'Dungeon',
   'schedule.dungeonTypeLabel': 'Generation type',
@@ -279,6 +283,7 @@ export const scheduleJa = {
   'schedule.loading': '読み込み中…',
   'schedule.loadFailed': 'スケジュールの読み込みに失敗しました: ',
   'schedule.noRooms': 'まだルームがありません。上のフォームから最初の遠征を組みましょう。',
+  'schedule.roleNote': '遠征を見守るのがこの間です — 出撃の下命は「出撃の間」で行います。', // REQ-0376
   'schedule.createTitle': 'ルームを作成',
   'schedule.dungeonLabel': 'ダンジョン',
   'schedule.dungeonTypeLabel': '生成タイプ',

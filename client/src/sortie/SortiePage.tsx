@@ -3,7 +3,7 @@
 // dossier) and Muster (troop slots + squad shelf), with a sticky launch bar.
 // Owns the fetches (dungeons / rooms / me), the selection state, and the
 // atomic launch (POST /api/schedule/sorties, REQ-0239 D1).
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createSortie,
   fetchDungeons,
@@ -18,14 +18,16 @@ import {
 import { friendlyScheduleError } from '../schedule/errors';
 import { t } from '../i18n';
 import { localizedName } from '../lib/contentName';
-import { clearSortieFocusDungeonId, setRoute, type Locale } from '../store';
+import { clearSortieFocusDungeonId, notifyStateChanged, setRoute, snapshot as storeSnapshot, useGameStore, type Locale } from '../store';
 import { LaunchBar } from './LaunchBar';
 import { SquadShelf } from './SquadShelf';
 import { TroopSlots } from './TroopSlots';
 import { LevelStepper } from './LevelStepper';
 import { deriveSquadCard, type SquadCardEntry } from './deriveSquadCard';
+import { readSortieAttackLv, writeSortieAttackLv } from './sortiePrefs'; // REQ-0371
 import { AdvancedFold, type SortieAdvanced } from './AdvancedFold';
 import { useSquadConflicts } from './useSquadConflicts';
+import { HallCard } from '../guide/HallCard'; // REQ-0376
 
 interface SortiePageProps {
   locale: Locale;
@@ -40,7 +42,20 @@ export function SortiePage({ locale, focusDungeonId }: SortiePageProps) {
   const [me, setMe] = useState<ApiMe | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [level, setLevel] = useState(1);
+  // REQ-0371: seed attackLv from the last-used value persisted in the canvas
+  // doc (sortiePrefs.ts, the REQ-0141 state.guide precedent) instead of a
+  // bare 1 every visit. The effect below re-seeds once the saved canvas
+  // arrives after a deep-link boot -- but never over a value the player has
+  // already touched this visit.
+  const gameState = useGameStore().state;
+  const [level, setLevelRaw] = useState(() => readSortieAttackLv(gameState) ?? 1);
+  const levelTouched = useRef(false);
+  const setLevel = useCallback((n: number) => { levelTouched.current = true; setLevelRaw(n); }, []);
+  useEffect(() => {
+    if (levelTouched.current) return;
+    const saved = readSortieAttackLv(gameState);
+    if (saved != null) setLevelRaw(saved);
+  }, [gameState]);
   const [formationId, setFormationId] = useState('');
   const [assigned, setAssigned] = useState<(number | null)[]>(EMPTY_TROOP);
   const [advanced, setAdvanced] = useState<SortieAdvanced>({ cancelImmediate: false, genSeed: '' });
@@ -169,6 +184,11 @@ export function SortiePage({ locale, focusDungeonId }: SortiePageProps) {
       // Hand the new room/troop off to SchedulePage (read once on its mount): it
       // opens the monitor for it, revealing the DRAWN dungeon (name + theme +
       // banner) and -- for a Troop -- its live seat fill.
+      // REQ-0371: remember the attackLv this commit used. A client-only field
+      // riding the persisted canvas (sortiePrefs.ts); notifyStateChanged()
+      // routes it through the ONE auto-save writer like any canvas mutation.
+      writeSortieAttackLv(storeSnapshot.state, level);
+      notifyStateChanged();
       try { sessionStorage.setItem('bp.watchRoom', watchRoomId); } catch { /* private mode */ }
       setRoute('schedule');
     } catch (e) {
@@ -199,6 +219,9 @@ export function SortiePage({ locale, focusDungeonId }: SortiePageProps) {
           <div className="sortie-pagehead-lede">{t(locale, 'sortie.pageLede')}</div>
         </div>
       </section>
+
+      {/* REQ-0376: the hall's laws on first visit (guide/HallCard.tsx). */}
+      <HallCard hall="sortie" />
 
       <section className="sortie-zone sortie-zone-dest">
         <div className="sortie-zone-head">

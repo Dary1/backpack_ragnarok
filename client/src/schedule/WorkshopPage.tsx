@@ -25,7 +25,9 @@
 // the gacha-cost display mirror) moved to src/lib/ and
 // shared/constants.json -- verbatim moves, zero behavior change.
 import { useCallback, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { ApiError, rollWorkshopGacha, type ApiRolledBp } from '../api';
+import { useModalConventions } from '../lib/useModalConventions'; // REQ-0369
 import type { ApiConnShape } from '../../../shared/dto';
 import { getInventoryRenderer } from '../board/inventoryRenderer';
 import { resolveUnitArtUrl } from '../dex/unitArt'; // REQ-0266
@@ -37,6 +39,7 @@ import { DismantlePanel } from './DismantlePanel';
 import { t } from '../i18n';
 import { clearUndo, notifyStateChanged, useGameStore, type Locale } from '../store';
 import { GACHA_COMMON_BP_COST } from '../../../shared/constants.json';
+import { HallCard } from '../guide/HallCard'; // REQ-0376
 
 interface WorkshopPageProps {
   locale: Locale;
@@ -274,6 +277,9 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
       </section>
       <div className="rune-divider workshop-headline">{'ᛈ'}</div>
 
+      {/* REQ-0376: the hall's laws on first visit (guide/HallCard.tsx). */}
+      <HallCard hall="workshop" />
+
       {error ? <div className="schedule-error" data-testid="workshop-error">{error}</div> : null}
       {toast ? <div className="schedule-toast workshop-toast" data-testid="workshop-toast">{toast}</div> : null}
 
@@ -497,13 +503,7 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
 
       {/* ===== casting result modal ===== */}
       {rollResult ? (
-        <div
-          className="scrim workshop-result-scrim"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setRollResult(null);
-          }}
-        >
-          <div className="modal panel ornate workshop-result" data-testid="workshop-roll-result">
+        <RollResultChrome onClose={() => setRollResult(null)}>
             <i className="k tl" /><i className="k tr" /><i className="k br" /><i className="k bl" />
             <div className="workshop-result-head">
               <span className="workshop-result-head-title dj">{t(locale, 'workshop.rollResultTitle')}</span>
@@ -602,11 +602,27 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
               </button>
             </div>
             <div className="workshop-result-note t-micro">{t(locale, 'workshop.rollResultNote')}</div>
-          </div>
-        </div>
+        </RollResultChrome>
       ) : null}
 
       {dismantleOpen ? <DismantlePanel locale={locale} onClose={() => setDismantleOpen(false)} /> : null}
+    </div>
+  );
+}
+
+/** REQ-0369: the casting-result modal's scrim+chrome, extracted so the
+ * conditionally-rendered modal can hold lib/useModalConventions (a hook
+ * can't sit behind `rollResult ? ...` inline). DOM shape, class names and
+ * the data-testid are byte-identical to the pre-0369 inline wrapper --
+ * additive attributes (role/aria/ref/tabIndex) only, per the REQ's e2e
+ * selector contract. */
+function RollResultChrome({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  const { dialogRef, onScrimClick } = useModalConventions(onClose);
+  return (
+    <div className="scrim workshop-result-scrim" onClick={onScrimClick}>
+      <div className="modal panel ornate workshop-result" data-testid="workshop-roll-result" role="dialog" aria-modal="true" ref={dialogRef} tabIndex={-1}>
+        {children}
+      </div>
     </div>
   );
 }

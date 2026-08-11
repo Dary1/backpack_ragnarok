@@ -40,6 +40,7 @@ export const sortieEn = {
   'sortie.shelf.goBackpacks': 'Open Backpacks',
   'sortie.squad.bp': 'BP×{n}',
   'sortie.squad.charge': '⚡{n}',
+  'sortie.squad.power': '⚔{n}', // REQ-0371: the buildPower reference aggregate (tooltip = canvas.statPowerTip)
   'sortie.squad.sharedBadge': 'Shares {n} piece(s)',
   'sortie.squad.conflict': 'Shares {item} ×{n} with {squad}',
   'sortie.squad.conflictBlocks': 'Using this squad locks out: {squads}',
@@ -106,6 +107,7 @@ export const sortieJa = {
   'sortie.shelf.goBackpacks': '編成画面を開く',
   'sortie.squad.bp': 'BP×{n}',
   'sortie.squad.charge': '⚡{n}',
+  'sortie.squad.power': '⚔{n}', // REQ-0371
   'sortie.squad.sharedBadge': '{n}点を共有',
   'sortie.squad.conflict': '{item} ×{n} を {squad} と共有',
   'sortie.squad.conflictBlocks': 'この部隊を使うと出撃不可: {squads}',

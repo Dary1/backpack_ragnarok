@@ -7,7 +7,7 @@
 import { snapshot, notifyStateChanged, subscribe, getSnapshot } from '../store';
 import {
   GUIDE_STEP_COUNT, defaultGuide, readGuide, writeGuide,
-  type GuideHintId, type GuidePersisted,
+  type GuideHintId, type GuidePersisted, type HallId,
 } from './guideModel';
 
 function activeGuide(): GuidePersisted | null {
@@ -38,12 +38,35 @@ export function skipGuide(): void {
   setGuide({ ...g, status: 'skipped', seen: true });
 }
 
-/** Replays the guide from the first card (Settings -> Replay). Works for any
+/** Replays ALL guidance from the start (Settings -> Replay). Works for any
  * profile, including one that never carried a guide field (a veteran/dev
- * profile) -- it simply gains one now. Keeps hint seen-flags. */
+ * profile) -- it simply gains one now. Keeps hint seen-flags.
+ *
+ * REQ-0376: this now clears the per-hall first-visit flags too, which is why
+ * the control is labelled "Replay all guidance". The canvas tour stopped being
+ * the whole of the onboarding at this REQ, so a replay that reset only the tour
+ * would quietly under-deliver on its own label. */
 export function replayGuide(): void {
   const g = readGuide(snapshot.state) ?? defaultGuide('done');
-  setGuide({ status: 'active', step: 0, seen: true, hints: g.hints });
+  setGuide({ status: 'active', step: 0, seen: true, hints: g.hints, halls: {} });
+}
+
+/** REQ-0376: marks ONE hall's first-visit card permanently seen. Its dismiss
+ * button, and nothing else, calls this.
+ *
+ * THE REQ-0141 GUARANTEE, RESTATED: a profile carrying no guide field gains one
+ * HERE and nowhere else -- not at boot, not on navigation, not on render.
+ * Shipping this REQ therefore cannot rewrite anybody's saved canvas; only a
+ * deliberate dismiss can, and it writes exactly one flag. The record a veteran
+ * gains is defaultGuide('done'): status 'done' so the canvas tour does NOT
+ * retroactively start on them, and seen:false so the contextual-hint cohort
+ * gate (noteHint) stays shut exactly as it was before. */
+export function markHallSeen(hall: HallId): void {
+  const st = snapshot.state;
+  if (!st) return;
+  const g = readGuide(st) ?? defaultGuide('done');
+  if (g.halls?.[hall]) return;
+  setGuide({ ...g, halls: { ...(g.halls ?? {}), [hall]: true } });
 }
 
 /** Marks a first-time contextual hint permanently seen. */

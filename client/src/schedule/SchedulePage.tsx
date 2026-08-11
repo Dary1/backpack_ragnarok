@@ -66,7 +66,8 @@ import {
 import { t } from '../i18n';
 import { localizedName } from '../lib/contentName';
 import type { Locale } from '../store';
-import { SquadStatusBoard } from './SquadStatusBoard'; // REQ-0239
+import { SquadStatusBoard } from './SquadStatusBoard';
+import { HallCard } from '../guide/HallCard'; // REQ-0376 // REQ-0239
 import { Monitor } from './Monitor';
 import { MonitorErrorBoundary } from './MonitorErrorBoundary'; // REQ-0285
 import { RoomCard } from './RoomCard';
@@ -231,6 +232,10 @@ export function SchedulePage({ locale }: SchedulePageProps) {
         ᚱ
       </div>
 
+      {/* REQ-0376: the hall's laws on first visit. In-flow directly under the
+          pagehead, so it can never cover a control (guide/HallCard.tsx). */}
+      <HallCard hall="schedule" />
+
       <SquadStatusBoard locale={locale} rooms={rooms} dungeonNameFor={dungeonNameFor} onWatch={(roomId) => setExpandedRoomId(roomId)} />
 
       {/* REQ-0337: a standing call for recruits is the one room state that is
@@ -285,6 +290,8 @@ export function SchedulePage({ locale }: SchedulePageProps) {
             ) : rooms.length === 0 ? (
               <div className="schedule-empty">
                 {t(locale, 'schedule.noRooms')}
+                {/* REQ-0376: the CTA was already here; the ROLE was not said. */}
+                <div className="schedule-role-note t-micro" data-testid="schedule-role-note">{t(locale, 'schedule.roleNote')}</div>
                 <a className="btn btn-forge schedule-sortie-cta" href="#/sortie" data-testid="schedule-create-cta">{t(locale, 'schedule.createToggle')}</a>
               </div>
             ) : visibleRooms.length === 0 ? (
@@ -319,7 +326,12 @@ export function SchedulePage({ locale }: SchedulePageProps) {
               </MonitorErrorBoundary>
             </>
           ) : (
-            <div className="schedule-detail-empty" data-testid="schedule-detail-empty">{t(locale, 'schedule.detail.empty')}</div>
+            <div className="schedule-detail-empty" data-testid="schedule-detail-empty">
+              {t(locale, 'schedule.detail.empty')}
+              {/* REQ-0376: awaiting-a-selection is the other moment this page
+                  shows nothing and a newcomer wonders where departures live. */}
+              <div className="schedule-role-note t-micro" data-testid="schedule-detail-role-note">{t(locale, 'schedule.roleNote')}</div>
+            </div>
           )}
         </div>
         <div className="schedule-spoils-col" data-testid="schedule-spoils-col">

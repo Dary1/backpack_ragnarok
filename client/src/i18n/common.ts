@@ -41,6 +41,16 @@ export const commonEn = {
   'render.error.title': 'This part could not be drawn',
   'render.error.body': 'Something went wrong rendering this view. Nothing was lost, and the rest of the app is unaffected.',
   'render.error.retry': 'Try again',
+
+  // REQ-0369: the ? shortcut-reference overlay (ShortcutHelp.tsx). Key
+  // GLYPHS are hardcoded in the component; only prose is localized.
+  'shortcuts.title': 'Keyboard shortcuts',
+  'shortcuts.escDesc': 'Close the open dialog or tooltip',
+  'shortcuts.rDesc': 'Rotate the piece under drag or float (Backpacks)',
+  'shortcuts.digitsDesc': 'Switch the active squad tab (Backpacks)',
+  'shortcuts.spaceDesc': 'Play / pause an expedition replay',
+  'shortcuts.helpDesc': 'Open this shortcut reference',
+  'shortcuts.close': 'Close',
 } as const;
 
 export const commonJa = {
@@ -71,4 +81,13 @@ export const commonJa = {
   'render.error.title': 'この部分を描画できませんでした',
   'render.error.body': 'この表示の描画中に問題が発生しました。データは失われておらず、他の画面には影響ありません。',
   'render.error.retry': '再試行',
+
+  // REQ-0369
+  'shortcuts.title': 'キーボードショートカット',
+  'shortcuts.escDesc': '開いているダイアログやツールチップを閉じる',
+  'shortcuts.rDesc': 'ドラッグ/フロート中のピースを回転(編成画面)',
+  'shortcuts.digitsDesc': '操作する分隊タブを切り替え(編成画面)',
+  'shortcuts.spaceDesc': '遠征リプレイの再生/一時停止',
+  'shortcuts.helpDesc': 'このショートカット一覧を開く',
+  'shortcuts.close': '閉じる',
 } as const;
