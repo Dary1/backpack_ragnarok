@@ -4,7 +4,7 @@
 built — spec by Cowork session 2026-08-10 (gamer-lens UI gap analysis batch);
 ratified by user 2026-08-10, chat: 「では、それらを全て、TODOのREQとして書き出してください」.
 Built by Cowork session 2026-08-11 on branch `req-0376-onboarding-expansion`
-off master @ `c51d3b4b`. NOT merged, NOT deployed, NOT accepted.
+off master @ `c51d3b4b`; merged and deployed 2026-08-12. User acceptance pending.
 
 ## Origin
 UI gap analysis 2026-08-10 (Cowork). Finding P1-7, absorbing the report's
@@ -135,3 +135,60 @@ Interactive per-hall tutorials, video, any rework of the canvas tour, and
 content-pipeline i18n. The Ragnarok and Friends routes get no card: the former's
 laws are the draft REQ-0068 season design and the latter is still a
 PlaceholderPage, so there is nothing settled to state.
+
+## Amendment (2026-08-12) — the new spec file tripped two latent order-dependences
+
+The worktree gate was green on the SCOPED hermetic path. The first full
+`tools/release.sh` run — the LEGACY shared-fleet path, where Playwright's four
+workers are reused across spec files — was not, twice, and neither failure was
+in this REQ's code:
+
+1. `sortie-prefill.spec.ts` (REQ-0371) failed with 400 `squadIndex out of range
+   for this player`. Cause: `client/e2e/fixtures/baseline-smoke-fixture.json`
+   has NO `presets` key. A spec that PUTs it and then MUTATES leaves a repaired
+   profile behind (the auto-save PUT writes the client's state, and
+   migrateStateV2 synthesises presets on load); this REQ's tests 4 and 6 PUT it
+   and only READ, so they left `default` presets-less — a shape no real profile
+   is ever in. Any later spec on that worker that boots WITHOUT its own fixture
+   inherits it, and `assertSeatAllowed`'s `!profileCanvas.presets` branch fires.
+   Adding a spec file shifted the spec-file → worker sharding enough to put the
+   two together. **Fixed on the side that creates the state** (`f2cafe12`): an
+   `afterEach` in both describes PUTs the seeded `e2e_ci` canvas back.
+   Reproduced deterministically before and after with
+   `E2E_PARALLEL=1 pnpm exec playwright test hall-guidance.spec.ts sortie-prefill.spec.ts`
+   (before: 7 passed / 1 failed; after: 8 passed).
+
+2. `market.spec.ts` then failed on a worker-GLOBAL `toHaveCount(2)` of listing
+   rows, finding 3 — `input-conventions.spec.ts` (REQ-0369) was seeding a
+   listing and never withdrawing it. Not fixed here: REQ-0375 and REQ-0370
+   merged to master mid-flight and had already fixed exactly this pair
+   (`input-conventions` gained "leave the shared fleet worker's hearth as we
+   found it"; `sortie-prefill` gained a recruiting-troop guard). The re-run over
+   the merged tree is green.
+
+**The standing lesson, for whoever adds the next spec file:** a spec that PUTs a
+fixture onto `default` and does not mutate leaves that fixture behind for the
+next spec on the same fleet worker, and adding ANY spec file re-shards the
+suite, so a latent leak surfaces as an unrelated red. Restore what you borrow.
+
+## Outcome (2026-08-12)
+
+Merged to master (merge commit `fbb8609e`) and LIVE on the main checkout via
+mtime hot-reload — no service restart needed (no server-code change; the
+committed client dist `web/app` is the deploy unit).
+
+- `tools/release.sh` on the merged tip: content-registry parity **STRICT OK**
+  (MATCH=413, DRIFT=0, MISSING-IN-REGISTRY=0, UNADOPTED=0), **CI GREEN**
+  (scope=both, 404s), `dist unchanged -- nothing to commit`, receipt tree
+  `0229480b2111522dc97853a4f3ae70a619f274a1`.
+- `predeploy_recalibrate_powerlevel.cjs --check`: **CLEAN** (zero writes, marker
+  intact) — run per PROJECT.md's standing rule even though nothing here is
+  level-affecting.
+- Live-verified: `:8801/app` serves `assets/index-DBv_nZH-.js`, byte-identical
+  to the committed `web/app`, carrying `hall-card`, `hall-card-dismiss`,
+  `dex-glossary`, `dex.tabTerms`, the hall law strings and the Japanese copy;
+  `:8802/api/content` 200; tunnel `https://backpack-dev.qtie.jp/app/` 200;
+  `backpack-api` / `backpack-web` / `backpack-tunnel` all active.
+- Master moved under this REQ mid-gate (REQ-0375 and REQ-0370 merged); both
+  merges carry this REQ's commits as ancestors and the dist REQ-0370 rebuilt
+  from merged source is the one now serving.
