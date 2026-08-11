@@ -1,10 +1,10 @@
 # REQ-0375 — Market buy pane: sort controls + scale-ready listing render
 
 ## Status
-built — spec by Cowork session 2026-08-10 (gamer-lens UI gap analysis batch);
+done — spec by Cowork session 2026-08-10 (gamer-lens UI gap analysis batch);
 ratified by user 2026-08-10, chat: 「では、それらを全て、TODOのREQとして書き出してください」.
-Built 2026-08-11 (Cowork session, worktree req-0375-market-listing-sort).
-NOT merged, NOT deployed, NOT accepted.
+Built and merged 2026-08-11 (Cowork session, worktree
+req-0375-market-listing-sort); live-verified, see Outcome.
 
 ## Origin
 UI gap analysis 2026-08-10 (Cowork). Finding P1-6.
@@ -170,3 +170,27 @@ chips, watchlists.
   hardening.
 - `client/e2e/input-conventions.spec.ts` — listing teardown.
 - `web/app/` — committed dist rebuild (the deploy unit).
+
+## Outcome (2026-08-11)
+Merged to master as **751eb651** (`--no-ff`, user go-ahead in chat: 「merge」)
+and LIVE on the main checkout — the committed client dist `web/app` is the
+deploy unit and backpack-web serves it as-is, so no service restart was needed
+(no server code changed).
+
+Master moved three times under this branch while it was being gated (REQ-0371's
+done-move, then REQ-0376, then REQ-0376's own spec fix). Each time the branch
+merged master and re-ran the full gate rather than trusting the earlier receipt;
+only the generated dist ever conflicted, resolved by rebuilding from the merged
+sources. REQ-0376 touches the market area only in `MarketPage.tsx` (its HallCard
+mount), which does not meet the BuyPane toolrow/grid this REQ changed.
+
+- Pre-merge gate on the exact merged tree: **CI GREEN** (282s, scope=public,
+  receipt tree 7e695f13699d1a69cefe83996e6f9d5aacd083da).
+- Mandatory `node tools/predeploy_recalibrate_powerlevel.cjs` (REQ-0306
+  runbook step 2): **CLEAN — no-op, zero writes.**
+- Live verification: `backpack-api` / `backpack-web` / `backpack-tunnel` all
+  active; `:8801/app` serves `assets/index-QvEyac73.js` +
+  `assets/index-Brs4qKnW.css`, and those artifacts carry `market-sort`,
+  `market-show-more`, `.market-sort`/`.market-more`, and the en+ja sort labels
+  (新しい順 / 安い順 / 高い順 / "Price: least first"); `:8802/api/content` 200;
+  https://backpack-dev.qtie.jp/app 200 serving the same bundle hash.
