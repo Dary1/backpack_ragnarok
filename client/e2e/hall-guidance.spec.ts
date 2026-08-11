@@ -63,6 +63,27 @@ async function gotoHall(page: Page, hall: Hall): Promise<void> {
   await expect(page).toHaveURL(new RegExp("#/" + hall + "$"), { timeout: 10000 });
 }
 
+// REQ-0376 (fix): PUT the SEEDED profile canvas back onto `default`.
+//
+// WHY THIS EXISTS -- it is not tidiness, it is a real cross-spec defect this
+// spec introduced and the first full legacy-path CI run caught. Fleet workers
+// are REUSED across spec files, and `baseline-smoke-fixture.json` is a canvas
+// doc with NO `presets` key at all. A spec that PUTs it and then MUTATES
+// something leaves a repaired profile behind, because the auto-save PUT writes
+// the client's state, and migrateStateV2 synthesises presets on load. The two
+// tests below that PUT it and only READ leave it presets-LESS -- a shape no
+// real profile is ever in. Any later spec on that worker which boots WITHOUT
+// loading its own fixture then inherits it, and the first server call that
+// resolves a squad answers 400 'squadIndex out of range for this player'
+// (server/services/squads.cjs assertSeatAllowed: `!profileCanvas.presets`).
+// That is exactly how sortie-prefill.spec.ts failed once this file shifted the
+// spec-file -> worker sharding. A spec must not leave the shared profile in a
+// state it did not find it in; this puts it back.
+async function restoreSeededProfile(page: Page): Promise<void> {
+  const seeded = JSON.parse(readFileSync(new URL("./fixtures/profiles/e2e_ci.json", import.meta.url), "utf8"));
+  await page.request.put("/api/profile/default/canvas", { data: seeded.canvas });
+}
+
 async function guestCanvas(page: Page, p: CreatedPlayer): Promise<any> {
   const resp = await page.request.get("/api/profile/" + p.playerId + "/canvas", { headers: { "X-Auth-Token": p.token } });
   if (resp.status() !== 200) return null;
@@ -70,6 +91,11 @@ async function guestCanvas(page: Page, p: CreatedPlayer): Promise<any> {
 }
 
 test.describe("REQ-0376 hall cards", () => {
+  // Only the two fixture-loading tests below touch `default`; the rest work on
+  // freshly minted guests. Restoring unconditionally is cheap and keeps the
+  // guarantee true no matter which test is edited later.
+  test.afterEach(async ({ page }) => { await restoreSeededProfile(page); });
+
   test("1. a fresh profile sees every hall's card on its first visit", async ({ page }) => {
     const g = createGuestPlayer("E2E Hall All");
     await bootGuest(page, g.token);
@@ -184,6 +210,8 @@ test.describe("REQ-0376 hall cards", () => {
 });
 
 test.describe("REQ-0376 Dex glossary", () => {
+  test.afterEach(async ({ page }) => { await restoreSeededProfile(page); });
+
   const TERMS = ["canvas", "bp", "po", "si", "unit", "connshape", "link", "squad", "troop", "tm", "lrdst"];
   const RULES = ["autorepeat", "draw", "decay", "burn", "finality", "currency"];
 
