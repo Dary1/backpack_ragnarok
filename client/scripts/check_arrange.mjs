@@ -65,9 +65,15 @@ function assertLegal(st, label) {
   };
   for (const b of pg.bps) for (const [r, c] of E.bpCells(b)) claim(r, c, b.id);
   for (const p of pg.pos) {
-    const inBp = pg.bps.some((b) => E.poInBPIn(p, b));
-    if (!inBp) for (const [r, c] of E.cellsOfIn(p)) claim(r, c, p.uid);
-    check(`${label}: ${p.uid} sits at an engine-legal anchor`, E.invCanPlacePO(st, 0, p.uid, p.rot, p.cell).ok, json(p.cell));
+    const host = pg.bps.find((b) => E.poInBPIn(p, b));
+    if (!host) for (const [r, c] of E.cellsOfIn(p)) claim(r, c, p.uid);
+    // A PO inside a LOCKED pack is exempt from the anchor re-check: REQ-0209
+    // makes invCanPlaceCells refuse ANY placement into a locked pack's
+    // interior, including the cell the piece already occupies. Such a piece
+    // is cargo -- it got there with invMoveBP, which is the sanctioned path
+    // and the only one arrangePage uses for it. Asserting invCanPlacePO on it
+    // would be asserting the engine's own refusal, not this repack's work.
+    if (!host || !host.locked) check(`${label}: ${p.uid} sits at an engine-legal anchor`, E.invCanPlacePO(st, 0, p.uid, p.rot, p.cell).ok, json(p.cell));
     for (const [r, c] of E.cellsOfIn(p)) if (r < 1 || r > 8 || c < 1 || c > 8) check(`${label}: ${p.uid} in bounds`, false, json(p.cell));
   }
   for (const s of pg.sis) if (s.host && s.host.cell) claim(s.host.cell[0], s.host.cell[1], s.uid);
@@ -207,6 +213,28 @@ console.log('REQ-0373 arrangePage');
   check('every record survives, none invented', idsBefore === idsAfter, `${idsBefore} -> ${idsAfter}`);
   check('another page is untouched', json(st.inv.pages[1].pos[0].cell) === json([5, 5]));
   assertLegal(st, 'round trip');
+}
+
+// 9. A LOCKED starter pack DOES relocate, carrying its `fixed` kit piece.
+//    REQ-0209's `locked` refuses new CONTENTS inside the pack, not
+//    relocation of the pack -- and invMoveBP shifts cargo geometrically, so
+//    the `fixed` PO never needs (and never gets) an invMovePO call of its
+//    own. This is the REQ-0373 spec amendment, pinned.
+{
+  const st = fresh();
+  const pg = page0(st);
+  const bp = pack('bp_starter', [6, 6]);
+  bp.locked = true;
+  pg.bps.push(bp);
+  pg.pos.push(po('kit', 'hilt', [7, 7], { fixed: true })); // inside bp_starter
+  arrangePage(E, st, 0);
+  const moved = pg.bps.find((b) => b.id === 'bp_starter');
+  const kit = pg.pos.find((p) => p.uid === 'kit');
+  check('locked starter pack relocates as one block', json(moved.origin) === json([1, 1]), json(moved.origin));
+  check('its fixed kit piece travelled with it', json(kit.cell) === json([2, 2]), json(kit.cell));
+  check('the kit piece is still inside the pack', E.poInBPIn(kit, moved));
+  check('invMovePO would still refuse the fixed piece on its own', !E.invMovePO(st, 0, 'kit', [5, 5]).ok);
+  assertLegal(st, 'locked starter');
 }
 
 console.log(failures === 0 ? 'check_arrange: PASS' : `check_arrange: ${failures} FAILURE(S)`);
