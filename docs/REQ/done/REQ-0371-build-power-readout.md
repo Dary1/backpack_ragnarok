@@ -100,3 +100,12 @@ REQ may revive a calibrated forecast; this one is display-only).
 ## Cross-refs
 REQ-0372 (if landed, sortie may also show "highest recent clear: Lv N" from
 run history — degrade gracefully without it).
+
+## Outcome (2026-08-11)
+Merged to master (merge commit 99677268) and LIVE on the main checkout via
+mtime hot-reload -- no service restart needed (no server-code change; the
+committed client dist web/app is the deploy unit). Post-merge:
+predeploy_recalibrate_powerlevel.cjs CLEAN (zero writes, marker intact);
+live-verified: :8801/app serves index-8ghMVjsv.js containing the
+canvas-stat-power chip + sortiePrefs code, :8802/api/content 200, tunnel
+https://backpack-dev.qtie.jp 200, backpack-api/-web/-tunnel all active.
