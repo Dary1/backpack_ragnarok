@@ -150,6 +150,20 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
   let origCanvas: unknown = null;
 
   test.beforeEach(async ({ page }) => {
+    // REQ-0374: start every test on an EMPTY hearth. Fleet workers are REUSED
+    // across spec files (fullyParallel:false -> one file per worker, but the
+    // same worker takes file after file), and this file's browse assertions
+    // are EXACT counts -- so a listing seeded by any earlier spec on the same
+    // worker lands in this file's grid and breaks them. That is precisely the
+    // failure services/market.cjs's devClearAllListings doc predicted
+    // ("nothing in market.spec.ts ever withdraws what it seeds ... poisons any
+    // later exact-count browse assertion"); it went latent only because the
+    // leaking neighbour happened not to share a worker. It surfaced the day a
+    // spec's runtime changed and the scheduler paired them (REQ-0369's
+    // input-conventions.spec.ts, which seeds a listing of its own). Using the
+    // seam that exists for it makes this file's counts a property of the file
+    // instead of a property of the scheduler.
+    await page.request.post('/api/market/listings/dev/clear-all').catch(() => {});
     devProfileBackup = existsSync(DEV_PROFILE_PATH) ? readFileSync(DEV_PROFILE_PATH, 'utf8') : null;
     const resp = await page.request.get('/api/profile/default/canvas');
     origCanvas = resp.ok() ? (await resp.json()).canvas : null;

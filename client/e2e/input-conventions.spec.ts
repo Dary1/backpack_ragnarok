@@ -59,6 +59,17 @@ async function seedSellerListing(page: Page, seller: MintedPlayer, itemUid: stri
   expect(res.status()).toBe(200);
 }
 
+/** REQ-0374: leave the shared market clean. This file seeds a listing and
+ * never withdrew it, and fleet workers are reused across spec files -- so on
+ * any run where the scheduler put this file in front of market.spec.ts on the
+ * same worker, that file's EXACT-count browse assertions saw an extra card
+ * (observed 2026-08-11). warehouse-sell.spec.ts already states the convention
+ * in its own finally ("leave the shared market clean"); this is that, through
+ * the dev seam services/market.cjs's devClearAllListings exists for. */
+test.afterEach(async ({ page }) => {
+  await page.request.post('/api/market/listings/dev/clear-all').catch(() => {});
+});
+
 async function gotoMarket(page: Page): Promise<void> {
   await bootApp(page);
   await page.locator('.nav-link', { hasText: 'Market' }).click();
