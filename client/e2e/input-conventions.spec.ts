@@ -57,7 +57,19 @@ async function seedSellerListing(page: Page, seller: MintedPlayer, itemUid: stri
   expect(put.ok()).toBeTruthy();
   const res = await page.request.post('/api/market/listings', { headers: { 'X-Auth-Token': seller.token }, data: { itemUid, price: { tm: 'lrdst', qty } } });
   expect(res.status()).toBe(200);
+  // REQ-0375: remember it so the afterEach can pull it back off the hearth.
+  // A hermetic FLEET WORKER is shared by every spec file it is handed, in
+  // sequence -- so a listing left standing here is still standing when the
+  // next file boots, and market.spec.ts's browse test (which asserts an
+  // absolute market-wide card count) then sees a third card it never
+  // seeded. Found exactly that way on the REQ-0375 full-suite run
+  // (expected 2, received 3). Mirrors warehouse-sell.spec.ts, which has
+  // withdrawn its own listing in teardown since REQ-0366.
+  createdListingIds.push({ id: (await res.json()).listing.id, token: seller.token });
 }
+
+/** Listings this spec put on the hearth, withdrawn in afterEach. */
+const createdListingIds: Array<{ id: string; token: string }> = [];
 
 async function gotoMarket(page: Page): Promise<void> {
   await bootApp(page);
@@ -99,6 +111,17 @@ async function tap(page: Page, x: number, y: number) {
 }
 
 test.describe('REQ-0369: input conventions', () => {
+  // REQ-0375: leave the shared fleet worker's hearth as we found it.
+  test.afterEach(async ({ page }) => {
+    while (createdListingIds.length) {
+      const row = createdListingIds.pop();
+      if (!row) break;
+      await page.request
+        .post(`/api/market/listings/${row.id}/withdraw`, { headers: { 'X-Auth-Token': row.token } })
+        .catch(() => {});
+    }
+  });
+
   test('Esc closes the market BuyModal (useModalConventions adoption)', async ({ page }) => {
     const seller = mintInvite('E2E 0369 Seller');
     await seedSellerListing(page, seller, 'e2e_0369_esc', 'tower_shield', 5);
