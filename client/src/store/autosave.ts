@@ -186,6 +186,10 @@ export function applyCanvasToState(st: GameState, canvas: GameState): void {
   // riding in the canvas doc). Absent on a pre-REQ-0141 save -> keep boot's.
   const savedGuide = (canvas as unknown as { guide?: unknown }).guide;
   if (savedGuide) (st as unknown as { guide?: unknown }).guide = savedGuide;
+  // REQ-0371: same treatment for the persisted sortie prefs (last-used
+  // attackLv -- client-only field, engine/server never read it).
+  const savedSortie = (canvas as unknown as { sortie?: unknown }).sortie;
+  if (savedSortie) (st as unknown as { sortie?: unknown }).sortie = savedSortie;
 }
 
 /**

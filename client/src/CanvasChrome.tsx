@@ -33,6 +33,7 @@
 //    mock's readiness-hint copy (独立性検査 合格 / dungeon name + ETA)
 //    has no backing data client-side and is omitted.
 import { t } from './i18n';
+import { buildPower } from './lib/buildPower';
 import type { Locale } from './store';
 import { setRoute, undo, useGameStore } from './store';
 
@@ -60,7 +61,7 @@ export function BoardCoords() {
 /** Live board-content counts for the canvas stagehead (mock chip). */
 export function CanvasStatsChip() {
   const snapshot = useGameStore();
-  const { state, engine, locale } = snapshot;
+  const { state, engine, gameData, locale } = snapshot;
   if (snapshot.status !== 'ready' || !state || !engine) return null;
   const bpCount = state.bps.length;
   const itemCount = state.pos.filter((p) => p.loc === 'grid').length;
@@ -70,11 +71,25 @@ export function CanvasStatsChip() {
   } catch {
     linkCount = 0; // defensive: a stats chip must never take the page down
   }
+  // REQ-0371: total HP + the REFERENCE power aggregate, computed from the
+  // SAME store snapshot the counts read (engine state + gameData defs).
+  // Display-only, no engine call -- the recorded formula lives in
+  // lib/buildPower.ts; the tooltip carries the forecastTip-style honesty
+  // label (reference, not prediction).
+  const { hp, power } = buildPower(state, gameData?.ITEMS, gameData?.SI_DEFS);
   return (
     <span className="chip stagehead-chip">
       {t(locale, 'canvas.statBp')} {bpCount} ・ {t(locale, 'canvas.statItems')} {itemCount} ・{' '}
       <span className="kw-link">
         {t(locale, 'canvas.statLinks')} {linkCount}
+      </span>
+      {' ・ '}
+      <span data-testid="canvas-stat-hp">
+        {t(locale, 'canvas.statHp')} {hp}
+      </span>
+      {' ・ '}
+      <span data-testid="canvas-stat-power" title={t(locale, 'canvas.statPowerTip')}>
+        {t(locale, 'canvas.statPower')} {power}
       </span>
     </span>
   );

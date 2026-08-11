@@ -15,9 +15,11 @@ export interface SquadBP {
   shape?: [number, number][];
   origin?: [number, number];
   unit?: { id: string; off?: unknown } | null;
+  /** REQ-0371: BP max HP (absent on a legacy record -> the sim's 100). */
+  hpMax?: number;
 }
-export interface SquadPO { uid: string; loc?: string; cell?: [number, number] | null }
-export interface SquadSI { uid: string }
+export interface SquadPO { uid: string; id?: string; loc?: string; cell?: [number, number] | null }
+export interface SquadSI { uid: string; id?: string; host?: unknown } // REQ-0371: id/host read by lib/buildPower.ts
 export interface SquadCanvas { bps?: SquadBP[]; pos?: SquadPO[]; sis?: SquadSI[] }
 export interface PresetsLike { active: number; names: string[]; store: (SquadCanvas | null)[] }
 export interface GameStateLike { bps?: SquadBP[]; pos?: SquadPO[]; sis?: SquadSI[]; presets?: PresetsLike }

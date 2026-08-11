@@ -121,6 +121,15 @@ export function SquadMiniCard(props: SquadMiniCardProps) {
         </div>
         <span className="sortie-squad-meta t-micro tnum">{t(locale, 'sortie.squad.bp', { n: info.bpCount })}</span>
         {info.chargeCount > 0 ? <span className="sortie-squad-meta t-micro tnum">{t(locale, 'sortie.squad.charge', { n: info.chargeCount })}</span> : null}
+        {info.power != null ? (
+          <span
+            className="sortie-squad-meta t-micro tnum"
+            data-testid={testId ? `${testId}-power` : undefined}
+            title={t(locale, 'canvas.statPowerTip')}
+          >
+            {t(locale, 'sortie.squad.power', { n: info.power })}
+          </span>
+        ) : null}
       </div>
 
       {conflictStrip ? (

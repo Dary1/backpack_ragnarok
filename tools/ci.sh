@@ -390,6 +390,8 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   (cd client && node scripts/check_pack_board_wildlands.mjs)
   stage "[5.78/7] client monster_pack board -- batch-007 deepstone-legions resolves footprints from art (REQ-0219)"
   (cd client && node scripts/check_pack_board_deepstone.mjs)
+  stage "[5.79/7] client build-power reference aggregate + locale keys (REQ-0371)"
+  (cd client && node scripts/check_build_power.mjs)
   # REQ-0059: circuit-chimes deterministic event->note mapping (+ prefs).
   # Pure functions, no browser/Pixi/AudioContext -- same vite-ssrLoadModule
   # rig as the two gates above, so it sits beside them in front of the build.
